@@ -25,7 +25,6 @@ OmniConv is a universal file conversion tool developed in Python. It leverages v
 4.  **Omniconv** will save converted files on you *Desktop*. If you have a file with the same name as the converted file, omniconv will not overwrite it, it will just rename the converted file.
 5.  Enjoy!
    
-**WARNING** *FFMPEG HAS TO BE INSTALLED ON YOUR COMPUTER*
 
 ## How to Use
 
