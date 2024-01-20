@@ -27,11 +27,11 @@ OmniConv is a universal file conversion tool developed in Python. It leverages v
 
 ## How to Use
 
-1. Run the `main.py` script to start the application.
+1. Run the `main.py` script or **OmniConv.exe** (if you installed release)  to start the application.
 2. Click on the "Browse" button to select the file you want to convert.
 3. Choose the desired output format from the options that appear.
 4. The application will start the conversion process and notify you when it's done.
-
+   
 Output file will be saved od Desktop.
 
 ## Future Improvements
