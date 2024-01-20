@@ -1,6 +1,10 @@
+import time
+
 import customtkinter
 import os
 import customtkinter as tk
+import subprocess
+import ctypes
 
 from pydub import AudioSegment
 from PIL import Image
@@ -175,6 +179,7 @@ def is_pdf(f_ext):
         return 1
     return 0
 
+
 # end of file type finder segment
 
 
@@ -199,8 +204,80 @@ def slc_f_format(infile):
 
     return supported_formats
 
+
+def check_ffmpeg():
+    try:
+        subprocess.call('ffmpeg', creationflags=subprocess.CREATE_NEW_CONSOLE)
+        print("Ffmpeg is installed\nStarting the app...\n")
+    except FileNotFoundError:
+        if not is_admin():
+            print("This script must be run as administrator. Please restart the script with administrative privileges.")
+            time.sleep(10)
+            exit()
+        print("ffmpeg is not installed\nSearching for Chocolatey...\n")
+        is_choco = 0
+        check_chocolatey(is_choco)
+        install_ffmpeg(is_choco)
+
+
+def check_chocolatey(is_choco):
+    try:
+        subprocess.call('choco', creationflags=subprocess.CREATE_NEW_CONSOLE)
+        print("Chocolatey is installed")
+    except FileNotFoundError:
+        print("Chocolatey is not installed")
+        is_choco = 1
+        install_chocolatey()
+
+
+def install_chocolatey():
+    print("Installing Chocolatey...")
+    command = ('powershell -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; ['
+               'System.Net.ServicePointManager]::SecurityProtocol = ['
+               'System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object '
+               'System.Net.WebClient).DownloadString(\'https://chocolatey.org/install.ps1\'))"')
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    process.wait()
+
+
+def install_ffmpeg(is_choco):
+    print("Installing ffmpeg...")
+    command = 'choco install ffmpeg -y'
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        stdout, stderr = process.communicate()
+        if process.returncode != 0:
+            print(f"Error occurred while installing ffmpeg: {stderr.decode()}")
+        else:
+            print("ffmpeg installed successfully.")
+        if is_choco:
+            uninstall_chocolatey()
+    except Exception as e:
+        print(f"An error occurred while trying to run the command: {e}")
+
+
+def is_admin():
+    return ctypes.windll.shell32.IsUserAnAdmin()
+
+
+def uninstall_chocolatey():
+    print("\nUninstalling Chocolatey...\n")
+    command = 'powershell -Command "Remove-Item -Recurse -Force C:\\ProgramData\\chocolatey"'
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    process.wait()
+
+    print("\nRemoving Chocolatey from PATH...\n")
+    command = ('powershell -Command "[Environment]::SetEnvironmentVariable(\'PATH\', '
+               '(([Environment]::GetEnvironmentVariable(\'PATH\', \'Machine\') -split \';\' | Where-Object { $_ '
+               '-notmatch \'chocolatey\' }) -join \';\'), \'Machine\')"')
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    process.wait()
+
+
 # code segment
 
+
+check_ffmpeg()
 
 customtkinter.set_appearance_mode("Dark")
 customtkinter.set_default_color_theme("dark-blue")
