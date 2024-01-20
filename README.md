@@ -17,6 +17,14 @@ OmniConv is a universal file conversion tool developed in Python. It leverages v
 - **pdf2docx**: Used for converting PDF files to DOCX format.
 - **moviepy**: Used for handling video file conversions and extracting audio from video files.
 
+## How to Unstall Release
+
+1.  Click on newsest release in this repository. Current is: https://github.com/PanPeryskop/OmniConv/releases/tag/v1.0
+2.  Click on **Omniconv.exe**. Download will start automatically
+3.  You don't need any additional files, so you can start using it instantly after downloading is complete
+4.  **Omniconv** will save converted files on you *Desktop*. If you have a file with the same name as the converted file, omniconv will not overwrite it, it will just rename the converted file.
+5.  Enjoy!
+
 ## How to Use
 
 1. Run the `main.py` script to start the application.
@@ -29,3 +37,7 @@ Output file will be saved od Desktop.
 ## Future Improvements
 
 Future versions of OmniConv aim to support more file formats and provide more conversion options.
+
+## Important
+
+If you encounter any errors, please report them in ***Issues***. I'll fix that.
