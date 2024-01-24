@@ -1,3 +1,4 @@
+
 import time
 
 import customtkinter
@@ -5,6 +6,8 @@ import os
 import customtkinter as tk
 import subprocess
 import ctypes
+import ocrmypdf
+import signal
 
 from pydub import AudioSegment
 from PIL import Image
@@ -14,14 +17,16 @@ from pdf2docx import Converter as pdf2docx
 import threading
 from moviepy.editor import VideoFileClip
 from moviepy.editor import AudioFileClip
-
+from colorama import Fore
 
 # def segment
+
+
 def re_start(new_frame):
     new_frame.destroy()
 
     show_toast("Conversion has been completed ", duration=2000, color="Green", mode=1)
-    app.after(2000, lambda: restart_after_toast(new_frame))
+    app.after(2000, lambda: restart_after_toast()) #new_frame
 
 
 def show_toast(message, duration, color, mode):
@@ -40,7 +45,7 @@ def get_password():
     return password
 
 
-def restart_after_toast(new_frame):
+def restart_after_toast():
     s_label.pack(pady=12, padx=10)
     entry.delete(0, tk.END)
     entry.pack(pady=12, padx=10)
@@ -115,24 +120,17 @@ def go_to_conv_file(infile, f_format, new_frame):
 
     elif is_graph(f_ext):
         image = Image.open(infile)
+        if image.mode in ("RGBA", "P"):
+            image = image.convert("RGB")
         image.save(output_path)
 
     elif is_pdf(f_ext):
-        try:
-            pdf_file = infile
-            cv = pdf2docx(pdf_file)
-            docx_file = output_path
-            cv.convert(docx_file, start=0, end=None)
-            cv.close()
-        except Exception as e:
-            password = get_password()
-            if password:
-                try:
-                    cv = pdf2docx(pdf_file=infile, password=password)
-                    cv.convert(pdf_file=infile, docx_file=output_path, start=0, end=None)
-                    cv.close()
-                except Exception as e:
-                    show_toast("Incorrect password or another error occurred...", duration=2000, color="red", mode=0)
+        if f_format == "docx":
+            pdf_to_docx(infile, output_path)
+        elif f_format == "OcrPdf":
+            ocr_pdf_and_docx(infile, output_path_pre)
+        else:
+            ocr_pdf_and_docx(infile, output_path_pre)
 
     else:
         if is_audio(f_format):
@@ -145,6 +143,56 @@ def go_to_conv_file(infile, f_format, new_frame):
     toast_label.destroy()
     re_start(new_frame)
 
+
+def ocr_pdf(infile, output_path_pre):
+    output_path = output_path_pre + '.pdf'
+    try:
+        ocrmypdf.ocr(input_file=infile, output_file=output_path, deskew=True)
+    except Exception as e:
+        try:
+            password = get_password()
+            if password:
+                ocrmypdf.ocr(input_file=infile, output_file=output_path, userpw=password)
+        except Exception as e:
+            show_toast("Incorrect password or another error occurred...", duration=2000, color="red", mode=0)
+
+
+def ocr_pdf_and_docx(infile, output_path_pre):
+    output_path = output_path_pre + '.pdf'
+    try:
+        ocrmypdf.ocr(input_file=infile, output_file=output_path,  deskew=True)
+        output_docx_path = output_path_pre + ".docx"
+        cv = pdf2docx(infile)
+        cv.convert(output_docx_path, start=0, end=None)
+        cv.close()
+    except Exception as e:
+        try:
+            password = get_password()
+            if password:
+                ocrmypdf.ocr(input_file=infile, output_file=output_path, userpw=password)
+                cv = pdf2docx(pdf_file=infile, password=password)
+                cv.convert(pdf_file=infile, docx_file=output_path, start=0, end=None)
+                cv.close()
+        except Exception as e:
+            show_toast("Incorrect password or another error occurred...", duration=2000, color="red", mode=0)
+
+
+def pdf_to_docx(infile, output_path):
+    try:
+        pdf_file = infile
+        cv = pdf2docx(pdf_file)
+        docx_file = output_path
+        cv.convert(docx_file, start=0, end=None)
+        cv.close()
+    except Exception as e:
+        try:
+            password = get_password()
+            if password:
+                cv = pdf2docx(pdf_file=infile, password=password)
+                cv.convert(pdf_file=infile, docx_file=output_path, start=0, end=None)
+                cv.close()
+        except Exception as e:
+            show_toast("Incorrect password or another error occurred...", duration=2000, color="red", mode=0)
 
 # file type finder
 
@@ -194,7 +242,7 @@ def slc_f_format(infile):
     elif is_vid(f_ext):
         supported_formats.extend(["mp4", "mp3", "wav", "webm", ])
     elif is_pdf(f_ext):
-        supported_formats.extend(["docx"])
+        supported_formats.extend(["docx", "OcrPdf", "OcrPdfAndDocx"])
     else:
         supported_formats = 0
 
@@ -208,52 +256,98 @@ def slc_f_format(infile):
 def check_ffmpeg():
     try:
         subprocess.call('ffmpeg', creationflags=subprocess.CREATE_NEW_CONSOLE)
-        print("Ffmpeg is installed\nStarting the app...\n")
+        print(Fore.GREEN + "Ffmpeg is installed\n")
     except FileNotFoundError:
+        print(Fore.RED + "Ffmpeg is not installed\n")
+        time.sleep(0.3)
+        print(Fore.YELLOW + "Checking if program is running as administrator...\n")
         if not is_admin():
-            print("This script must be run as administrator. Please restart the script with administrative privileges.")
+            time.sleep(0.3)
+            print(Fore.RED + "This script must be run as administrator. Please restart the script with administrative "
+                             "privileges.")
             time.sleep(10)
             exit()
-        print("ffmpeg is not installed\nSearching for Chocolatey...\n")
+        time.sleep(0.1)
+        print(Fore.RED + "ffmpeg is not installed\n")
+        time.sleep(0.1)
+        print(Fore.YELLOW + "Searching for Chocolatey...\n")
         is_choco = 0
         check_chocolatey(is_choco)
         install_ffmpeg(is_choco)
 
 
 def check_chocolatey(is_choco):
+    time.sleep(0.1)
     try:
         subprocess.call('choco', creationflags=subprocess.CREATE_NEW_CONSOLE)
-        print("Chocolatey is installed")
+        print(Fore.GREEN + "Chocolatey is installed\n")
     except FileNotFoundError:
-        print("Chocolatey is not installed")
+        print(Fore.RED + "Chocolatey is not installed\n")
         is_choco = 1
         install_chocolatey()
 
 
+def check_tesseract():
+    try:
+        subprocess.call('tesseract', creationflags=subprocess.CREATE_NEW_CONSOLE)
+        print(Fore.GREEN + "Tesseract is installed\n")
+    except FileNotFoundError:
+        print(Fore.RED + "Tesseract is not installed\n")
+        print(Fore.YELLOW + "Checking if program is running as administrator...\n")
+        if not is_admin():
+            print(Fore.RED + "This script must be run as administrator. Please restart the script with administrative "
+                             "privileges.")
+            time.sleep(10)
+            exit()
+        print(Fore.YELLOW + "Searching for Chocolatey...\n")
+        is_choco = 0
+        check_chocolatey(is_choco)
+        install_tesseract(is_choco)
+
+
+def install_tesseract(is_choco):
+    print(Fore.BLUE + "Installing Tesseract...\n")
+    command = 'choco install tesseract -y'
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        stdout, stderr = process.communicate()
+        if process.returncode != 0:
+            print(Fore.RED + f"Error occurred while installing Tesseract: {stderr.decode()}")
+        else:
+            print(Fore.GREEN + "Tesseract installed successfully.\n")
+        if is_choco:
+            uninstall_chocolatey()
+    except Exception as e:
+        print(Fore.RED + f"An error occurred while trying to run the command: {e}")
+        if is_choco:
+            uninstall_chocolatey()
+
+
 def install_chocolatey():
-    print("Installing Chocolatey...")
+    print(Fore.BLUE + "Installing Chocolatey...")
     command = ('powershell -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; ['
                'System.Net.ServicePointManager]::SecurityProtocol = ['
                'System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object '
                'System.Net.WebClient).DownloadString(\'https://chocolatey.org/install.ps1\'))"')
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     process.wait()
+    print(Fore.GREEN + "Chocolatey installed successfully.")
 
 
 def install_ffmpeg(is_choco):
-    print("Installing ffmpeg...")
+    print(Fore.BLUE + "Installing ffmpeg...")
     command = 'choco install ffmpeg -y'
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         stdout, stderr = process.communicate()
         if process.returncode != 0:
-            print(f"Error occurred while installing ffmpeg: {stderr.decode()}")
+            print(Fore.RED + f"Error occurred while installing ffmpeg: {stderr.decode()}")
         else:
-            print("ffmpeg installed successfully.")
+            print(Fore.GREEN + "ffmpeg installed successfully.")
         if is_choco:
             uninstall_chocolatey()
     except Exception as e:
-        print(f"An error occurred while trying to run the command: {e}")
+        print(Fore.RED + f"An error occurred while trying to run the command: {e}")
 
 
 def is_admin():
@@ -261,12 +355,12 @@ def is_admin():
 
 
 def uninstall_chocolatey():
-    print("\nUninstalling Chocolatey...\n")
+    print(Fore.BLUE + "\nUninstalling Chocolatey...\n")
     command = 'powershell -Command "Remove-Item -Recurse -Force C:\\ProgramData\\chocolatey"'
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     process.wait()
 
-    print("\nRemoving Chocolatey from PATH...\n")
+    print(Fore.BLUE + "\nRemoving Chocolatey from PATH...\n")
     command = ('powershell -Command "[Environment]::SetEnvironmentVariable(\'PATH\', '
                '(([Environment]::GetEnvironmentVariable(\'PATH\', \'Machine\') -split \';\' | Where-Object { $_ '
                '-notmatch \'chocolatey\' }) -join \';\'), \'Machine\')"')
@@ -274,11 +368,51 @@ def uninstall_chocolatey():
     process.wait()
 
 
+def check_ghostscript():
+    try:
+        process = subprocess.Popen('gswin64c', creationflags=subprocess.CREATE_NEW_CONSOLE)
+        process.terminate()  # Zakończ proces
+
+        print(Fore.GREEN + "Ghostscript is installed\n")
+    except FileNotFoundError:
+        print(Fore.RED + "Ghostscript is not installed\n")
+        print(Fore.YELLOW + "Checking if program is running as administrator...\n")
+        if not is_admin():
+            print(Fore.RED + "This script must be run as administrator. Please restart the script with administrative "
+                             "privileges.")
+            time.sleep(10)
+            exit()
+        print(Fore.YELLOW + "Searching for Chocolatey...\n")
+        is_choco = 0
+        check_chocolatey(is_choco)
+        install_ghostscript(is_choco)
+
+
+def install_ghostscript(is_choco):
+    print(Fore.BLUE + "Installing Ghostscript...\n")
+    command = 'choco install ghostscript -y'
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        stdout, stderr = process.communicate()
+        if process.returncode != 0:
+            print(Fore.RED + f"Error occurred while installing Ghostscript: {stderr.decode()}\n")
+        else:
+            print(Fore.GREEN + "Ghostscript installed successfully.\n")
+        if is_choco:
+            uninstall_chocolatey()
+    except Exception as e:
+        print(Fore.RED + f"An error occurred while trying to run the command: {e}\n")
+        if is_choco:
+            uninstall_chocolatey()
 # code segment
 
 
 check_ffmpeg()
+check_tesseract()
+check_ghostscript()
 
+print(Fore.CYAN + "Starting the app...\n")
+print(Fore.RESET)
 customtkinter.set_appearance_mode("Dark")
 customtkinter.set_default_color_theme("dark-blue")
 
