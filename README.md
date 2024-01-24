@@ -8,7 +8,8 @@ OmniConv is a universal file conversion tool developed in Python. It leverages v
 - **Image Conversion**: OmniConv can convert between different image formats such as PNG, JPG, JPEG, GIF, BMP, TIFF, WEBP, and ICO.
 - **Video Conversion**: OmniConv allows conversion between popular video formats like MP4, AVI, MKV, MOV, WMV, FLV, and WEBM. It also supports extracting audio from video files.
 - **PDF to DOCX Conversion**: OmniConv can convert PDF files to DOCX format. It also supports password-protected PDF files. (Also PDF to DOCX with OCR)
-- **PDF OCR**: OmniConv can extract text from images and PDF files using OCR (Optical Character Recognition). 
+- **PDF OCR**: OmniConv can extract text from images and PDF files using OCR (Optical Character Recognition).
+
 ## Libraries Used
 
 - **customtkinter**: Used for creating the GUI of the application.
@@ -17,10 +18,11 @@ OmniConv is a universal file conversion tool developed in Python. It leverages v
 - **pdf2docx**: Used for converting PDF files to DOCX format.
 - **moviepy**: Used for handling video file conversions and extracting audio from video files.
 - **ocrmypdf**: Used for extracting text from images and PDF files using OCR.
+
 ## How to Install Release
 
-1.  Click on newest release in this repository. Current is: https://github.com/PanPeryskop/OmniConv/releases/tag/v1.0
-2.  Click on **OmniConv.exe**. Download will start automatically
+1.  Click on newest release in this repository. Current is:https://github.com/PanPeryskop/OmniConv/releases/tag/v1.2 . If you are sure that you have *ffmpeg* already installed, I recommend version ***v1.0***
+2.  Click on **Omniconv.exe**. Download will start automatically
 3.  You don't need any additional files, so you can start using it instantly after downloading is complete
 4.  **OmniConv** will save converted files on your *Desktop*. If you have a file with the same name as the converted file, OmniConv will not overwrite it, it will just rename the converted file.
 5.  Enjoy!
@@ -42,4 +44,4 @@ Future versions of OmniConv aim to support more file formats and provide more co
 
 ## Important
 
-If you encounter any errors, please report them in ***Issues***. I'll fix that.
+If you encounter any errors, please report them in the ***Issues*** section of this repository.

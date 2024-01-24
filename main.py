@@ -7,7 +7,7 @@ import customtkinter as tk
 import subprocess
 import ctypes
 import ocrmypdf
-import signal
+
 
 from pydub import AudioSegment
 from PIL import Image
@@ -128,9 +128,9 @@ def go_to_conv_file(infile, f_format, new_frame):
         if f_format == "docx":
             pdf_to_docx(infile, output_path)
         elif f_format == "OcrPdf":
-            ocr_pdf_and_docx(infile, output_path_pre)
-        else:
-            ocr_pdf_and_docx(infile, output_path_pre)
+            ocr_pdf(infile, output_path_pre)
+        # else:
+        #     ocr_pdf_and_docx(infile, output_path_pre)
 
     else:
         if is_audio(f_format):
@@ -157,24 +157,24 @@ def ocr_pdf(infile, output_path_pre):
             show_toast("Incorrect password or another error occurred...", duration=2000, color="red", mode=0)
 
 
-def ocr_pdf_and_docx(infile, output_path_pre):
-    output_path = output_path_pre + '.pdf'
-    try:
-        ocrmypdf.ocr(input_file=infile, output_file=output_path,  deskew=True)
-        output_docx_path = output_path_pre + ".docx"
-        cv = pdf2docx(infile)
-        cv.convert(output_docx_path, start=0, end=None)
-        cv.close()
-    except Exception as e:
-        try:
-            password = get_password()
-            if password:
-                ocrmypdf.ocr(input_file=infile, output_file=output_path, userpw=password)
-                cv = pdf2docx(pdf_file=infile, password=password)
-                cv.convert(pdf_file=infile, docx_file=output_path, start=0, end=None)
-                cv.close()
-        except Exception as e:
-            show_toast("Incorrect password or another error occurred...", duration=2000, color="red", mode=0)
+# def ocr_pdf_and_docx(infile, output_path_pre):
+#     output_path = output_path_pre + '.pdf'
+#     try:
+#         ocrmypdf.ocr(input_file=infile, output_file=output_path,  deskew=True)
+#         output_docx_path = output_path_pre + ".docx"
+#         cv = pdf2docx(output_path)
+#         cv.convert(output_docx_path, start=0, end=None)
+#         cv.close()
+#     except Exception as e:
+#         try:
+#             password = get_password()
+#             if password:
+#                 ocrmypdf.ocr(input_file=infile, output_file=output_path, userpw=password)
+#                 cv = pdf2docx(pdf_file=infile, password=password)
+#                 cv.convert(pdf_file=infile, docx_file=output_path, start=0, end=None)
+#                 cv.close()
+#         except Exception as e:
+#             show_toast("Incorrect password or another error occurred...", duration=2000, color="red", mode=0)
 
 
 def pdf_to_docx(infile, output_path):
@@ -242,7 +242,7 @@ def slc_f_format(infile):
     elif is_vid(f_ext):
         supported_formats.extend(["mp4", "mp3", "wav", "webm", ])
     elif is_pdf(f_ext):
-        supported_formats.extend(["docx", "OcrPdf", "OcrPdfAndDocx"])
+        supported_formats.extend(["docx", "OcrPdf"]) #"OcrPdfAndDocx"
     else:
         supported_formats = 0
 
