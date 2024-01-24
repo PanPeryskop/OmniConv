@@ -21,7 +21,7 @@ OmniConv is a universal file conversion tool developed in Python. It leverages v
 
 ## How to Install Release
 
-1.  Click on newest release in this repository. Current is:https://github.com/PanPeryskop/OmniConv/releases/tag/v1.2 . If you are sure that you have *ffmpeg* already installed, I recommend version ***v1.0***
+1.  Click on newest release in this repository. Current is:https://github.com/PanPeryskop/OmniConv/releases/tag/v1.2 . 
 2.  Click on **Omniconv.exe**. Download will start automatically
 3.  You don't need any additional files, so you can start using it instantly after downloading is complete
 4.  **OmniConv** will save converted files on your *Desktop*. If you have a file with the same name as the converted file, OmniConv will not overwrite it, it will just rename the converted file.
