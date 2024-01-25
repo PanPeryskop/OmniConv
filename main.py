@@ -157,6 +157,8 @@ def ocr_pdf(infile, output_path_pre):
             show_toast("Incorrect password or another error occurred...", duration=2000, color="red", mode=0)
 
 
+
+
 # def ocr_pdf_and_docx(infile, output_path_pre):
 #     output_path = output_path_pre + '.pdf'
 #     try:

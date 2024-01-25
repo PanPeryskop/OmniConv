@@ -1,6 +1,6 @@
 # OmniConv
 
-OmniConv is a universal file conversion tool developed in Python. It leverages various libraries to provide a wide range of conversion options for different file types.
+OmniConv is a universal file conversion tool developed in Python. It uses various libraries to provide a wide range of conversion options for different file types.
 
 ## Features
 
