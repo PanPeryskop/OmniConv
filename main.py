@@ -1,4 +1,3 @@
-
 import time
 
 import customtkinter
@@ -7,7 +6,6 @@ import customtkinter as tk
 import subprocess
 import ctypes
 import ocrmypdf
-
 
 from pydub import AudioSegment
 from PIL import Image
@@ -19,14 +17,16 @@ from moviepy.editor import VideoFileClip
 from moviepy.editor import AudioFileClip
 from colorama import Fore
 
-# def segment
+
+
+
 
 
 def re_start(new_frame):
     new_frame.destroy()
 
     show_toast("Conversion has been completed ", duration=2000, color="Green", mode=1)
-    app.after(2000, lambda: restart_after_toast()) #new_frame
+    app.after(2000, lambda: restart_after_toast())  # new_frame
 
 
 def show_toast(message, duration, color, mode):
@@ -97,6 +97,17 @@ def conv_file(infile, f_format, new_frame):
     conversion_thread.start()
 
 
+def check_if_exsists(output_path_pre, output_path, f_format):
+    if f_format == "OcrPdf":
+        f_format = "pdf"
+    if os.path.exists(output_path):
+        i = 1
+        while os.path.exists(output_path):
+            output_path = output_path_pre + "_" + str(i) + '.' + f_format
+            i += 1
+    return output_path
+
+
 def go_to_conv_file(infile, f_format, new_frame):
     toast_label = tk.CTkLabel(master=new_frame, text="Conversion is in progress...", font=("Roboto", 20),
                               text_color="yellow")
@@ -108,11 +119,7 @@ def go_to_conv_file(infile, f_format, new_frame):
     output_path_pre = os.path.join(desktop_path, outfile)
     output_path = output_path_pre + '.' + f_format
 
-    if os.path.exists(output_path):
-        i = 1
-        while os.path.exists(output_path):
-            output_path = output_path_pre + "_" + str(i) + '.' + f_format
-            i += 1
+    output_path = check_if_exsists(output_path_pre, output_path, f_format)
 
     if is_audio(f_ext):
         audio = AudioSegment.from_file(infile, format=f_ext)
@@ -128,7 +135,7 @@ def go_to_conv_file(infile, f_format, new_frame):
         if f_format == "docx":
             pdf_to_docx(infile, output_path)
         elif f_format == "OcrPdf":
-            ocr_pdf(infile, output_path_pre)
+            ocr_pdf(infile, output_path_pre, f_format)
         # else:
         #     ocr_pdf_and_docx(infile, output_path_pre)
 
@@ -144,8 +151,9 @@ def go_to_conv_file(infile, f_format, new_frame):
     re_start(new_frame)
 
 
-def ocr_pdf(infile, output_path_pre):
+def ocr_pdf(infile, output_path_pre, f_format):
     output_path = output_path_pre + '.pdf'
+    output_path = check_if_exsists(output_path_pre, output_path, f_format)
     try:
         ocrmypdf.ocr(input_file=infile, output_file=output_path, deskew=True)
     except Exception as e:
@@ -155,8 +163,6 @@ def ocr_pdf(infile, output_path_pre):
                 ocrmypdf.ocr(input_file=infile, output_file=output_path, userpw=password)
         except Exception as e:
             show_toast("Incorrect password or another error occurred...", duration=2000, color="red", mode=0)
-
-
 
 
 # def ocr_pdf_and_docx(infile, output_path_pre):
@@ -195,6 +201,7 @@ def pdf_to_docx(infile, output_path):
                 cv.close()
         except Exception as e:
             show_toast("Incorrect password or another error occurred...", duration=2000, color="red", mode=0)
+
 
 # file type finder
 
@@ -238,13 +245,13 @@ def slc_f_format(infile):
     supported_formats = []
 
     if is_audio(f_ext):
-        supported_formats.extend(["mp3", "wav", "ogg", "flac", "aac"])
+        supported_formats.extend(["mp3", "wav", "ogg", "flac"])
     elif is_graph(f_ext):
         supported_formats.extend(["png", "jpg", "jpeg", "gif", "bmp", "tiff", "webp", "ico"])
     elif is_vid(f_ext):
         supported_formats.extend(["mp4", "mp3", "wav", "webm", ])
     elif is_pdf(f_ext):
-        supported_formats.extend(["docx", "OcrPdf"]) #"OcrPdfAndDocx"
+        supported_formats.extend(["docx", "OcrPdf"])  # "OcrPdfAndDocx"
     else:
         supported_formats = 0
 
@@ -406,6 +413,8 @@ def install_ghostscript(is_choco):
         print(Fore.RED + f"An error occurred while trying to run the command: {e}\n")
         if is_choco:
             uninstall_chocolatey()
+
+
 # code segment
 
 
@@ -413,14 +422,27 @@ check_ffmpeg()
 check_tesseract()
 check_ghostscript()
 
+
+
 print(Fore.CYAN + "Starting the app...\n")
 print(Fore.RESET)
 customtkinter.set_appearance_mode("Dark")
 customtkinter.set_default_color_theme("dark-blue")
 
+# is_nvidia = False
+# user_input = input("Do you have nvidia gpu? (y/n): ")
+# if user_input.lower() == "y":
+#     is_nvidia = True
+# elif user_input.lower() == "n":
+#     is_nvidia = False
+# else:
+#     print("Invalid input. Starting on CPU mode...")
+#     is_nvidia = False
+
 app = tk.CTk()
 app.title("OmniConv")
 app.geometry("420x600")
+
 
 frame = tk.CTkFrame(master=app)
 frame.pack(pady=20, padx=60, fill="both", expand=True)
