@@ -6,6 +6,8 @@ import customtkinter as tk
 import subprocess
 import ctypes
 import ocrmypdf
+import re
+import shutil
 
 from pydub import AudioSegment
 from PIL import Image
@@ -13,20 +15,108 @@ from customtkinter import filedialog
 from pathlib import Path
 from pdf2docx import Converter as pdf2docx
 import threading
-from moviepy.editor import VideoFileClip
-from moviepy.editor import AudioFileClip
+
+from moviepy import VideoFileClip
+from moviepy import AudioFileClip
 from colorama import Fore
+from langdetect import DetectorFactory, LangDetectException, detect_langs
+from pdfminer.high_level import extract_text
+from ocrmypdf.exceptions import EncryptedPdfError
+
+DetectorFactory.seed = 0
+
+LANGDETECT_TO_TESSERACT = {
+    "en": "eng",
+    "pl": "pol",
+    "de": "deu",
+    "fr": "fra",
+    "es": "spa",
+    "pt": "por",
+    "it": "ita",
+    "nl": "nld",
+    "sv": "swe",
+    "no": "nor",
+    "da": "dan",
+    "fi": "fin",
+    "cs": "ces",
+    "sk": "slk",
+    "sl": "slv",
+    "hu": "hun",
+    "ro": "ron",
+    "bg": "bul",
+    "uk": "ukr",
+    "ru": "rus",
+    "hr": "hrv",
+    "sr": "srp",
+    "lt": "lit",
+    "lv": "lav",
+    "et": "est",
+    "tr": "tur",
+    "el": "ell",
+    "ja": "jpn",
+    "ko": "kor",
+    "zh-cn": "chi_sim",
+    "zh-tw": "chi_tra",
+}
 
 
+def compute_ocr_jobs():
+    cpu_count = os.cpu_count() or 2
+    if cpu_count <= 2:
+        return 1
+    return min(4, max(1, cpu_count // 2))
 
 
+def detect_pdf_language(infile, fallback="eng", max_langs=2):
+    try:
+        first_page_text = extract_text(infile, page_numbers=[0]) or ""
+    except Exception as exc:
+        print(Fore.YELLOW + f"[OCR] Unable to read PDF for language detection: {exc}")
+        return fallback
+
+    cleaned_text = re.sub(r"\s+", " ", first_page_text).strip()
+
+    if len(cleaned_text) < 40:
+        return fallback
+
+    try:
+        lang_candidates = detect_langs(cleaned_text)
+    except LangDetectException:
+        return fallback
+
+    selected_codes = []
+    for candidate in lang_candidates:
+        if candidate.prob < 0.35:
+            continue
+        tess_code = LANGDETECT_TO_TESSERACT.get(candidate.lang)
+        if tess_code and tess_code not in selected_codes:
+            selected_codes.append(tess_code)
+        if len(selected_codes) >= max_langs:
+            break
+
+    if not selected_codes:
+        return fallback
+
+    detected = "+".join(selected_codes)
+    print(Fore.CYAN + f"[OCR] Detected language(s): {detected}")
+    return detected
+
+
+def safe_destroy(widget):
+    try:
+        if widget is None:
+            return
+        exists = getattr(widget, "winfo_exists", lambda: True)()
+        if exists:
+            widget.destroy()
+    except Exception:
+        pass
 
 
 def re_start(new_frame):
-    new_frame.destroy()
-
+    safe_destroy(new_frame)
     show_toast("Conversion has been completed ", duration=2000, color="Green", mode=1)
-    app.after(2000, lambda: restart_after_toast())  # new_frame
+    app.after(2000, lambda: restart_after_toast())
 
 
 def show_toast(message, duration, color, mode):
@@ -36,7 +126,7 @@ def show_toast(message, duration, color, mode):
         toast_label.pack(side="top", fill="x", pady=y)
     else:
         toast_label.pack(side="top", fill="x")
-    app.after(duration, lambda: toast_label.destroy())
+    app.after(duration, lambda: safe_destroy(toast_label))
 
 
 def get_password():
@@ -147,22 +237,97 @@ def go_to_conv_file(infile, f_format, new_frame):
             video = VideoFileClip(infile)
             video.write_videofile(output_path)
 
-    toast_label.destroy()
+    safe_destroy(toast_label)
     re_start(new_frame)
 
 
-def ocr_pdf(infile, output_path_pre, f_format):
+def ocr_pdf(infile, output_path_pre, f_format, fallback_lang="eng"):
     output_path = output_path_pre + '.pdf'
     output_path = check_if_exsists(output_path_pre, output_path, f_format)
-    try:
-        ocrmypdf.ocr(input_file=infile, output_file=output_path, deskew=True)
-    except Exception as e:
+
+    detected_lang = detect_pdf_language(infile, fallback=fallback_lang)
+    jobs = compute_ocr_jobs()
+
+    optimize_level = 2 if shutil.which("pngquant") else 0
+    if optimize_level == 0:
+        print(Fore.YELLOW + "[OCR] pngquant not found — image optimization disabled (optimize=0).")
+
+    base_kwargs = {
+        "input_file": infile,
+        "output_file": output_path,
+        "deskew": True,
+        "optimize": optimize_level,
+        "language": detected_lang,
+        "jobs": jobs,
+        "rotate_pages": True,
+        "force_ocr": False,
+    }
+
+    def run_ocr(kwargs):
         try:
+            ocrmypdf.ocr(**kwargs)
+            return True, None
+        except Exception as err:
+            return False, err
+
+    success, error = run_ocr(base_kwargs)
+    if success:
+        print(Fore.GREEN + f"[OCR] Conversion completed using language '{base_kwargs['language']}'")
+        return
+
+    err_str = str(error).lower() if error else ""
+    try:
+        if isinstance(error, EncryptedPdfError):
+            print(Fore.YELLOW + "[OCR] PDF is password protected. Requesting password from user...")
             password = get_password()
-            if password:
-                ocrmypdf.ocr(input_file=infile, output_file=output_path, userpw=password)
-        except Exception as e:
-            show_toast("Incorrect password or another error occurred...", duration=2000, color="red", mode=0)
+            if not password:
+                show_toast("OCR aborted – password not provided.", duration=3000, color="red", mode=0)
+                return
+            protected_kwargs = dict(base_kwargs)
+            protected_kwargs["userpw"] = password
+            success, protected_error = run_ocr(protected_kwargs)
+            if success:
+                print(Fore.GREEN + "[OCR] Conversion completed with provided password.")
+                return
+            show_toast("OCR failed – incorrect password or unsupported encryption.", duration=3000, color="red", mode=0)
+            print(Fore.RED + f"[OCR] {protected_error}")
+            return
+    except Exception:
+        pass
+    if "already has text" in err_str or "page already has text" in err_str:
+        print(Fore.YELLOW + "[OCR] Page already has text — retrying with force_ocr=True (will replace existing text).")
+        retry_kwargs = dict(base_kwargs)
+        retry_kwargs["force_ocr"] = True
+        success, retry_error = run_ocr(retry_kwargs)
+        if success:
+            print(Fore.GREEN + "[OCR] Conversion completed with force_ocr=True.")
+            return
+        error = retry_error or error
+
+    if "image file is truncated" in err_str or "truncated" in err_str:
+        print(Fore.YELLOW + "[OCR] Image truncated error — retrying OCR with optimize=0.")
+        retry_kwargs = dict(base_kwargs)
+        retry_kwargs["optimize"] = 0
+        success, retry_error = run_ocr(retry_kwargs)
+        if success:
+            print(Fore.GREEN + "[OCR] Conversion completed (retry without optimize).")
+            return
+        error = retry_error or error
+
+    print(Fore.RED + f"[OCR] Initial OCR attempt failed: {error}")
+
+    if base_kwargs["language"] != fallback_lang:
+        print(Fore.YELLOW + f"[OCR] Falling back to default language '{fallback_lang}'.")
+        fallback_kwargs = dict(base_kwargs)
+        fallback_kwargs["language"] = fallback_lang
+        success, fallback_error = run_ocr(fallback_kwargs)
+        if success:
+            print(Fore.GREEN + f"[OCR] Conversion completed using fallback language '{fallback_lang}'.")
+            return
+        error = fallback_error or error
+
+    show_toast("OCR failed – check console for details.", duration=3000, color="red", mode=0)
+    print(Fore.RED + f"[OCR] Final failure: {error}")
 
 
 # def ocr_pdf_and_docx(infile, output_path_pre):
@@ -283,6 +448,25 @@ def check_ffmpeg():
         is_choco = 0
         check_chocolatey(is_choco)
         install_ffmpeg(is_choco)
+        
+
+def check_pngquant():
+    try:
+        subprocess.call('pngquant', creationflags=subprocess.CREATE_NEW_CONSOLE)
+        print(Fore.GREEN + "pngquant is installed\n")
+    except FileNotFoundError:
+        print(Fore.RED + "pngquant is not installed\n")
+        print(Fore.YELLOW + "pngquant is required for image optimization in OCR (--optimize).")
+        print(Fore.YELLOW + "Checking if program is running as administrator...\n")
+        if not is_admin():
+            print(Fore.RED + "This script must be run as administrator. Please restart the script with administrative privileges.")
+            time.sleep(10)
+            exit()
+        print(Fore.YELLOW + "Searching for Chocolatey...\n")
+        is_choco = 0
+        check_chocolatey(is_choco)
+        install_pngquant(is_choco)
+
 
 
 def check_chocolatey(is_choco):
@@ -357,6 +541,24 @@ def install_ffmpeg(is_choco):
             uninstall_chocolatey()
     except Exception as e:
         print(Fore.RED + f"An error occurred while trying to run the command: {e}")
+        
+        
+def install_pngquant(is_choco):
+    print(Fore.BLUE + "Installing pngquant...\n")
+    command = 'choco install pngquant -y'
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        stdout, stderr = process.communicate()
+        if process.returncode != 0:
+            print(Fore.RED + f"Error occurred while installing pngquant: {stderr.decode()}")
+        else:
+            print(Fore.GREEN + "pngquant installed successfully.\n")
+        if is_choco:
+            uninstall_chocolatey()
+    except Exception as e:
+        print(Fore.RED + f"An error occurred while trying to run the command: {e}")
+        if is_choco:
+            uninstall_chocolatey()
 
 
 def is_admin():
@@ -364,17 +566,18 @@ def is_admin():
 
 
 def uninstall_chocolatey():
-    print(Fore.BLUE + "\nUninstalling Chocolatey...\n")
-    command = 'powershell -Command "Remove-Item -Recurse -Force C:\\ProgramData\\chocolatey"'
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    process.wait()
+    # print(Fore.BLUE + "\nUninstalling Chocolatey...\n")
+    # command = 'powershell -Command "Remove-Item -Recurse -Force C:\\ProgramData\\chocolatey"'
+    # process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    # process.wait()
 
-    print(Fore.BLUE + "\nRemoving Chocolatey from PATH...\n")
-    command = ('powershell -Command "[Environment]::SetEnvironmentVariable(\'PATH\', '
-               '(([Environment]::GetEnvironmentVariable(\'PATH\', \'Machine\') -split \';\' | Where-Object { $_ '
-               '-notmatch \'chocolatey\' }) -join \';\'), \'Machine\')"')
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    process.wait()
+    # print(Fore.BLUE + "\nRemoving Chocolatey from PATH...\n")
+    # command = ('powershell -Command "[Environment]::SetEnvironmentVariable(\'PATH\', '
+    #            '(([Environment]::GetEnvironmentVariable(\'PATH\', \'Machine\') -split \';\' | Where-Object { $_ '
+    #            '-notmatch \'chocolatey\' }) -join \';\'), \'Machine\')"')
+    # process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    # process.wait()
+    pass # :) choco is nice why to uninstall it
 
 
 def check_ghostscript():
@@ -421,6 +624,7 @@ def install_ghostscript(is_choco):
 check_ffmpeg()
 check_tesseract()
 check_ghostscript()
+check_pngquant()
 
 
 
