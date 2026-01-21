@@ -1,0 +1,878 @@
+{% extends "base.html" %}
+
+{% block title %}Batch Convert - OmniConv{% endblock %}
+
+{% block content %}
+<section class="hero-section" style="padding-bottom: var(--space-8);">
+    <h1 class="hero-heading">Batch <span class="hero-heading-accent">Convert</span></h1>
+    <p class="hero-description">Convert multiple files at once. Drag and drop up to 20 files.</p>
+</section>
+
+<section class="converter-area" style="max-width: 720px;">
+    <div class="panel drop-area" id="batchUploadZone">
+        <div class="drop-content">
+            <div class="drop-icon">
+                <svg viewBox="0 0 80 80" stroke="currentColor">
+                    <rect x="10" y="20" width="32" height="40" rx="4" stroke-width="1"/>
+                    <rect x="22" y="14" width="32" height="40" rx="4" stroke-width="1"/>
+                    <rect x="34" y="8" width="32" height="40" rx="4" stroke-width="1" fill="var(--bg-primary)"/>
+                    <path d="M50 20v16M42 28l8-8 8 8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <h2 class="drop-heading">Drop multiple files</h2>
+            <p class="drop-subtext">or click to browse • Max 20 files</p>
+            <p class="drop-formats">All supported formats • Max 500MB each</p>
+            <input type="file" id="batchFileInput" class="file-picker" multiple />
+        </div>
+    </div>
+
+    <!-- Grouped File Queue -->
+    <div class="batch-queue hidden" id="batchQueue">
+        <div class="queue-header">
+            <h3 class="section-label" style="margin: 0;">Files in Queue</h3>
+            <div class="queue-actions">
+                <span id="queueCount" class="queue-count">0 files</span>
+                <button class="btn btn-ghost btn-sm" id="clearAllBtn" title="Clear all">
+                    <svg viewBox="0 0 24 24" width="16" height="16"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" fill="currentColor"/></svg>
+                </button>
+            </div>
+        </div>
+        <div class="file-groups" id="fileGroups"></div>
+    </div>
+
+    <!-- Format selection moved to groups -->
+
+    <div class="batch-actions hidden" id="batchActions">
+        <button class="btn btn-primary" id="startBatchBtn" style="width: 100%;">
+            <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Start Batch Conversion
+        </button>
+    </div>
+
+    <div class="batch-progress hidden" id="batchProgress">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+            <span style="font-size: var(--text-sm); color: var(--text-tertiary);">Converting...</span>
+            <span id="batchProgressCount" style="font-size: var(--text-sm);">0 / 0</span>
+        </div>
+        <div class="progress-track large">
+            <div class="progress-bar" id="batchProgressBar"></div>
+        </div>
+        <div class="file-list" id="progressList" style="margin-top: var(--space-6);"></div>
+    </div>
+
+    <div class="panel result-panel hidden" id="batchComplete">
+        <div class="result-icon">
+            <svg viewBox="0 0 88 88" stroke="currentColor">
+                <circle cx="44" cy="44" r="38"/>
+                <path d="M28 44l11 11 21-21" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+        <h3 class="result-heading">All Done!</h3>
+        <p class="result-filename" id="batchCompleteText">5 files converted successfully</p>
+        <button class="btn btn-primary" id="downloadAllBtn">
+            <svg viewBox="0 0 24 24">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download All
+        </button>
+        <button class="btn btn-ghost" id="batchAnother" style="margin-top: var(--space-4);">Convert more files</button>
+    </div>
+</section>
+
+<style>
+/* ============================================
+   BATCH CONVERSION STYLES
+   ============================================ */
+
+/* Queue Layout */
+.batch-queue, .batch-format, .batch-actions, .batch-progress {
+    margin-top: var(--space-6);
+}
+
+.queue-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-4);
+}
+
+.queue-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.queue-count {
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
+}
+
+.btn-sm {
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+}
+
+/* File Groups */
+.file-groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.file-group {
+    background: var(--surface-glass);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    animation: group-enter 0.3s var(--ease-out);
+}
+
+.file-group.removing {
+    animation: group-exit 0.3s var(--ease-out) forwards;
+}
+
+.file-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface-glass-hover);
+    cursor: pointer;
+    transition: background var(--duration-fast);
+    user-select: none;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+.file-group-select {
+    margin-left: auto;
+    margin-right: var(--space-3);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--surface-glass);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    appearance: none; /* Remove default arrow */
+    padding-right: var(--space-6);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right var(--space-2) center;
+    background-size: 12px;
+}
+
+.file-group-select:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.file-group-select option {
+    background-color: #1e1e1e;
+    color: var(--text-primary);
+    padding: 8px;
+}
+
+/* Fix for Firefox/etc to ensure background is dark */
+@media (prefers-color-scheme: dark) {
+    .file-group-select option {
+        background-color: #1e1e1e;
+        color: #ffffff;
+    }
+}
+
+.file-group-header:hover {
+    background: var(--surface-glass-active);
+}
+
+.file-group-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.file-group-icon {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    transition: transform var(--duration-fast);
+}
+
+.file-group-icon svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+}
+
+/* Group Type Colors */
+.file-group-icon.type-audio { background: rgba(138, 43, 226, 0.15); color: #a855f7; }
+.file-group-icon.type-video { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.file-group-icon.type-document { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+.file-group-icon.type-image { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+.file-group-icon.type-other { background: rgba(156, 163, 175, 0.15); color: #9ca3af; }
+
+.file-group-title {
+    font-size: var(--text-sm);
+    font-weight: 600;
+}
+
+.file-group-count {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    background: var(--surface-glass);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
+}
+
+.file-group-toggle {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: transform var(--duration-base);
+}
+
+.file-group-toggle svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+}
+
+.file-group.collapsed .file-group-toggle {
+    transform: rotate(-90deg);
+}
+
+.file-group-body {
+    padding: var(--space-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    max-height: 500px;
+    overflow-y: auto;
+    transition: max-height 0.3s var(--ease-out), padding 0.3s var(--ease-out);
+}
+
+.file-group.collapsed .file-group-body {
+    max-height: 0;
+    padding: 0 var(--space-2);
+    overflow: hidden;
+}
+
+/* File Items */
+.file-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.file-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface-glass);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    transition: all var(--duration-fast);
+    animation: file-enter 0.3s var(--ease-out) backwards;
+}
+
+.file-item:hover {
+    background: var(--surface-glass-hover);
+    border-color: var(--border-default);
+    transform: translateX(4px);
+}
+
+.file-item.removing {
+    animation: file-exit 0.25s var(--ease-out) forwards;
+}
+
+.file-item-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex: 1;
+    min-width: 0;
+}
+
+.file-item-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-glass-active);
+    border-radius: var(--radius-sm);
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+}
+
+.file-item-icon svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+}
+
+.file-item-name {
+    font-size: var(--text-sm);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-item-size {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    flex-shrink: 0;
+    margin-left: var(--space-2);
+}
+
+.file-item-status {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.file-item-status svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+}
+
+.file-item-status.pending { color: var(--text-muted); }
+.file-item-status.processing { color: var(--text-secondary); animation: spin 1s linear infinite; }
+.file-item-status.done { color: var(--color-success); }
+.file-item-status.error { color: var(--color-error); }
+
+.file-item-remove {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: all var(--duration-fast);
+    flex-shrink: 0;
+    opacity: 0;
+}
+
+.file-item:hover .file-item-remove {
+    opacity: 1;
+}
+
+.file-item-remove:hover {
+    color: var(--color-error);
+    background: var(--surface-glass-hover);
+}
+
+.file-item-remove svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+}
+
+/* Animations */
+@keyframes group-enter {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes group-exit {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(0.95); }
+}
+
+@keyframes file-enter {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes file-exit {
+    from { opacity: 1; transform: translateX(0) scale(1); }
+    to { opacity: 0; transform: translateX(20px) scale(0.9); }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Drag Over Effect */
+.drop-area.dragging {
+    background: var(--surface-glass-hover);
+}
+
+.drop-area.dragging::after {
+    border-color: var(--text-secondary);
+    border-style: solid;
+    animation: drag-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes drag-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Staggered Animation Delays */
+.file-item:nth-child(1) { animation-delay: 0ms; }
+.file-item:nth-child(2) { animation-delay: 50ms; }
+.file-item:nth-child(3) { animation-delay: 100ms; }
+.file-item:nth-child(4) { animation-delay: 150ms; }
+.file-item:nth-child(5) { animation-delay: 200ms; }
+.file-item:nth-child(6) { animation-delay: 250ms; }
+.file-item:nth-child(7) { animation-delay: 300ms; }
+.file-item:nth-child(8) { animation-delay: 350ms; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // ===========================================
+    // CONSTANTS & CONFIGURATION
+    // ===========================================
+    const FILE_TYPE_CONFIG = {
+        audio: {
+            label: 'Audio',
+            extensions: ['mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a', 'wma'],
+            icon: `<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+            class: 'type-audio'
+        },
+        video: {
+            label: 'Video',
+            extensions: ['mp4', 'webm', 'avi', 'mkv', 'mov', 'wmv', 'flv'],
+            icon: `<svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><polygon points="10 8 16 12 10 16"/></svg>`,
+            class: 'type-video'
+        },
+        document: {
+            label: 'Documents',
+            extensions: ['pdf', 'docx', 'doc', 'txt', 'rtf', 'odt', 'xls', 'xlsx'],
+            icon: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+            class: 'type-document'
+        },
+        image: {
+            label: 'Images',
+            extensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'tiff'],
+            icon: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
+            class: 'type-image'
+        },
+        other: {
+            label: 'Other',
+            extensions: [],
+            icon: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`,
+            class: 'type-other'
+        }
+    };
+
+    const MAX_FILES = 20;
+
+    // ===========================================
+    // STATE
+    // ===========================================
+    const batchState = {
+        files: [],
+        groupFormats: {}, // Stores selected format for each group type
+        converting: false,
+        results: [],
+        collapsedGroups: new Set(),
+        capabilities: null
+    };
+    
+    // ===========================================
+    // DOM ELEMENTS
+    // ===========================================
+    const els = {
+        zone: document.getElementById('batchUploadZone'),
+        input: document.getElementById('batchFileInput'),
+        queue: document.getElementById('batchQueue'),
+        fileGroups: document.getElementById('fileGroups'),
+        queueCount: document.getElementById('queueCount'),
+        clearAllBtn: document.getElementById('clearAllBtn'),
+        actions: document.getElementById('batchActions'),
+        startBtn: document.getElementById('startBatchBtn'),
+        progress: document.getElementById('batchProgress'),
+        progressBar: document.getElementById('batchProgressBar'),
+        progressCount: document.getElementById('batchProgressCount'),
+        progressList: document.getElementById('progressList'),
+        complete: document.getElementById('batchComplete'),
+        completeText: document.getElementById('batchCompleteText'),
+        downloadAllBtn: document.getElementById('downloadAllBtn'),
+        batchAnother: document.getElementById('batchAnother')
+    };
+
+    // ===========================================
+    // INIT
+    // ===========================================
+    async function init() {
+        try {
+            const res = await fetch('/api/capabilities');
+            const data = await res.json();
+            if (data.success) {
+                batchState.capabilities = data.data;
+            }
+        } catch (e) {
+            console.error('Failed to load capabilities', e);
+        }
+    }
+    
+    init();
+    
+    // ===========================================
+    // UTILITY FUNCTIONS
+    // ===========================================
+    
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+    
+    function getFileExtension(filename) {
+        return filename.split('.').pop().toLowerCase();
+    }
+    
+    function getFileType(filename) {
+        const ext = getFileExtension(filename);
+        for (const [type, config] of Object.entries(FILE_TYPE_CONFIG)) {
+            if (config.extensions.includes(ext)) return type;
+        }
+        return 'other';
+    }
+    
+    function getFileTypeIcon(type) {
+        return FILE_TYPE_CONFIG[type]?.icon || FILE_TYPE_CONFIG.other.icon;
+    }
+
+    function groupFilesByType(files) {
+        const groups = {};
+        files.forEach((file, index) => {
+            const type = getFileType(file.name);
+            if (!groups[type]) groups[type] = [];
+            groups[type].push({ file, originalIndex: index });
+        });
+        return groups;
+    }
+    
+    // ===========================================
+    // RENDER FUNCTIONS
+    // ===========================================
+    
+    function renderQueue() {
+        const groups = groupFilesByType(batchState.files);
+        const groupOrder = ['document', 'image', 'audio', 'video', 'other'];
+        
+        let html = '';
+        let hasConvertibleFiles = false;
+
+        for (const type of groupOrder) {
+            if (!groups[type] || groups[type].length === 0) continue;
+            
+            const config = FILE_TYPE_CONFIG[type];
+            const isCollapsed = batchState.collapsedGroups.has(type);
+            const capabilities = batchState.capabilities?.[type];
+            const outputFormats = capabilities?.output || [];
+            
+            // Only show selector if we have output formats
+            let selectorHtml = '';
+            if (outputFormats.length > 0) {
+                hasConvertibleFiles = true;
+                const currentFormat = batchState.groupFormats[type] || outputFormats[0];
+                // Update state if not set
+                if (!batchState.groupFormats[type]) {
+                    batchState.groupFormats[type] = currentFormat;
+                }
+
+                selectorHtml = `
+                    <select class="file-group-select" onclick="event.stopPropagation()" onchange="updateGroupFormat('${type}', this.value)">
+                        ${outputFormats.map(fmt => 
+                            `<option value="${fmt}" ${fmt === currentFormat ? 'selected' : ''}>Convert to ${fmt.toUpperCase()}</option>`
+                        ).join('')}
+                    </select>
+                `;
+            } else {
+                 selectorHtml = `<span class="text-xs text-muted" style="margin-left: auto; margin-right: var(--space-3);">No conversion available</span>`;
+            }
+            
+            html += `
+                <div class="file-group ${isCollapsed ? 'collapsed' : ''}" data-type="${type}">
+                    <div class="file-group-header" onclick="toggleGroup('${type}')">
+                        <div class="file-group-info">
+                            <div class="file-group-icon ${config.class}">${config.icon}</div>
+                            <span class="file-group-title">${config.label}</span>
+                            <span class="file-group-count">${groups[type].length}</span>
+                        </div>
+                        ${selectorHtml}
+                        <div class="file-group-toggle">
+                            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                    </div>
+                    <div class="file-group-body">
+                        ${groups[type].map(({ file, originalIndex }, i) => `
+                            <div class="file-item" data-index="${originalIndex}" style="animation-delay: ${i * 50}ms">
+                                <div class="file-item-info">
+                                    <div class="file-item-icon">${getFileTypeIcon(type)}</div>
+                                    <span class="file-item-name">${file.name}</span>
+                                    <span class="file-item-size">${formatBytes(file.size)}</span>
+                                </div>
+                                <div class="file-item-status" id="status-${originalIndex}"></div>
+                                <button class="file-item-remove" onclick="removeFile(${originalIndex}, event)" title="Remove file">
+                                    <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        els.fileGroups.innerHTML = html;
+        els.queueCount.textContent = `${batchState.files.length} file${batchState.files.length !== 1 ? 's' : ''}`;
+        els.queue.classList.toggle('hidden', batchState.files.length === 0);
+        els.zone.classList.toggle('hidden', batchState.files.length > 0);
+        
+        // Show actions if we have files and they can be converted
+        if (batchState.files.length > 0 && hasConvertibleFiles) {
+            els.actions.classList.remove('hidden');
+        } else {
+            els.actions.classList.add('hidden');
+        }
+    }
+    
+    window.toggleGroup = function(type) {
+        const group = document.querySelector(`.file-group[data-type="${type}"]`);
+        if (batchState.collapsedGroups.has(type)) {
+            batchState.collapsedGroups.delete(type);
+            group?.classList.remove('collapsed');
+        } else {
+            batchState.collapsedGroups.add(type);
+            group?.classList.add('collapsed');
+        }
+    };
+
+    window.updateGroupFormat = function(type, format) {
+        batchState.groupFormats[type] = format;
+    };
+    
+    window.removeFile = function(index, event) {
+        event?.stopPropagation();
+        const fileItem = document.querySelector(`.file-item[data-index="${index}"]`);
+        if (fileItem) {
+            fileItem.classList.add('removing');
+            setTimeout(() => {
+                batchState.files.splice(index, 1);
+                renderQueue();
+            }, 250);
+        } else {
+            batchState.files.splice(index, 1);
+            renderQueue();
+        }
+    };
+    
+    function clearAllFiles() {
+        const groups = document.querySelectorAll('.file-group');
+        groups.forEach((group, i) => {
+            setTimeout(() => group.classList.add('removing'), i * 100);
+        });
+        
+        setTimeout(() => {
+            batchState.files = [];
+            batchState.collapsedGroups.clear();
+            renderQueue();
+        }, groups.length * 100 + 300);
+    }
+    
+    // ===========================================
+    // PROCESS
+    // ===========================================
+
+    async function processFile(file, index) {
+        const type = getFileType(file.name);
+        const format = batchState.groupFormats[type];
+        const statusEl = document.getElementById(`status-${index}`);
+        
+        if (!format) {
+            updateStatus(index, 'error');
+            return false;
+        }
+
+        try {
+            updateStatus(index, 'processing');
+            
+            // 1. Upload
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+            const uploadData = await uploadRes.json();
+            
+            if (!uploadData.success) throw new Error(uploadData.error.message);
+            
+            const fileId = uploadData.data.file_id;
+            
+            // 2. Convert
+            const convertRes = await fetch('/api/convert', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    file_id: fileId,
+                    output_format: format
+                })
+            });
+            
+            const convertData = await convertRes.json();
+            if (!convertData.success) throw new Error(convertData.error.message);
+            
+            const jobId = convertData.data.job_id;
+            
+            // 3. Poll Status
+            await new Promise((resolve, reject) => {
+                const poll = setInterval(async () => {
+                    try {
+                        const statusRes = await fetch(`/api/status/${jobId}`);
+                        const statusData = await statusRes.json();
+                        
+                        if (!statusData.success) {
+                            clearInterval(poll);
+                            reject(new Error(statusData.error.message));
+                            return;
+                        }
+                        
+                        const status = statusData.data.status;
+                        if (status === 'completed') {
+                            clearInterval(poll);
+                            batchState.results.push(jobId);
+                            resolve();
+                        } else if (status === 'failed') {
+                            clearInterval(poll);
+                            reject(new Error(statusData.data.error));
+                        }
+                    } catch (e) {
+                        clearInterval(poll);
+                        reject(e);
+                    }
+                }, 1000);
+            });
+            
+            updateStatus(index, 'done');
+            return true;
+
+        } catch (error) {
+            console.error(error);
+            updateStatus(index, 'error');
+            return false;
+        }
+    }
+    
+    function updateStatus(index, status) {
+        const el = document.getElementById(`status-${index}`);
+        if (!el) return;
+        
+        el.className = `file-item-status ${status}`;
+        
+        let icon = '';
+        if (status === 'processing') icon = `<svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>`;
+        else if (status === 'done') icon = `<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>`;
+        else if (status === 'error') icon = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+        
+        el.innerHTML = icon;
+    }
+
+    // ===========================================
+    // EVENT HANDLERS
+    // ===========================================
+    
+    function handleFiles(files) {
+        const newFiles = Array.from(files).slice(0, MAX_FILES - batchState.files.length);
+        batchState.files.push(...newFiles);
+        renderQueue();
+    }
+    
+    ['dragenter', 'dragover'].forEach(e => {
+        els.zone.addEventListener(e, ev => { ev.preventDefault(); els.zone.classList.add('dragging'); });
+    });
+    ['dragleave', 'drop'].forEach(e => {
+        els.zone.addEventListener(e, ev => { ev.preventDefault(); els.zone.classList.remove('dragging'); });
+    });
+    els.zone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+    els.input.addEventListener('change', e => handleFiles(e.target.files));
+    els.clearAllBtn.addEventListener('click', clearAllFiles);
+    
+    els.startBtn.addEventListener('click', async () => {
+        if (batchState.converting) return;
+        batchState.converting = true;
+        els.startBtn.disabled = true;
+        els.startBtn.innerHTML = 'Processing...';
+        
+        // Hide remove buttons during processing
+        document.querySelectorAll('.file-item-remove').forEach(b => b.style.display = 'none');
+        document.querySelectorAll('select').forEach(s => s.disabled = true);
+        
+        let completedCount = 0;
+        
+        for (let i = 0; i < batchState.files.length; i++) {
+            const success = await processFile(batchState.files[i], i);
+            if (success) completedCount++;
+            
+            // Update global progress? Or just keep it per-item? 
+            // The user wanted simple UI, per-item status is good enough.
+        }
+        
+        batchState.converting = false;
+        
+        // Show complete screen
+        setTimeout(() => {
+            els.queue.classList.add('hidden');
+            els.actions.classList.add('hidden');
+            els.complete.classList.remove('hidden');
+            els.completeText.textContent = `${completedCount} of ${batchState.files.length} files converted successfully`;
+            
+            if (completedCount === 0) {
+                 els.complete.querySelector('.result-heading').textContent = 'Conversion Failed';
+                 els.complete.querySelector('.result-icon').style.color = 'var(--color-error)';
+            }
+        }, 1000);
+    });
+    
+    els.batchAnother.addEventListener('click', () => {
+        location.reload(); // Easiest way to reset everything cleanly
+    });
+
+    els.downloadAllBtn.addEventListener('click', () => {
+        // Trigger downloads for all completed jobs
+        batchState.results.forEach(jobId => {
+            const link = document.createElement('a');
+            link.href = `/api/download/${jobId}`;
+            link.download = '';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            // Add slight delay between downloads
+             // In a real browser, this might trigger "allow multiple downloads" prompt
+        });
+    });
+});
+
+</script>
+{% endblock %}

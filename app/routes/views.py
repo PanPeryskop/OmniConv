@@ -1,0 +1,56 @@
+from flask import Blueprint, render_template, session, jsonify
+import json
+from datetime import datetime
+
+views_bp = Blueprint('views', __name__)
+
+
+@views_bp.route('/')
+def index():
+    return render_template('index.html')
+
+
+@views_bp.route('/batch')
+def batch():
+    return render_template('batch.html')
+
+
+@views_bp.route('/history')
+def history():
+    return render_template('history.html')
+
+
+@views_bp.route('/about')
+def about():
+    from ..services import (
+        AudioConverter, 
+        VideoConverter, 
+        ImageConverter, 
+        DocumentConverter,
+        OCRService
+    )
+    
+    formats = {
+        'audio': {
+            'input': sorted(AudioConverter.get_supported_input_formats()),
+            'output': sorted(AudioConverter.get_supported_output_formats())
+        },
+        'video': {
+            'input': sorted(VideoConverter.get_supported_input_formats()),
+            'output': sorted(VideoConverter.get_supported_output_formats())
+        },
+        'image': {
+            'input': sorted(ImageConverter.get_supported_input_formats()),
+            'output': sorted(ImageConverter.get_supported_output_formats())
+        },
+        'document': {
+            'input': sorted(DocumentConverter.get_supported_input_formats()),
+            'output': sorted(DocumentConverter.get_supported_output_formats())
+        },
+        'ocr': {
+            'input': sorted(OCRService.get_supported_input_formats()),
+            'output': sorted(OCRService.get_supported_output_formats())
+        }
+    }
+    
+    return render_template('about.html', formats=formats)

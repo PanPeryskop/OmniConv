@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-section">
+    <div class="hero-badge">
+        <span class="hero-badge-indicator"></span>
+        AI-Powered Conversion
+    </div>
+    <h1 class="hero-heading">Convert <span class="hero-heading-accent">Anything</span></h1>
+    <p class="hero-description">Transform audio, video, images, and documents with powerful AI technology. Fast, secure, and completely local.</p>
+</section>
+
+<section class="converter-area">
+    <div class="panel drop-area" id="uploadZone">
+        <div class="drop-content">
+            <div class="drop-icon">
+                <svg viewBox="0 0 80 80" stroke="currentColor">
+                    <path d="M40 15v40M25 30l15-15 15 15" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M15 55v10a8 8 0 008 8h34a8 8 0 008-8V55" stroke-linecap="round"/>
+                </svg>
+            </div>
+            <h2 class="drop-heading">Drop your file here</h2>
+            <p class="drop-subtext">or click to browse files</p>
+            <p class="drop-formats">Audio • Video • Images • PDF — Max 500MB</p>
+            <input type="file" id="fileInput" class="file-picker" />
+        </div>
+        <div class="upload-status" id="uploadProgress">
+            <div class="progress-track large">
+                <div class="progress-bar" id="progressFill"></div>
+            </div>
+            <p class="progress-label" id="progressText">Uploading...</p>
+        </div>
+    </div>
+
+    <div class="panel file-preview hidden" id="fileInfo">
+        <div class="file-info">
+            <div class="file-icon-wrapper" id="fileIcon">
+                <svg viewBox="0 0 24 24">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <path d="M14 2v6h6"/>
+                </svg>
+            </div>
+            <div class="file-details">
+                <p class="file-title" id="fileName">document.pdf</p>
+                <p class="file-category" id="fileType">Document</p>
+            </div>
+        </div>
+        <button class="btn btn-ghost" id="removeFile">
+            <svg viewBox="0 0 24 24">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+        </button>
+    </div>
+
+    <div class="format-picker hidden" id="formatSelection">
+        <h3 class="section-label">Choose Output Format</h3>
+        <div class="format-options" id="formatGrid"></div>
+    </div>
+
+    <div class="panel conversion-status hidden" id="conversionProgress">
+        <div class="status-header">
+            <h3 class="status-title">Converting</h3>
+            <span class="status-percent" id="conversionPercentage">0%</span>
+        </div>
+        <div class="progress-track large">
+            <div class="progress-bar" id="conversionFill"></div>
+        </div>
+        <p class="status-message" id="conversionStatus">Processing your file...</p>
+    </div>
+
+    <div class="panel result-panel hidden" id="downloadSection">
+        <div class="result-icon">
+            <svg viewBox="0 0 88 88" stroke="currentColor">
+                <circle cx="44" cy="44" r="38"/>
+                <path d="M28 44l11 11 21-21" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+        <h3 class="result-heading">Conversion Complete!</h3>
+        <p class="result-filename" id="outputFilename">output.mp4</p>
+        <button class="btn btn-primary" id="downloadBtn">
+            <svg viewBox="0 0 24 24">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download File
+        </button>
+        <button class="btn btn-ghost" id="convertAnother" style="margin-top: var(--space-4);">Convert another file</button>
+    </div>
+
+    <div class="panel error-panel hidden" id="errorMessage">
+        <div class="error-icon">
+            <svg viewBox="0 0 88 88" stroke="currentColor">
+                <circle cx="44" cy="44" r="38"/>
+                <line x1="44" y1="28" x2="44" y2="50" stroke-linecap="round"/>
+                <circle cx="44" cy="60" r="3" fill="currentColor" stroke="none"/>
+            </svg>
+        </div>
+        <h3 class="error-heading">Something went wrong</h3>
+        <p class="error-description" id="errorText">An error occurred during conversion</p>
+        <button class="btn btn-primary" id="tryAgain">Try Again</button>
+    </div>
+</section>
+
+<section class="stats-bar">
+    <div class="stat-item">
+        <div class="stat-value">50+</div>
+        <div class="stat-label">Formats Supported</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-value">100%</div>
+        <div class="stat-label">Local Processing</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-value">AI</div>
+        <div class="stat-label">Powered OCR</div>
+    </div>
+</section>
+
+<section class="feature-grid">
+    <div class="panel feature-item">
+        <div class="feature-icon-box type-audio">
+            <svg viewBox="0 0 24 24">
+                <path d="M9 18V5l12-2v13"/>
+                <circle cx="6" cy="18" r="3"/>
+                <circle cx="18" cy="16" r="3"/>
+            </svg>
+        </div>
+        <h3 class="feature-title">Audio</h3>
+        <p class="feature-description">MP3, WAV, FLAC, OGG, M4A, AAC and 10+ more formats</p>
+    </div>
+    <div class="panel feature-item">
+        <div class="feature-icon-box type-video">
+            <svg viewBox="0 0 24 24">
+                <polygon points="23 7 16 12 23 17"/>
+                <rect x="1" y="5" width="15" height="14" rx="2"/>
+            </svg>
+        </div>
+        <h3 class="feature-title">Video</h3>
+        <p class="feature-description">MP4, WebM, AVI, MKV, GIF extraction and more</p>
+    </div>
+    <div class="panel feature-item">
+        <div class="feature-icon-box type-image">
+            <svg viewBox="0 0 24 24">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+            </svg>
+        </div>
+        <h3 class="feature-title">Images</h3>
+        <p class="feature-description">PNG, JPG, WebP, HEIC, ICO, SVG and more</p>
+    </div>
+    <div class="panel feature-item">
+        <div class="feature-icon-box type-document">
+            <svg viewBox="0 0 24 24">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                <path d="M14 2v6h6"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+        </div>
+        <h3 class="feature-title">Documents</h3>
+        <p class="feature-description">PDF to DOCX, AI-powered OCR extraction</p>
+    </div>
+</section>
+{% endblock %}

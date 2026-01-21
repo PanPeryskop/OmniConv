@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}History - OmniConv{% endblock %}
+
+{% block content %}
+<section class="hero-section" style="padding-bottom: var(--space-8);">
+    <h1 class="hero-heading">Conversion <span class="hero-heading-accent">History</span></h1>
+    <p class="hero-description">Your recent file conversions. History is stored locally in your browser.</p>
+</section>
+
+<section class="converter-area" style="max-width: 720px;">
+    <div class="history-controls">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-6);">
+            <span id="historyCount" style="font-size: var(--text-sm); color: var(--text-tertiary);">0 conversions</span>
+            <button class="btn btn-ghost" id="clearHistoryBtn" style="font-size: var(--text-sm);">
+                <svg viewBox="0 0 24 24" style="width: 16px; height: 16px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                Clear All
+            </button>
+        </div>
+    </div>
+    
+    <div class="history-list" id="historyList"></div>
+    
+    <div class="panel empty-state hidden" id="emptyState" style="padding: var(--space-12); text-align: center;">
+        <div style="width: 64px; height: 64px; margin: 0 auto var(--space-4); color: var(--text-muted);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+            </svg>
+        </div>
+        <h3 style="font-size: var(--text-lg); margin-bottom: var(--space-2);">No conversions yet</h3>
+        <p style="color: var(--text-tertiary); margin-bottom: var(--space-6);">Your conversion history will appear here</p>
+        <a href="/" class="btn btn-primary">Start Converting</a>
+    </div>
+</section>
+
+<style>
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+.history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4) var(--space-5);
+    background: var(--surface-glass);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    transition: all var(--duration-fast);
+}
+.history-item:hover {
+    border-color: var(--border-default);
+}
+.history-item-main {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex: 1;
+    min-width: 0;
+}
+.history-item-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-glass-active);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+.history-item-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.history-item-details {
+    flex: 1;
+    min-width: 0;
+}
+.history-item-name {
+    font-size: var(--text-base);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: var(--space-1);
+}
+.history-item-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+.history-item-conversion {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    background: var(--surface-glass-active);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.history-item-conversion svg { width: 10px; height: 10px; stroke: currentColor; fill: none; }
+.history-item-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+}
+.history-action-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: all var(--duration-fast);
+}
+.history-action-btn:hover {
+    border-color: var(--border-default);
+    color: var(--text-primary);
+}
+.history-action-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const historyList = document.getElementById('historyList');
+    const historyCount = document.getElementById('historyCount');
+    const emptyState = document.getElementById('emptyState');
+    const clearBtn = document.getElementById('clearHistoryBtn');
+    
+    function getHistory() {
+        try {
+            return JSON.parse(localStorage.getItem('omniconv_history') || '[]');
+        } catch {
+            return [];
+        }
+    }
+    
+    function saveHistory(history) {
+        localStorage.setItem('omniconv_history', JSON.stringify(history));
+    }
+    
+    function formatDate(timestamp) {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diff = now - date;
+        
+        if (diff < 60000) return 'Just now';
+        if (diff < 3600000) return Math.floor(diff / 60000) + ' min ago';
+        if (diff < 86400000) return Math.floor(diff / 3600000) + ' hours ago';
+        if (diff < 604800000) return Math.floor(diff / 86400000) + ' days ago';
+        
+        return date.toLocaleDateString();
+    }
+    
+    function getTypeIcon(type) {
+        const icons = {
+            audio: `<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+            video: `<svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`,
+            image: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+            document: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`,
+            ocr: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`
+        };
+        return icons[type] || icons.document;
+    }
+    
+    function renderHistory() {
+        const history = getHistory();
+        
+        if (history.length === 0) {
+            historyList.innerHTML = '';
+            emptyState.classList.remove('hidden');
+            historyCount.textContent = '0 conversions';
+            return;
+        }
+        
+        emptyState.classList.add('hidden');
+        historyCount.textContent = `${history.length} conversion${history.length !== 1 ? 's' : ''}`;
+        
+        historyList.innerHTML = history.map((item, index) => `
+            <div class="history-item">
+                <div class="history-item-main">
+                    <div class="history-item-icon">${getTypeIcon(item.type)}</div>
+                    <div class="history-item-details">
+                        <div class="history-item-name">${item.inputName}</div>
+                        <div class="history-item-meta">
+                            <span class="history-item-conversion">
+                                ${item.inputFormat}
+                                <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                                ${item.outputFormat}
+                            </span>
+                            <span>${formatDate(item.timestamp)}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="history-item-actions">
+                    <button class="history-action-btn" onclick="deleteHistoryItem(${index})" title="Delete">
+                        <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    window.deleteHistoryItem = function(index) {
+        const history = getHistory();
+        history.splice(index, 1);
+        saveHistory(history);
+        renderHistory();
+    };
+    
+    clearBtn.addEventListener('click', () => {
+        if (confirm('Clear all conversion history?')) {
+            saveHistory([]);
+            renderHistory();
+        }
+    });
+    
+    renderHistory();
+});
+</script>
+{% endblock %}
