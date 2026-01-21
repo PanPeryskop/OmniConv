@@ -178,7 +178,16 @@ function getFileTypeIcon(type) {
 
 function showFormatSelection(formats) {
     ui.formatGrid.innerHTML = '';
-    formats.forEach(format => {
+    
+    const inputExtension = appState.fileName 
+        ? appState.fileName.split('.').pop().toLowerCase() 
+        : null;
+    
+    const filteredFormats = formats.filter(format => 
+        format.toLowerCase() !== inputExtension
+    );
+    
+    filteredFormats.forEach(format => {
         const btn = document.createElement('button');
         btn.className = 'format-option';
         btn.textContent = format.toUpperCase();

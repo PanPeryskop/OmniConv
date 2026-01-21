@@ -21,7 +21,10 @@ from ..services import (
     VideoConverter,
     ImageConverter, 
     DocumentConverter,
-    OCRService
+    OCRService,
+    VideoCompressor,
+    AudioCompressor,
+    ImageCompressor
 )
 
 api_bp = Blueprint('api', __name__)
@@ -249,6 +252,85 @@ def ocr_file():
         return api_response(data={'text': text, 'file_id': file_id})
     except Exception as e:
         return api_response(error={'type': 'OCRError', 'message': str(e)}, success=False), 500
+
+
+@api_bp.route('/compress', methods=['POST'])
+def start_compression():
+    data = request.get_json()
+    
+    if not data:
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'JSON body required'}, success=False), 400
+    
+    file_id = data.get('file_id')
+    target_size_mb = data.get('target_size_mb', 10)
+    
+    if not file_id:
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'file_id required'}, success=False), 400
+    
+    if file_id not in conversion_jobs:
+        return api_response(error={'type': 'NotFoundError', 'message': 'File not found'}, success=False), 404
+    
+    job = conversion_jobs[file_id]
+    file_type = job['file_type']
+    
+    if file_type not in ['video', 'audio', 'image']:
+        return api_response(error={'type': 'UnsupportedError', 'message': 'Only video, audio, and image files can be compressed'}, success=False), 400
+    
+    output_folder = current_app.config['OUTPUT_FOLDER']
+    original_ext = os.path.splitext(job['original_filename'])[1]
+    
+    if file_type == 'image':
+        output_ext = '.jpg'
+    else:
+        output_ext = original_ext
+    
+    base_name = os.path.splitext(job['original_filename'])[0]
+    output_filename = f"{base_name}_compressed{output_ext}"
+    output_path = os.path.join(output_folder, output_filename)
+    
+    job_id = generate_file_id()
+    
+    job['status'] = 'compressing'
+    job['job_id'] = job_id
+    job['output_path'] = output_path
+    job['progress'] = 0
+    job['target_size_mb'] = target_size_mb
+    
+    conversion_jobs[job_id] = job
+    
+    def progress_callback(progress):
+        job['progress'] = progress
+    
+    thread = threading.Thread(target=run_compression, args=(job, target_size_mb, progress_callback))
+    thread.start()
+    
+    return api_response(data={'job_id': job_id, 'status': 'compressing'})
+
+
+def run_compression(job, target_size_mb, progress_callback):
+    try:
+        file_type = job['file_type']
+        input_path = job['input_path']
+        output_path = job['output_path']
+        
+        if file_type == 'video':
+            compressor = VideoCompressor(progress_callback)
+        elif file_type == 'audio':
+            compressor = AudioCompressor(progress_callback)
+        elif file_type == 'image':
+            compressor = ImageCompressor(progress_callback)
+        else:
+            raise Exception(f"Unsupported file type: {file_type}")
+        
+        result_path = compressor.compress(input_path, output_path, target_size_mb)
+        
+        job['status'] = 'completed'
+        job['progress'] = 100
+        job['output_path'] = result_path
+        
+    except Exception as e:
+        job['status'] = 'failed'
+        job['error'] = str(e)
 
 
 @api_bp.errorhandler(RequestEntityTooLarge)

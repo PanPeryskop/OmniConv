@@ -22,8 +22,8 @@ class Config:
                    'webp', 'ico', 'heic', 'heif'}
     IMAGE_OUTPUT = {'png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff', 'ico', 'pdf'}
     
-    DOCUMENT_INPUT = {'pdf'}
-    DOCUMENT_OUTPUT = {'docx', 'txt'}  # pdf_ocr disabled - OCR not working
+    DOCUMENT_INPUT = {'pdf', 'md'}
+    DOCUMENT_OUTPUT = {'docx', 'txt', 'pdf'}  # pdf_ocr disabled - OCR not working
     
     OCR_ENABLED = False  # OCR disabled - not working
     OCR_DEFAULT_LANG = 'en'

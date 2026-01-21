@@ -1,0 +1,674 @@
+{% extends "base.html" %}
+
+{% block title %}Compress - OmniConv{% endblock %}
+
+{% block content %}
+<section class="hero-section" style="padding-bottom: var(--space-8);">
+    <div class="hero-badge">
+        <span class="hero-badge-indicator"></span>
+        Smart Compression
+    </div>
+    <h1 class="hero-heading">Compress <span class="hero-heading-accent">Files</span></h1>
+    <p class="hero-description">Reduce file size with minimal quality loss. Set your target size and let AI optimize.</p>
+</section>
+
+<section class="converter-area">
+    <div class="panel drop-area" id="uploadZone">
+        <div class="drop-content">
+            <div class="drop-icon">
+                <svg viewBox="0 0 80 80" stroke="currentColor">
+                    <rect x="15" y="20" width="50" height="40" rx="4" stroke-width="1.5" fill="none"/>
+                    <path d="M25 45 L35 35 L45 42 L55 30 L65 40" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="32" cy="32" r="4" stroke-width="1.5" fill="none"/>
+                </svg>
+            </div>
+            <h2 class="drop-heading">Drop your file here</h2>
+            <p class="drop-subtext">or click to browse files</p>
+            <p class="drop-formats">Video • Audio • Images — Max 500MB</p>
+            <input type="file" id="fileInput" class="file-picker" accept="video/*,audio/*,image/*" />
+        </div>
+        <div class="upload-status" id="uploadProgress">
+            <div class="progress-track large">
+                <div class="progress-bar" id="progressFill"></div>
+            </div>
+            <p class="progress-label" id="progressText">Uploading...</p>
+        </div>
+    </div>
+
+    <div class="panel file-preview hidden" id="fileInfo">
+        <div class="file-info">
+            <div class="file-icon-wrapper" id="fileIcon">
+                <svg viewBox="0 0 24 24">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <path d="M14 2v6h6"/>
+                </svg>
+            </div>
+            <div class="file-details">
+                <p class="file-title" id="fileName">file.mp4</p>
+                <p class="file-category" id="fileSize">0 MB</p>
+            </div>
+        </div>
+        <button class="btn btn-ghost" id="removeFile">
+            <svg viewBox="0 0 24 24">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+        </button>
+    </div>
+
+    <div class="compression-settings hidden" id="compressionSettings">
+        <h3 class="section-label">Target File Size</h3>
+        
+        <div class="size-control">
+            <div class="size-display">
+                <span class="size-value" id="targetSizeValue">10</span>
+                <span class="size-unit">MB</span>
+            </div>
+            
+            <div class="slider-container">
+                <div class="slider-track">
+                    <div class="slider-fill" id="sliderFill"></div>
+                    <input type="range" id="sizeSlider" min="1" max="100" value="10" class="slider-input">
+                </div>
+                <div class="slider-labels">
+                    <span>1 MB</span>
+                    <span>100 MB</span>
+                </div>
+            </div>
+            
+            <div class="size-info">
+                <div class="size-stat">
+                    <span class="size-stat-label">Original</span>
+                    <span class="size-stat-value" id="originalSize">0 MB</span>
+                </div>
+                <div class="size-stat">
+                    <span class="size-stat-label">Target</span>
+                    <span class="size-stat-value" id="targetSize">10 MB</span>
+                </div>
+                <div class="size-stat reduction">
+                    <span class="size-stat-label">Reduction</span>
+                    <span class="size-stat-value" id="reductionPercent">0%</span>
+                </div>
+            </div>
+        </div>
+        
+        <button class="btn btn-primary compress-btn" id="compressBtn">
+            <svg viewBox="0 0 24 24">
+                <polyline points="4 14 10 14 10 20"/>
+                <polyline points="20 10 14 10 14 4"/>
+                <line x1="14" y1="10" x2="21" y2="3"/>
+                <line x1="3" y1="21" x2="10" y2="14"/>
+            </svg>
+            Compress File
+        </button>
+    </div>
+
+    <div class="panel conversion-status hidden" id="compressionProgress">
+        <div class="status-header">
+            <h3 class="status-title">Compressing</h3>
+            <span class="status-percent" id="compressionPercentage">0%</span>
+        </div>
+        <div class="progress-track large">
+            <div class="progress-bar" id="compressionFill"></div>
+        </div>
+        <p class="status-message" id="compressionStatus">Analyzing file...</p>
+    </div>
+
+    <div class="panel result-panel hidden" id="downloadSection">
+        <div class="result-icon">
+            <svg viewBox="0 0 88 88" stroke="currentColor">
+                <circle cx="44" cy="44" r="38"/>
+                <path d="M28 44l11 11 21-21" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+        <h3 class="result-heading">Compression Complete!</h3>
+        <div class="result-stats">
+            <div class="result-stat">
+                <span class="result-stat-value" id="finalSize">0 MB</span>
+                <span class="result-stat-label">Final Size</span>
+            </div>
+            <div class="result-stat">
+                <span class="result-stat-value" id="savedPercent">0%</span>
+                <span class="result-stat-label">Saved</span>
+            </div>
+        </div>
+        <button class="btn btn-primary" id="downloadBtn">
+            <svg viewBox="0 0 24 24">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download File
+        </button>
+        <button class="btn btn-ghost" id="compressAnother" style="margin-top: var(--space-4);">Compress another file</button>
+    </div>
+
+    <div class="panel error-panel hidden" id="errorMessage">
+        <div class="error-icon">
+            <svg viewBox="0 0 88 88" stroke="currentColor">
+                <circle cx="44" cy="44" r="38"/>
+                <line x1="44" y1="28" x2="44" y2="50" stroke-linecap="round"/>
+                <circle cx="44" cy="60" r="3" fill="currentColor" stroke="none"/>
+            </svg>
+        </div>
+        <h3 class="error-heading">Something went wrong</h3>
+        <p class="error-description" id="errorText">An error occurred during compression</p>
+        <button class="btn btn-primary" id="tryAgain">Try Again</button>
+    </div>
+</section>
+
+<style>
+.compression-settings {
+    margin-top: var(--space-6);
+    padding: var(--space-8);
+    background: var(--surface-glass);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-2xl);
+    animation: slide-up var(--duration-slow) var(--ease-out);
+}
+
+.size-control {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+}
+
+.size-display {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: var(--space-2);
+}
+
+.size-value {
+    font-size: var(--text-5xl);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    transition: transform var(--duration-fast) var(--ease-bounce);
+}
+
+.size-value.bounce {
+    animation: value-bounce 0.3s var(--ease-bounce);
+}
+
+@keyframes value-bounce {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+.size-unit {
+    font-size: var(--text-xl);
+    font-weight: 500;
+    color: var(--text-tertiary);
+}
+
+.slider-container {
+    padding: 0 var(--space-2);
+}
+
+.slider-track {
+    position: relative;
+    height: 8px;
+    background: var(--surface-glass-active);
+    border-radius: var(--radius-full);
+    overflow: visible;
+}
+
+.slider-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: var(--text-primary);
+    border-radius: var(--radius-full);
+    transition: width var(--duration-fast);
+    pointer-events: none;
+}
+
+.slider-input {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 32px;
+    transform: translateY(-50%);
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+    margin: 0;
+}
+
+.slider-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 24px;
+    height: 24px;
+    background: var(--text-primary);
+    border-radius: 50%;
+    cursor: grab;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    transition: transform var(--duration-fast) var(--ease-bounce), box-shadow var(--duration-fast);
+}
+
+.slider-input::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.slider-input::-webkit-slider-thumb:active {
+    cursor: grabbing;
+    transform: scale(1.1);
+}
+
+.slider-input::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+    background: var(--text-primary);
+    border: none;
+    border-radius: 50%;
+    cursor: grab;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.slider-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+.size-info {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-8);
+    padding: var(--space-4);
+    background: var(--surface-glass);
+    border-radius: var(--radius-lg);
+}
+
+.size-stat {
+    text-align: center;
+}
+
+.size-stat-label {
+    display: block;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: var(--space-1);
+}
+
+.size-stat-value {
+    font-size: var(--text-base);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.size-stat.reduction .size-stat-value {
+    color: var(--color-success);
+}
+
+.compress-btn {
+    width: 100%;
+    padding: var(--space-4) var(--space-6);
+    font-size: var(--text-base);
+    margin-top: var(--space-2);
+}
+
+.result-stats {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-10);
+    margin: var(--space-4) 0 var(--space-6);
+}
+
+.result-stat {
+    text-align: center;
+}
+
+.result-stat-value {
+    display: block;
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    color: var(--color-success);
+}
+
+.result-stat-label {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const state = {
+        fileId: null,
+        jobId: null,
+        fileName: null,
+        fileType: null,
+        originalSizeMB: 0,
+        targetSizeMB: 10,
+        isCompressing: false,
+        pollInterval: null
+    };
+
+    const els = {
+        zone: document.getElementById('uploadZone'),
+        fileInput: document.getElementById('fileInput'),
+        progressFill: document.getElementById('progressFill'),
+        progressText: document.getElementById('progressText'),
+        fileInfo: document.getElementById('fileInfo'),
+        fileName: document.getElementById('fileName'),
+        fileSize: document.getElementById('fileSize'),
+        fileIcon: document.getElementById('fileIcon'),
+        removeFile: document.getElementById('removeFile'),
+        settings: document.getElementById('compressionSettings'),
+        slider: document.getElementById('sizeSlider'),
+        sliderFill: document.getElementById('sliderFill'),
+        targetValue: document.getElementById('targetSizeValue'),
+        originalSize: document.getElementById('originalSize'),
+        targetSize: document.getElementById('targetSize'),
+        reductionPercent: document.getElementById('reductionPercent'),
+        compressBtn: document.getElementById('compressBtn'),
+        progress: document.getElementById('compressionProgress'),
+        compressionFill: document.getElementById('compressionFill'),
+        compressionPercent: document.getElementById('compressionPercentage'),
+        compressionStatus: document.getElementById('compressionStatus'),
+        download: document.getElementById('downloadSection'),
+        finalSize: document.getElementById('finalSize'),
+        savedPercent: document.getElementById('savedPercent'),
+        downloadBtn: document.getElementById('downloadBtn'),
+        compressAnother: document.getElementById('compressAnother'),
+        error: document.getElementById('errorMessage'),
+        errorText: document.getElementById('errorText'),
+        tryAgain: document.getElementById('tryAgain')
+    };
+
+    function initDropZone() {
+        ['dragenter', 'dragover'].forEach(e => {
+            els.zone.addEventListener(e, ev => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                els.zone.classList.add('dragging');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(e => {
+            els.zone.addEventListener(e, ev => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                els.zone.classList.remove('dragging');
+            });
+        });
+
+        els.zone.addEventListener('drop', e => {
+            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+        });
+
+        els.fileInput.addEventListener('change', e => {
+            if (e.target.files.length > 0) handleFile(e.target.files[0]);
+        });
+    }
+
+    async function handleFile(file) {
+        const maxSize = 500 * 1024 * 1024;
+        if (file.size > maxSize) {
+            showError('File is too large. Maximum size is 500MB.');
+            return;
+        }
+
+        state.originalSizeMB = file.size / (1024 * 1024);
+        state.fileName = file.name;
+
+        els.zone.classList.add('uploading');
+        updateUploadProgress(0);
+
+        try {
+            const progressInterval = setInterval(() => {
+                const current = parseFloat(els.progressFill.style.width) || 0;
+                if (current < 90) updateUploadProgress(current + Math.random() * 15);
+            }, 200);
+
+            const formData = new FormData();
+            formData.append('file', file);
+            const res = await fetch('/api/upload', { method: 'POST', body: formData });
+            const data = await res.json();
+
+            clearInterval(progressInterval);
+            updateUploadProgress(100);
+
+            if (!data.success) throw new Error(data.error?.message || 'Upload failed');
+
+            state.fileId = data.data.file_id;
+            state.fileType = data.data.file_type;
+
+            setTimeout(() => {
+                els.zone.classList.remove('uploading');
+                els.zone.classList.add('hidden');
+                showFileInfo(file);
+                showSettings();
+            }, 400);
+
+        } catch (err) {
+            els.zone.classList.remove('uploading');
+            showError(err.message);
+        }
+    }
+
+    function updateUploadProgress(percent) {
+        els.progressFill.style.width = `${Math.min(100, percent)}%`;
+        els.progressText.textContent = `Uploading... ${Math.round(percent)}%`;
+    }
+
+    function showFileInfo(file) {
+        els.fileName.textContent = file.name;
+        els.fileSize.textContent = formatSize(file.size);
+        els.fileIcon.innerHTML = getFileIcon(state.fileType);
+        els.fileInfo.classList.remove('hidden');
+        els.fileInfo.classList.add('animate-slide');
+    }
+
+    function getFileIcon(type) {
+        const icons = {
+            audio: `<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+            video: `<svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`,
+            image: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`
+        };
+        return icons[type] || icons.image;
+    }
+
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(2) + ' MB';
+    }
+
+    function showSettings() {
+        els.settings.classList.remove('hidden');
+        
+        const maxTarget = Math.max(1, Math.floor(state.originalSizeMB * 0.9));
+        const defaultTarget = Math.min(10, maxTarget);
+        
+        els.slider.max = Math.min(100, Math.ceil(state.originalSizeMB));
+        els.slider.value = defaultTarget;
+        state.targetSizeMB = defaultTarget;
+        
+        updateSlider();
+        updateSizeInfo();
+    }
+
+    function updateSlider() {
+        const percent = ((els.slider.value - els.slider.min) / (els.slider.max - els.slider.min)) * 100;
+        els.sliderFill.style.width = `${percent}%`;
+        els.targetValue.textContent = els.slider.value;
+        
+        els.targetValue.classList.add('bounce');
+        setTimeout(() => els.targetValue.classList.remove('bounce'), 300);
+    }
+
+    function updateSizeInfo() {
+        const original = state.originalSizeMB;
+        const target = parseFloat(els.slider.value);
+        state.targetSizeMB = target;
+        
+        els.originalSize.textContent = original.toFixed(2) + ' MB';
+        els.targetSize.textContent = target + ' MB';
+        
+        if (target < original) {
+            const reduction = ((original - target) / original * 100).toFixed(0);
+            els.reductionPercent.textContent = reduction + '%';
+        } else {
+            els.reductionPercent.textContent = '0%';
+        }
+    }
+
+    els.slider.addEventListener('input', () => {
+        updateSlider();
+        updateSizeInfo();
+    });
+
+    els.compressBtn.addEventListener('click', startCompression);
+
+    async function startCompression() {
+        if (state.isCompressing) return;
+        state.isCompressing = true;
+
+        els.settings.classList.add('hidden');
+        els.fileInfo.classList.add('hidden');
+        els.progress.classList.remove('hidden');
+        els.progress.classList.add('animate-scale');
+
+        updateCompressionProgress(0, 'Starting compression...');
+
+        try {
+            const res = await fetch('/api/compress', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    file_id: state.fileId,
+                    target_size_mb: state.targetSizeMB
+                })
+            });
+
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error?.message || 'Compression failed');
+
+            state.jobId = data.data.job_id;
+            pollStatus();
+
+        } catch (err) {
+            state.isCompressing = false;
+            showError(err.message);
+        }
+    }
+
+    function pollStatus() {
+        state.pollInterval = setInterval(async () => {
+            try {
+                const res = await fetch(`/api/status/${state.jobId}`);
+                const data = await res.json();
+
+                if (!data.success) throw new Error(data.error?.message || 'Status check failed');
+
+                const { status, progress, filename, error } = data.data;
+                updateCompressionProgress(progress, getStatusMessage(progress));
+
+                if (status === 'completed') {
+                    clearInterval(state.pollInterval);
+                    state.isCompressing = false;
+                    showDownload(filename);
+                } else if (status === 'failed') {
+                    clearInterval(state.pollInterval);
+                    state.isCompressing = false;
+                    showError(error || 'Compression failed');
+                }
+            } catch (err) {
+                clearInterval(state.pollInterval);
+                state.isCompressing = false;
+                showError(err.message);
+            }
+        }, 1000);
+    }
+
+    function updateCompressionProgress(percent, message) {
+        els.compressionPercent.textContent = Math.round(percent) + '%';
+        els.compressionFill.style.width = percent + '%';
+        els.compressionStatus.textContent = message;
+    }
+
+    function getStatusMessage(progress) {
+        if (progress < 15) return 'Analyzing file...';
+        if (progress < 40) return 'Optimizing quality...';
+        if (progress < 70) return 'Compressing...';
+        if (progress < 90) return 'Finalizing...';
+        if (progress < 100) return 'Almost done...';
+        return 'Complete!';
+    }
+
+    function showDownload(filename) {
+        els.progress.classList.add('hidden');
+        els.download.classList.remove('hidden');
+        els.download.classList.add('animate-scale');
+
+        const savedPercent = Math.max(0, ((state.originalSizeMB - state.targetSizeMB) / state.originalSizeMB * 100)).toFixed(0);
+        els.finalSize.textContent = state.targetSizeMB + ' MB';
+        els.savedPercent.textContent = savedPercent + '%';
+
+        els.downloadBtn.onclick = () => {
+            window.location.href = `/api/download/${state.jobId}`;
+        };
+    }
+
+    function showError(message) {
+        els.zone.classList.add('hidden');
+        els.fileInfo.classList.add('hidden');
+        els.settings.classList.add('hidden');
+        els.progress.classList.add('hidden');
+        els.download.classList.add('hidden');
+        els.errorText.textContent = message;
+        els.error.classList.remove('hidden');
+        els.error.classList.add('animate-scale');
+    }
+
+    function reset() {
+        state.fileId = null;
+        state.jobId = null;
+        state.fileName = null;
+        state.fileType = null;
+        state.originalSizeMB = 0;
+        state.targetSizeMB = 10;
+        state.isCompressing = false;
+
+        if (state.pollInterval) {
+            clearInterval(state.pollInterval);
+            state.pollInterval = null;
+        }
+
+        els.zone.classList.remove('hidden', 'uploading');
+        els.fileInfo.classList.add('hidden');
+        els.settings.classList.add('hidden');
+        els.progress.classList.add('hidden');
+        els.download.classList.add('hidden');
+        els.error.classList.add('hidden');
+        els.fileInput.value = '';
+        els.progressFill.style.width = '0%';
+        els.compressionFill.style.width = '0%';
+    }
+
+    els.removeFile.addEventListener('click', reset);
+    els.compressAnother.addEventListener('click', reset);
+    els.tryAgain.addEventListener('click', reset);
+
+    initDropZone();
+});
+</script>
+{% endblock %}

@@ -20,6 +20,11 @@ def history():
     return render_template('history.html')
 
 
+@views_bp.route('/compress')
+def compress():
+    return render_template('compress.html')
+
+
 @views_bp.route('/about')
 def about():
     from ..services import (

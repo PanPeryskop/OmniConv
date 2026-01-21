@@ -82,11 +82,7 @@
 </section>
 
 <style>
-/* ============================================
-   BATCH CONVERSION STYLES
-   ============================================ */
 
-/* Queue Layout */
 .batch-queue, .batch-format, .batch-actions, .batch-progress {
     margin-top: var(--space-6);
 }
@@ -156,7 +152,7 @@
     color: var(--text-primary);
     font-size: var(--text-xs);
     cursor: pointer;
-    appearance: none; /* Remove default arrow */
+    appearance: none;
     padding-right: var(--space-6);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat: no-repeat;
@@ -175,7 +171,6 @@
     padding: 8px;
 }
 
-/* Fix for Firefox/etc to ensure background is dark */
 @media (prefers-color-scheme: dark) {
     .file-group-select option {
         background-color: #1e1e1e;
@@ -211,7 +206,6 @@
     stroke-width: 1.5;
 }
 
-/* Group Type Colors */
 .file-group-icon.type-audio { background: rgba(138, 43, 226, 0.15); color: #a855f7; }
 .file-group-icon.type-video { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
 .file-group-icon.type-document { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
@@ -269,7 +263,6 @@
     overflow: hidden;
 }
 
-/* File Items */
 .file-list {
     display: flex;
     flex-direction: column;
@@ -395,7 +388,6 @@
     stroke-width: 2;
 }
 
-/* Animations */
 @keyframes group-enter {
     from { opacity: 0; transform: translateY(-10px); }
     to { opacity: 1; transform: translateY(0); }
@@ -421,7 +413,6 @@
     to { transform: rotate(360deg); }
 }
 
-/* Drag Over Effect */
 .drop-area.dragging {
     background: var(--surface-glass-hover);
 }
@@ -437,7 +428,6 @@
     50% { opacity: 0.5; }
 }
 
-/* Staggered Animation Delays */
 .file-item:nth-child(1) { animation-delay: 0ms; }
 .file-item:nth-child(2) { animation-delay: 50ms; }
 .file-item:nth-child(3) { animation-delay: 100ms; }
@@ -450,9 +440,6 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    // ===========================================
-    // CONSTANTS & CONFIGURATION
-    // ===========================================
     const FILE_TYPE_CONFIG = {
         audio: {
             label: 'Audio',
@@ -468,7 +455,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         document: {
             label: 'Documents',
-            extensions: ['pdf', 'docx', 'doc', 'txt', 'rtf', 'odt', 'xls', 'xlsx'],
+            extensions: ['pdf', 'docx', 'doc', 'txt', 'rtf', 'odt', 'xls', 'xlsx', 'md'],
             icon: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
             class: 'type-document'
         },
@@ -488,21 +475,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const MAX_FILES = 20;
 
-    // ===========================================
-    // STATE
-    // ===========================================
     const batchState = {
         files: [],
-        groupFormats: {}, // Stores selected format for each group type
+        groupFormats: {},
         converting: false,
         results: [],
         collapsedGroups: new Set(),
         capabilities: null
     };
     
-    // ===========================================
-    // DOM ELEMENTS
-    // ===========================================
     const els = {
         zone: document.getElementById('batchUploadZone'),
         input: document.getElementById('batchFileInput'),
@@ -522,9 +503,6 @@ document.addEventListener('DOMContentLoaded', () => {
         batchAnother: document.getElementById('batchAnother')
     };
 
-    // ===========================================
-    // INIT
-    // ===========================================
     async function init() {
         try {
             const res = await fetch('/api/capabilities');
@@ -538,10 +516,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     init();
-    
-    // ===========================================
-    // UTILITY FUNCTIONS
-    // ===========================================
     
     function formatBytes(bytes) {
         if (bytes < 1024) return bytes + ' B';
@@ -575,10 +549,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return groups;
     }
     
-    // ===========================================
-    // RENDER FUNCTIONS
-    // ===========================================
-    
     function renderQueue() {
         const groups = groupFilesByType(batchState.files);
         const groupOrder = ['document', 'image', 'audio', 'video', 'other'];
@@ -594,12 +564,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const capabilities = batchState.capabilities?.[type];
             const outputFormats = capabilities?.output || [];
             
-            // Only show selector if we have output formats
             let selectorHtml = '';
             if (outputFormats.length > 0) {
                 hasConvertibleFiles = true;
                 const currentFormat = batchState.groupFormats[type] || outputFormats[0];
-                // Update state if not set
                 if (!batchState.groupFormats[type]) {
                     batchState.groupFormats[type] = currentFormat;
                 }
@@ -652,7 +620,6 @@ document.addEventListener('DOMContentLoaded', () => {
         els.queue.classList.toggle('hidden', batchState.files.length === 0);
         els.zone.classList.toggle('hidden', batchState.files.length > 0);
         
-        // Show actions if we have files and they can be converted
         if (batchState.files.length > 0 && hasConvertibleFiles) {
             els.actions.classList.remove('hidden');
         } else {
@@ -703,10 +670,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }, groups.length * 100 + 300);
     }
     
-    // ===========================================
-    // PROCESS
-    // ===========================================
-
     async function processFile(file, index) {
         const type = getFileType(file.name);
         const format = batchState.groupFormats[type];
@@ -716,11 +679,17 @@ document.addEventListener('DOMContentLoaded', () => {
             updateStatus(index, 'error');
             return false;
         }
+        
+        const inputExtension = getFileExtension(file.name);
+        if (inputExtension === format.toLowerCase()) {
+            updateStatus(index, 'error');
+            console.warn(`Skipping ${file.name}: same format conversion not allowed`);
+            return false;
+        }
 
         try {
             updateStatus(index, 'processing');
             
-            // 1. Upload
             const formData = new FormData();
             formData.append('file', file);
             
@@ -731,7 +700,6 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const fileId = uploadData.data.file_id;
             
-            // 2. Convert
             const convertRes = await fetch('/api/convert', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -746,7 +714,6 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const jobId = convertData.data.job_id;
             
-            // 3. Poll Status
             await new Promise((resolve, reject) => {
                 const poll = setInterval(async () => {
                     try {
@@ -798,10 +765,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         el.innerHTML = icon;
     }
-
-    // ===========================================
-    // EVENT HANDLERS
-    // ===========================================
     
     function handleFiles(files) {
         const newFiles = Array.from(files).slice(0, MAX_FILES - batchState.files.length);
@@ -825,7 +788,6 @@ document.addEventListener('DOMContentLoaded', () => {
         els.startBtn.disabled = true;
         els.startBtn.innerHTML = 'Processing...';
         
-        // Hide remove buttons during processing
         document.querySelectorAll('.file-item-remove').forEach(b => b.style.display = 'none');
         document.querySelectorAll('select').forEach(s => s.disabled = true);
         
@@ -835,13 +797,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const success = await processFile(batchState.files[i], i);
             if (success) completedCount++;
             
-            // Update global progress? Or just keep it per-item? 
-            // The user wanted simple UI, per-item status is good enough.
         }
         
         batchState.converting = false;
         
-        // Show complete screen
         setTimeout(() => {
             els.queue.classList.add('hidden');
             els.actions.classList.add('hidden');
@@ -856,11 +815,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     els.batchAnother.addEventListener('click', () => {
-        location.reload(); // Easiest way to reset everything cleanly
+        location.reload(); 
     });
 
     els.downloadAllBtn.addEventListener('click', () => {
-        // Trigger downloads for all completed jobs
         batchState.results.forEach(jobId => {
             const link = document.createElement('a');
             link.href = `/api/download/${jobId}`;
@@ -868,8 +826,6 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            // Add slight delay between downloads
-             // In a real browser, this might trigger "allow multiple downloads" prompt
         });
     });
 });
