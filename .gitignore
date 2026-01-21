@@ -78,3 +78,11 @@ htmlcov/
 *.cache
 .cache/
 Usage Tutorial - PaddleOCR Documentation.htm
+
+# Installer/Build outputs
+installer_output/
+*.spec
+build.bat
+installer.iss
+
+build.bat
