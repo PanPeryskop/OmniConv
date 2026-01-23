@@ -52,9 +52,17 @@ def background_download(job_id, app, url, format_id, is_playlist):
             JOBS[job_id]['filename'] = os.path.basename(file_path)
             
         except Exception as e:
-            print(f"Job {job_id} failed: {str(e)}") # Log error
+            msg = str(e)
+            # Remove ANSI color codes
+            import re
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+            msg = ansi_escape.sub('', msg)
+            # Remove common prefixes
+            msg = msg.replace('ERROR:', '').strip()
+            
+            print(f"Job {job_id} failed: {msg}") 
             JOBS[job_id]['status'] = 'error'
-            JOBS[job_id]['error'] = str(e)
+            JOBS[job_id]['error'] = msg
 
 @youtube_bp.route('/youtube')
 def index():
