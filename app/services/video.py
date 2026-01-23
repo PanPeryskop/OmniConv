@@ -5,6 +5,29 @@ from .converter import BaseConverter
 from ..utils.exceptions import ConversionError, UnsupportedFormatError
 
 
+class ProgressBarLogger:
+    """Custom logger for moviepy to track real progress"""
+    def __init__(self, progress_callback, duration, start_progress=15, end_progress=95):
+        self.progress_callback = progress_callback
+        self.duration = duration
+        self.start_progress = start_progress
+        self.end_progress = end_progress
+        self.progress_range = end_progress - start_progress
+    
+    def __call__(self, **changes):
+        if 't' in changes and self.duration > 0:
+            t = changes['t']
+            progress = int(self.start_progress + (t / self.duration) * self.progress_range)
+            if self.progress_callback:
+                self.progress_callback(min(self.end_progress, progress))
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, *args):
+        pass
+
+
 class VideoConverter(BaseConverter):
     INPUT_FORMATS = {
         'mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm',
@@ -47,24 +70,30 @@ class VideoConverter(BaseConverter):
                 raise UnsupportedFormatError(output_format, list(self.OUTPUT_FORMATS))
             
             video = VideoFileClip(input_path)
-            self.report_progress(20)
+            duration = video.duration
+            self.report_progress(10)
             
             if self.is_cancelled:
                 video.close()
                 return None
             
             video = self._apply_options(video, options)
-            self.report_progress(30)
+            self.report_progress(15)
             
             codec = self.VIDEO_CODECS.get(output_format, 'libx264')
+            preset = options.get('preset', 'fast')
+            
+            # Use custom logger for real progress
+            logger = ProgressBarLogger(self._progress_callback, duration)
             
             video.write_videofile(
                 output_path,
                 codec=codec,
                 audio_codec='aac' if output_format != 'webm' else 'libvorbis',
-                threads=0,  # Use all available CPU cores
-                preset='fast',  # Faster encoding (options: ultrafast, superfast, veryfast, faster, fast, medium)
-                logger=None
+                threads=0,
+                preset=preset,
+                logger=logger,
+                write_logfile=False
             )
             
             video.close()
@@ -80,14 +109,16 @@ class VideoConverter(BaseConverter):
         
         try:
             video = VideoFileClip(input_path)
-            self.report_progress(30)
+            duration = video.duration
+            self.report_progress(10)
             
             if video.audio is None:
                 video.close()
                 raise ConversionError("Video has no audio track")
             
             audio = video.audio
-            audio.write_audiofile(output_path, logger=None)
+            logger = ProgressBarLogger(self._progress_callback, duration, start_progress=10, end_progress=95)
+            audio.write_audiofile(output_path, logger=logger)
             video.close()
             self.report_progress(100)
             
@@ -103,7 +134,7 @@ class VideoConverter(BaseConverter):
         
         try:
             video = VideoFileClip(input_path)
-            self.report_progress(20)
+            self.report_progress(10)
             
             max_duration = options.get('max_duration', 10)
             if video.duration > max_duration:
@@ -113,10 +144,13 @@ class VideoConverter(BaseConverter):
             if video.w > target_width:
                 video = video.resized(width=target_width)
             
-            self.report_progress(40)
+            self.report_progress(20)
             
             fps = options.get('fps', 10)
-            video.write_gif(output_path, fps=fps, logger=None)
+            duration = min(video.duration, max_duration)
+            
+            logger = ProgressBarLogger(self._progress_callback, duration, start_progress=20, end_progress=95)
+            video.write_gif(output_path, fps=fps, logger=logger)
             video.close()
             self.report_progress(100)
             

@@ -58,6 +58,69 @@
         <div class="format-options" id="formatGrid"></div>
     </div>
 
+    <div class="video-options hidden" id="videoOptions">
+        <h3 class="section-label">Encoding Speed</h3>
+        <div class="preset-selector">
+            <select id="presetSelect" class="preset-dropdown">
+                <option value="ultrafast">Ultrafast (largest file)</option>
+                <option value="veryfast">Very Fast</option>
+                <option value="fast" selected>Fast (recommended)</option>
+                <option value="medium">Medium (balanced)</option>
+                <option value="slow">Slow (better quality)</option>
+            </select>
+            <p class="preset-hint">Faster = larger file, Slower = better compression</p>
+            <button class="btn btn-primary" id="startVideoConversion" style="margin-top: var(--space-4);">
+                <svg viewBox="0 0 24 24" style="width: 18px; height: 18px; margin-right: 8px;">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                Convert Video
+            </button>
+        </div>
+    </div>
+
+<style>
+.video-options {
+    margin-top: var(--space-4);
+}
+.preset-selector {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+.preset-dropdown {
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface-glass);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    color: var(--text-primary);
+    font-size: var(--text-base);
+    cursor: pointer;
+    transition: all var(--duration-fast);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right var(--space-4) center;
+}
+.preset-dropdown:hover {
+    border-color: var(--border-default);
+}
+.preset-dropdown:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(var(--accent-primary-rgb), 0.15);
+}
+.preset-dropdown option {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+.preset-hint {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    text-align: center;
+}
+</style>
+
     <div class="panel conversion-status hidden" id="conversionProgress">
         <div class="status-header">
             <h3 class="status-title">Converting</h3>

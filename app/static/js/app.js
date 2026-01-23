@@ -33,7 +33,10 @@ const ui = {
     errorMessage: document.getElementById('errorMessage'),
     errorText: document.getElementById('errorText'),
     tryAgain: document.getElementById('tryAgain'),
-    themeToggle: document.getElementById('themeToggle')
+    themeToggle: document.getElementById('themeToggle'),
+    videoOptions: document.getElementById('videoOptions'),
+    presetSelect: document.getElementById('presetSelect'),
+    startVideoConversion: document.getElementById('startVideoConversion')
 };
 
 function initTheme() {
@@ -204,7 +207,21 @@ async function selectFormat(format, button) {
     button.classList.add('active');
     appState.selectedFormat = format;
     
-    setTimeout(() => startConversion(format), 300);
+    // Show video options for video formats
+    const videoOutputFormats = ['mp4', 'webm', 'avi', 'mkv', 'mov'];
+    if (appState.fileType === 'video' && videoOutputFormats.includes(format.toLowerCase())) {
+        if (ui.videoOptions) {
+            ui.videoOptions.classList.remove('hidden');
+            ui.videoOptions.classList.add('animate-slide');
+        }
+    } else {
+        if (ui.videoOptions) ui.videoOptions.classList.add('hidden');
+        setTimeout(() => startConversion(format), 300);
+    }
+}
+
+function confirmVideoConversion() {
+    startConversion(appState.selectedFormat);
 }
 
 async function startConversion(format) {
@@ -213,13 +230,18 @@ async function startConversion(format) {
     
     ui.formatSelection.classList.add('hidden');
     ui.fileInfo.classList.add('hidden');
+    if (ui.videoOptions) ui.videoOptions.classList.add('hidden');
     ui.conversionProgress.classList.remove('hidden');
     ui.conversionProgress.classList.add('animate-scale');
     
     updateConversionProgress(0, 'Starting conversion...');
     
     try {
-        const result = await api.startConversion(appState.currentFileId, format);
+        const options = {};
+        if (appState.fileType === 'video' && ui.presetSelect) {
+            options.preset = ui.presetSelect.value;
+        }
+        const result = await api.startConversion(appState.currentFileId, format, options);
         if (!result.success) throw new Error(result.error?.message || 'Conversion failed to start');
         appState.currentJobId = result.data.job_id;
         pollConversionStatus();
@@ -335,6 +357,7 @@ function resetApp() {
     ui.formatSelection.classList.add('hidden');
     ui.conversionProgress.classList.add('hidden');
     ui.downloadSection.classList.add('hidden');
+    if (ui.videoOptions) ui.videoOptions.classList.add('hidden');
     ui.errorMessage.classList.add('hidden');
     ui.fileInput.value = '';
     ui.progressFill.style.width = '0%';
@@ -346,6 +369,7 @@ function initEventListeners() {
     if (ui.removeFile) ui.removeFile.addEventListener('click', resetApp);
     if (ui.convertAnother) ui.convertAnother.addEventListener('click', resetApp);
     if (ui.tryAgain) ui.tryAgain.addEventListener('click', resetApp);
+    if (ui.startVideoConversion) ui.startVideoConversion.addEventListener('click', confirmVideoConversion);
 }
 
 function init() {
