@@ -1,8 +1,15 @@
-from flask import Blueprint, render_template, session, jsonify
+from flask import Blueprint, render_template, session, jsonify, send_from_directory, current_app
 import json
+import os
 from datetime import datetime
 
 views_bp = Blueprint('views', __name__)
+
+
+@views_bp.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(current_app.root_path, 'static'),
+                               'ico.ico', mimetype='image/vnd.microsoft.icon')
 
 
 @views_bp.route('/')
@@ -59,3 +66,10 @@ def about():
     }
     
     return render_template('about.html', formats=formats)
+
+
+@views_bp.route('/dashboard')
+def dashboard():
+    from ..services.stats import stats_service
+    stats = stats_service.get_stats()
+    return render_template('dashboard.html', stats=stats)

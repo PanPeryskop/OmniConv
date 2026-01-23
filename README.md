@@ -25,6 +25,7 @@
 |---------|-------------|
 | 🎵 **Audio Conversion** | Convert between MP3, WAV, FLAC, OGG, M4A, AAC, AIFF, WMA and more |
 | 🎬 **Video Conversion** | MP4, AVI, MKV, MOV, WEBM conversions + GIF extraction |
+| 📺 **YouTube Downloader** | Direct browser download, playlist support, quality selection |
 | 🖼️ **Image Conversion** | PNG, JPG, WEBP, GIF, BMP, TIFF, HEIC, ICO support |
 | 📄 **Document Conversion** | PDF to DOCX with layout preservation |
 | 🔍 **OCR (AI-Powered)** | PaddleOCR with 35+ languages — works completely offline |

@@ -527,6 +527,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return filename.split('.').pop().toLowerCase();
     }
     
+    function isArchive(filename) {
+        return ['zip', 'tar', 'gz', 'tgz'].includes(getFileExtension(filename));
+    }
+    
     function getFileType(filename) {
         const ext = getFileExtension(filename);
         for (const [type, config] of Object.entries(FILE_TYPE_CONFIG)) {
@@ -690,15 +694,22 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             updateStatus(index, 'processing');
             
-            const formData = new FormData();
-            formData.append('file', file);
+            let fileId;
             
-            const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
-            const uploadData = await uploadRes.json();
-            
-            if (!uploadData.success) throw new Error(uploadData.error.message);
-            
-            const fileId = uploadData.data.file_id;
+            if (file.isUploaded && file.fileId) {
+                // Already uploaded (extracted from archive)
+                fileId = file.fileId;
+            } else {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+                const uploadData = await uploadRes.json();
+                
+                if (!uploadData.success) throw new Error(uploadData.error.message);
+                
+                fileId = uploadData.data.file_id;
+            }
             
             const convertRes = await fetch('/api/convert', {
                 method: 'POST',
@@ -766,9 +777,64 @@ document.addEventListener('DOMContentLoaded', () => {
         el.innerHTML = icon;
     }
     
-    function handleFiles(files) {
-        const newFiles = Array.from(files).slice(0, MAX_FILES - batchState.files.length);
-        batchState.files.push(...newFiles);
+    async function handleFiles(files) {
+        const newFiles = Array.from(files);
+        
+        for (const file of newFiles) {
+            if (isArchive(file.name)) {
+                // Show extracting status
+                const toast = document.createElement('div');
+                toast.style.cssText = 'position: fixed; bottom: 20px; right: 20px; background: var(--surface-glass-active); padding: 10px 20px; border-radius: 8px; z-index: 1000; border: 1px solid var(--border-default); backdrop-filter: blur(10px);';
+                toast.textContent = `Extracting ${file.name}...`;
+                document.body.appendChild(toast);
+                
+                try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    const res = await fetch('/api/upload-archive', { method: 'POST', body: formData });
+                    const data = await res.json();
+                    
+                    if (data.success) {
+                        // Create mock File objects for the extracted files
+                        // Note: We can't create real File objects without usage of File constructor with content, 
+                        // but we don't have content here, only metadata.
+                        // However, processFile uploads the File object.
+                        // This strategy of "extract on client drop" is problematic if we can't get the file content back to upload again.
+                        // BUT: The backend already has the files in 'uploads/'.
+                        // So we need to store them in batchState with a flag that they are already uploaded.
+                        
+                        // Let's modify batchState to store 'uploaded: true' and 'file_id'.
+                        // And processFile should skip upload if file_id exists.
+                        
+                        data.data.files.forEach(f => {
+                             // Mock file object - we only need property access in renderQueue
+                             const mockFile = { 
+                                 name: f.filename, 
+                                 size: f.size, 
+                                 fileId: f.file_id,
+                                 isUploaded: true 
+                             };
+                             if (batchState.files.length < MAX_FILES) {
+                                 batchState.files.push(mockFile);
+                             }
+                        });
+                        renderQueue();
+                    } else {
+                        console.error(data.error);
+                        alert(`Failed to extract ${file.name}: ${data.error.message}`);
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert(`Failed to extract ${file.name}`);
+                } finally {
+                    document.body.removeChild(toast);
+                }
+            } else {
+                if (batchState.files.length < MAX_FILES) {
+                    batchState.files.push(file);
+                }
+            }
+        }
         renderQueue();
     }
     

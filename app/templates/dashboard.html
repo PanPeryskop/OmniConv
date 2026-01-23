@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-section" style="padding-bottom: var(--space-8);">
+    <h1 class="hero-heading">Conversion <span class="hero-heading-accent">Dashboard</span></h1>
+    <p class="hero-description">Track your usage and savings over time.</p>
+</section>
+
+<section class="stats-bar" style="margin-top: 0; margin-bottom: var(--space-12);">
+    <div class="stat-item">
+        <div class="stat-value">{{ stats.total_conversions }}</div>
+        <div class="stat-label">Total Conversions</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-value">{{ "%.2f"|format(stats.total_size_saved_mb) }} MB</div>
+        <div class="stat-label">Space Saved</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-value">{{ stats.recent_activity|length }}</div>
+        <div class="stat-label">Recent Activities</div>
+    </div>
+</section>
+
+<div style="max-width: 800px; margin: 0 auto; display: grid; gap: var(--space-8);">
+    <div class="panel" style="padding: var(--space-8);">
+        <h3 class="section-label" style="text-align: left;">Recent Activity</h3>
+        
+        {% if stats.recent_activity %}
+            <div style="display: grid; gap: var(--space-4);">
+            {% for activity in stats.recent_activity %}
+                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: var(--space-4); border-bottom: 1px solid var(--border-subtle);">
+                    <div style="display: flex; align-items: center; gap: var(--space-3);">
+                        <div style="width: 8px; height: 8px; background: var(--color-success); border-radius: 50%;"></div>
+                        <span style="font-weight: 500; color: var(--text-primary);">{{ activity.type|capitalize }}</span>
+                        <span style="color: var(--text-tertiary);">{{ activity.details }}</span>
+                    </div>
+                    <span style="font-size: var(--text-xs); color: var(--text-muted);">{{ activity.timestamp.split('T')[0] }}</span>
+                </div>
+            {% endfor %}
+            </div>
+        {% else %}
+            <p style="text-align: center; color: var(--text-muted); padding: var(--space-8);">No recent activity</p>
+        {% endif %}
+    </div>
+
+    <div class="panel" style="padding: var(--space-8);">
+        <h3 class="section-label" style="text-align: left;">Popular Formats</h3>
+        
+        {% if stats.formats %}
+            <div style="display: grid; gap: var(--space-3);">
+            {% for format, count in stats.formats.items()|sort(attribute=1, reverse=True) %}
+                <div style="display: flex; align-items: center; gap: var(--space-4);">
+                    <div style="width: 60px; font-weight: 600; font-size: var(--text-xs); color: var(--text-secondary);">{{ format }}</div>
+                    <div style="flex: 1; height: 8px; background: var(--surface-glass-active); border-radius: var(--radius-full); overflow: hidden;">
+                        {% if stats.total_conversions > 0 %}
+                            {% set percent = (count / stats.total_conversions * 100)|int %}
+                            {% set bar_style = 'height: 100%; width: ' ~ percent ~ '%; background: var(--text-primary);' %}
+                            <div style="{{ bar_style }}"></div>
+                        {% else %}
+                            <div style="height: 100%; width: 0%; background: var(--text-primary);"></div>
+                        {% endif %}
+                    </div>
+                    <div style="width: 30px; text-align: right; font-size: var(--text-xs); color: var(--text-muted);">{{ count }}</div>
+                </div>
+            {% endfor %}
+            </div>
+        {% else %}
+            <p style="text-align: center; color: var(--text-muted); padding: var(--space-8);">No data yet</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -49,14 +49,35 @@ def create_tray_icon():
 if __name__ == '__main__':
     threading.Timer(1.5, open_browser).start()
     
+    socketio = app.socketio
+    
+    # Get local IP
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('10.255.255.255', 1))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except:
+        local_ip = '127.0.0.1'
+        
+    print(f"\n=======================================================")
+    print(f"OmniConv is running!")
+    print(f"Local:   http://127.0.0.1:5000")
+    print(f"Network: http://{local_ip}:5000")
+    print(f"=======================================================\n")
+    
+    # Share local IP with app config for templates
+    app.config['LOCAL_IP'] = local_ip
+    
     if TRAY_AVAILABLE:
         icon = create_tray_icon()
         server_thread = threading.Thread(
-            target=lambda: app.run(host='127.0.0.1', port=5000, debug=False, threaded=True),
+            target=lambda: socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True),
             daemon=True
         )
         server_thread.start()
         icon.run()
     else:
-        app.run(host='127.0.0.1', port=5000, debug=False, threaded=True)
+        socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)
 

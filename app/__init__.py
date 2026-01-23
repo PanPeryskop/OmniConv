@@ -11,6 +11,10 @@ def create_app(config_class=Config):
     
     CORS(app)
     
+    from .routes.websocket import init_socketio
+    socketio = init_socketio(app)
+    app.socketio = socketio
+    
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
     
@@ -20,7 +24,25 @@ def create_app(config_class=Config):
     app.register_blueprint(views_bp)
     app.register_blueprint(api_bp, url_prefix='/api')
     
+    from .routes.swagger import swagger_bp
+    app.register_blueprint(swagger_bp, url_prefix='/api')
+    
+    from .routes.youtube import youtube_bp
+    app.register_blueprint(youtube_bp)
+    
     from .utils.exceptions import register_error_handlers
     register_error_handlers(app)
+    
+    @app.context_processor
+    def inject_network_info():
+        import socket
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(('10.255.255.255', 1))
+            local_ip = s.getsockname()[0]
+            s.close()
+        except:
+            local_ip = '127.0.0.1'
+        return dict(local_ip=local_ip)
     
     return app

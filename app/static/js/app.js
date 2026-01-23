@@ -6,8 +6,36 @@ const appState = {
     outputFormats: [],
     selectedFormat: null,
     isConverting: false,
-    pollInterval: null
+    pollInterval: null,
+    socket: null
 };
+
+// Initialize Socket.IO
+appState.socket = io();
+
+appState.socket.on('connect', () => {
+    console.log('Connected to WebSocket server');
+});
+
+appState.socket.on('conversion_progress', (data) => {
+    if (data.job_id === appState.currentJobId) {
+        updateConversionProgress(data.progress, getStatusMessage(data.progress));
+    }
+});
+
+appState.socket.on('conversion_complete', (data) => {
+    if (data.job_id === appState.currentJobId) {
+        appState.isConverting = false;
+        showDownloadSection(data.filename);
+    }
+});
+
+appState.socket.on('conversion_error', (data) => {
+    if (data.job_id === appState.currentJobId) {
+        appState.isConverting = false;
+        showError(data.error || 'Conversion failed');
+    }
+});
 
 const ui = {
     uploadZone: document.getElementById('uploadZone'),
@@ -61,6 +89,15 @@ const api = {
         return response.json();
     },
     
+    async uploadUrl(url) {
+        const response = await fetch(`${this.baseUrl}/upload-url`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+        return response.json();
+    },
+    
     async getFormats(fileId) {
         const response = await fetch(`${this.baseUrl}/formats/${fileId}`);
         return response.json();
@@ -88,6 +125,8 @@ const api = {
 function initUploadZone() {
     const zone = ui.uploadZone;
     const input = ui.fileInput;
+    
+    if (!zone || !input) return; // Exit if elements don't exist
     
     ['dragenter', 'dragover'].forEach(event => {
         zone.addEventListener(event, (e) => { 
@@ -244,7 +283,7 @@ async function startConversion(format) {
         const result = await api.startConversion(appState.currentFileId, format, options);
         if (!result.success) throw new Error(result.error?.message || 'Conversion failed to start');
         appState.currentJobId = result.data.job_id;
-        pollConversionStatus();
+        // WebSocket events will handle updates
     } catch (error) {
         appState.isConverting = false;
         showError(error.message);
@@ -252,29 +291,8 @@ async function startConversion(format) {
 }
 
 function pollConversionStatus() {
-    appState.pollInterval = setInterval(async () => {
-        try {
-            const result = await api.getStatus(appState.currentJobId);
-            if (!result.success) throw new Error(result.error?.message || 'Failed to get status');
-            
-            const { status, progress, filename, error } = result.data;
-            updateConversionProgress(progress, getStatusMessage(progress));
-            
-            if (status === 'completed') {
-                clearInterval(appState.pollInterval);
-                appState.isConverting = false;
-                showDownloadSection(filename);
-            } else if (status === 'failed') {
-                clearInterval(appState.pollInterval);
-                appState.isConverting = false;
-                showError(error || 'Conversion failed');
-            }
-        } catch (error) {
-            clearInterval(appState.pollInterval);
-            appState.isConverting = false;
-            showError(error.message);
-        }
-    }, 1000);
+    // Deprecated in favor of WebSocket
+    console.log('Polling deprecated');
 }
 
 function updateConversionProgress(percentage, statusText) {
@@ -370,6 +388,31 @@ function initEventListeners() {
     if (ui.convertAnother) ui.convertAnother.addEventListener('click', resetApp);
     if (ui.tryAgain) ui.tryAgain.addEventListener('click', resetApp);
     if (ui.startVideoConversion) ui.startVideoConversion.addEventListener('click', confirmVideoConversion);
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'u') {
+            e.preventDefault();
+            switchTab('upload');
+            ui.fileInput.click();
+        }
+        if (e.ctrlKey && e.key === 'Enter') {
+            if (appState.currentFileId && !appState.isConverting) {
+                // If format selected, convert. If not, maybe just log or hint.
+                if (appState.selectedFormat) startConversion(appState.selectedFormat);
+            }
+        }
+        if (e.key === 'Escape') {
+            if (appState.isConverting) {
+                // Cancel not implemented in backend fully (thread kill is hard), but we can reset UI
+                // Only reset if error or modal
+                if (!ui.errorMessage.classList.contains('hidden')) resetApp();
+                if (!ui.videoOptions.classList.contains('hidden')) ui.videoOptions.classList.add('hidden');
+            } else {
+                if (appState.currentFileId) resetApp();
+            }
+        }
+    });
 }
 
 function init() {
@@ -377,6 +420,60 @@ function init() {
     initUploadZone();
     initEventListeners();
 }
+
+function switchTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        if (btn.getAttribute('onclick').includes(tab)) btn.classList.add('active');
+    });
+
+    if (tab === 'upload') {
+        ui.uploadZone.classList.remove('hidden');
+        document.getElementById('urlZone').classList.add('hidden');
+    } else {
+        ui.uploadZone.classList.add('hidden');
+        document.getElementById('urlZone').classList.remove('hidden');
+    }
+}
+
+async function submitUrl() {
+    const urlInput = document.getElementById('urlInput');
+    const url = urlInput.value.trim();
+    if (!url) return;
+
+    try {
+        ui.uploadZone.classList.remove('hidden'); // Show progress in upload zone context
+        document.getElementById('urlZone').classList.add('hidden');
+        ui.uploadZone.classList.add('uploading');
+        updateProgress(10, 'Downloading from URL...');
+
+        const result = await api.uploadUrl(url);
+
+        updateProgress(100);
+        
+        if (!result.success) throw new Error(result.error?.message || 'Download failed');
+        
+        appState.currentFileId = result.data.file_id;
+        appState.fileType = result.data.file_type;
+        appState.fileName = result.data.filename;
+        appState.outputFormats = result.data.output_formats;
+        
+        setTimeout(() => {
+            showFileInfo(result.data.filename, result.data.file_type);
+            showFormatSelection(result.data.output_formats);
+            ui.uploadZone.classList.remove('uploading');
+            ui.uploadZone.classList.add('hidden');
+        }, 400);
+
+    } catch (error) {
+        ui.uploadZone.classList.remove('uploading');
+        showError(error.message);
+    }
+}
+
+// Make functions global for onclick
+window.switchTab = switchTab;
+window.submitUrl = submitUrl;
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

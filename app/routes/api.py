@@ -26,6 +26,8 @@ from ..services import (
     AudioCompressor,
     ImageCompressor
 )
+from .websocket import emit_progress, emit_complete, emit_error
+from ..services.stats import stats_service as stats
 
 api_bp = Blueprint('api', __name__)
 conversion_jobs = {}
@@ -102,6 +104,119 @@ def upload_file():
         return api_response(error={'type': 'UploadError', 'message': str(e)}, success=False), 500
 
 
+@api_bp.route('/upload-url', methods=['POST'])
+def upload_from_url():
+    data = request.get_json()
+    if not data or 'url' not in data:
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'URL required'}, success=False), 400
+        
+    url = data['url']
+    
+    try:
+        from ..utils.file_handler import download_file_from_url
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        
+        file_id, saved_path, original_filename = download_file_from_url(url, upload_folder)
+        
+        file_type = get_file_type(original_filename)
+        if not file_type:
+            ext = get_file_extension(original_filename)
+            return api_response(error={'type': 'UnsupportedFormatError', 'message': f'Unsupported file format: {ext}'}, success=False), 400
+            
+        output_formats = get_output_formats_for_type(file_type)
+        
+        conversion_jobs[file_id] = {
+            'status': 'uploaded',
+            'input_path': saved_path,
+            'original_filename': original_filename,
+            'file_type': file_type,
+            'output_formats': output_formats,
+            'progress': 0
+        }
+        
+        return api_response(data={
+            'file_id': file_id,
+            'filename': original_filename,
+            'file_type': file_type,
+            'output_formats': output_formats
+        })
+        
+    except Exception as e:
+        return api_response(error={'type': 'DownloadError', 'message': str(e)}, success=False), 500
+
+
+@api_bp.route('/upload-archive', methods=['POST'])
+def upload_archive():
+    if 'file' not in request.files:
+        return api_response(error={'type': 'NoFileError', 'message': 'No file provided'}, success=False), 400
+    
+    file = request.files['file']
+    if not file.filename:
+        return api_response(error={'type': 'NoFileError', 'message': 'No file selected'}, success=False), 400
+        
+    try:
+        from ..services.archive import archive_service
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        archive_service.upload_folder = upload_folder # Ensure correct folder
+        
+        # Save archive first
+        file_id, saved_path, original_filename = save_uploaded_file(file, upload_folder)
+        
+        # Extract
+        extract_dir = os.path.join(upload_folder, f"extracted_{file_id}")
+        os.makedirs(extract_dir, exist_ok=True)
+        
+        extracted_files = archive_service.extract_archive(saved_path, extract_dir)
+        
+        result_files = []
+        for file_path in extracted_files:
+            # Register as uploaded file
+            f_name = os.path.basename(file_path)
+            f_id = generate_file_id()
+            f_ext = get_file_extension(f_name)
+            
+            # Move to main upload folder or keep in extracted? 
+            # Keeping in extracted might be messy for cleanup.
+            # Let's move to upload folder with unique name
+            new_path = os.path.join(upload_folder, f"{f_id}.{f_ext}") if f_ext else os.path.join(upload_folder, f_id)
+            import shutil
+            shutil.move(file_path, new_path)
+            
+            f_type = get_file_type(f_name)
+            if not f_type: continue # Skip unsupported for now or treat as 'other'
+            
+            output_formats = get_output_formats_for_type(f_type)
+            
+            conversion_jobs[f_id] = {
+                'status': 'uploaded',
+                'input_path': new_path,
+                'original_filename': f_name,
+                'file_type': f_type,
+                'output_formats': output_formats,
+                'progress': 0
+            }
+            
+            result_files.append({
+                'file_id': f_id,
+                'filename': f_name,
+                'file_type': f_type,
+                'output_formats': output_formats,
+                'size': os.path.getsize(new_path)
+            })
+            
+        # Cleanup archive and empty dir
+        try:
+            os.remove(saved_path)
+            os.rmdir(extract_dir) # Only if empty, but we moved files
+        except:
+            pass
+            
+        return api_response(data={'files': result_files})
+        
+    except Exception as e:
+        return api_response(error={'type': 'ArchiveError', 'message': str(e)}, success=False), 500
+
+
 def get_output_formats_for_type(file_type: str) -> list:
     if file_type == 'audio':
         return sorted(AudioConverter.get_supported_output_formats())
@@ -160,6 +275,7 @@ def start_conversion():
     
     def progress_callback(progress):
         job['progress'] = progress
+        emit_progress(job_id, progress)
     
     thread = threading.Thread(target=run_conversion, args=(job, output_format, options, progress_callback))
     thread.start()
@@ -190,9 +306,20 @@ def run_conversion(job, output_format, options, progress_callback):
         job['progress'] = 100
         job['output_path'] = result_path
         
+        try:
+            input_size = os.path.getsize(input_path)
+            output_size = os.path.getsize(result_path)
+            input_ext = os.path.splitext(job['original_filename'])[1].lower().replace('.', '')
+            stats.record_conversion(input_ext, output_format, input_size, output_size)
+        except Exception:
+            pass
+        
+        emit_complete(job['job_id'], os.path.basename(result_path))
+        
     except Exception as e:
         job['status'] = 'failed'
         job['error'] = str(e)
+        emit_error(job['job_id'], str(e))
 
 
 @api_bp.route('/status/<job_id>', methods=['GET'])
@@ -361,6 +488,7 @@ def start_compression():
     
     def progress_callback(progress):
         job['progress'] = progress
+        emit_progress(job_id, progress, status='compressing')
     
     thread = threading.Thread(target=run_compression, args=(job, target_size_mb, progress_callback))
     thread.start()
@@ -389,9 +517,20 @@ def run_compression(job, target_size_mb, progress_callback):
         job['progress'] = 100
         job['output_path'] = result_path
         
+        try:
+            input_size = os.path.getsize(input_path)
+            output_size = os.path.getsize(result_path)
+            input_ext = os.path.splitext(job['original_filename'])[1].lower().replace('.', '')
+            stats.record_conversion(input_ext, 'compressed', input_size, output_size)
+        except Exception:
+            pass
+        
+        emit_complete(job['job_id'], os.path.basename(result_path))
+        
     except Exception as e:
         job['status'] = 'failed'
         job['error'] = str(e)
+        emit_error(job['job_id'], str(e))
 
 
 @api_bp.errorhandler(RequestEntityTooLarge)

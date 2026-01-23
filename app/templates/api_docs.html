@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>OmniConv API Documentation</title>
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css" >
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='ico.ico') }}">
+    <style>
+        body { margin: 0; padding: 0; background: #fafafa; }
+        #swagger-ui { max-width: 1200px; margin: 0 auto; }
+        .topbar { background-color: #000; padding: 10px 0; color: white; text-align: center; }
+        .topbar a { color: white; text-decoration: none; font-family: sans-serif; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <a href="/">← Back to OmniConv</a>
+    </div>
+    <div id="swagger-ui"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js"> </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js"> </script>
+    <script>
+    window.onload = function() {
+        const ui = SwaggerUIBundle({
+            url: "/api/swagger.json",
+            dom_id: '#swagger-ui',
+            deepLinking: true,
+            presets: [
+                SwaggerUIBundle.presets.apis,
+                SwaggerUIStandalonePreset
+            ],
+            plugins: [
+                SwaggerUIBundle.plugins.DownloadUrl
+            ],
+            layout: "StandaloneLayout"
+        });
+        window.ui = ui;
+    };
+    </script>
+</body>
+</html>

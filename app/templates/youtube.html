@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-section" style="padding-bottom: var(--space-8);">
+    <h1 class="hero-heading">YouTube <span class="hero-heading-accent">Downloader</span></h1>
+    <p class="hero-description">Download videos and playlists in your preferred quality.</p>
+</section>
+
+<div class="converter-area">
+    <div class="panel">
+        <div class="drop-area" id="inputZone">
+            <div class="drop-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+                </svg>
+            </div>
+            <h3 class="drop-heading">Paste YouTube Link</h3>
+            <input type="text" id="urlInput" placeholder="https://youtube.com/watch?v=..." 
+                   style="width: 100%; padding: var(--space-3); margin: var(--space-4) 0; background: var(--bg-secondary); border: 1px solid var(--border-default); border-radius: var(--radius-md); color: var(--text-primary);">
+            <button class="btn btn-primary" onclick="fetchInfo()" id="fetchBtn">
+                Get Info
+            </button>
+        </div>
+
+        <div id="videoInfo" style="display: none; padding: var(--space-6);">
+            <div class="file-preview">
+                <div class="file-info">
+                    <img id="thumbnail" src="" alt="Thumbnail" style="width: 120px; border-radius: var(--radius-md); object-fit: cover;">
+                    <div class="file-details">
+                        <span class="file-title" id="videoTitle"></span>
+                        <span class="file-category" id="uploader"></span>
+                        <span class="file-category" id="duration"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="playlistInfo" style="display: none; margin-top: var(--space-4); padding: var(--space-4); background: var(--surface-glass-active); border-radius: var(--radius-md);">
+                <span style="font-weight: 600; color: var(--text-secondary);">Playlist Detected</span>
+                <span id="playlistCount" style="margin-left: var(--space-2); color: var(--text-muted);"></span>
+                <div style="margin-top: var(--space-2);">
+                    <label style="display: flex; align-items: center; gap: var(--space-2); cursor: pointer;">
+                        <input type="checkbox" id="playlistCheckbox" checked>
+                        <span style="color: var(--text-tertiary); font-size: var(--text-sm);">Download entire playlist</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="format-picker" id="formatSection">
+                <h4 class="section-label">Select Quality</h4>
+                <div class="format-options" id="formatOptions">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <div style="text-align: center; margin-top: var(--space-8);">
+                <button class="btn btn-primary" onclick="startDownload()" id="downloadBtn" disabled>
+                    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Download
+                </button>
+            </div>
+        </div>
+        
+        <div id="statusArea" class="conversion-status hidden">
+            <div class="status-header">
+                <span class="status-title">Downloading...</span>
+                <span class="status-percent" id="statusPercent">0%</span>
+            </div>
+            <div class="progress-track large">
+                <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+            </div>
+            <p class="status-message" id="statusMessage">Starting download...</p>
+        </div>
+
+    </div>
+</div>
+
+<script>
+let currentVideoData = null;
+let selectedFormat = null;
+
+async function fetchInfo() {
+    const url = document.getElementById('urlInput').value;
+    const btn = document.getElementById('fetchBtn');
+    
+    if (!url) return;
+    
+    btn.disabled = true;
+    btn.textContent = 'Loading...';
+    
+    try {
+        const response = await fetch('/api/youtube/info', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url})
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) throw new Error(data.error);
+        
+        currentVideoData = data;
+        displayInfo(data);
+        
+    } catch (e) {
+        alert('Error: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Get Info';
+    }
+}
+
+function displayInfo(data) {
+    document.getElementById('inputZone').style.display = 'none';
+    document.getElementById('videoInfo').style.display = 'block';
+    
+    document.getElementById('videoTitle').textContent = data.title;
+    document.getElementById('uploader').textContent = data.uploader;
+    document.getElementById('thumbnail').src = data.thumbnail;
+    
+    if (data.is_playlist) {
+        document.getElementById('playlistInfo').style.display = 'block';
+        document.getElementById('playlistCount').textContent = `${data.entries.length} videos`;
+        document.getElementById('formatSection').style.display = 'none'; // Simplify for playlist initially
+        selectedFormat = 'best'; // Default for playlist
+        document.getElementById('downloadBtn').disabled = false;
+    } else {
+        document.getElementById('playlistInfo').style.display = 'none';
+        renderFormats(data.formats);
+    }
+}
+
+function renderFormats(formats) {
+    const container = document.getElementById('formatOptions');
+    container.innerHTML = '';
+    
+    formats.forEach(format => {
+        const el = document.createElement('div');
+        el.className = 'format-option';
+        el.textContent = `${format.resolution} (${format.ext})`;
+        el.onclick = () => ytSelectFormat(format.format_id, el);
+        container.appendChild(el);
+    });
+
+    // Auto-select first option (usually best)
+    if (formats.length > 0) {
+        ytSelectFormat(formats[0].format_id, container.children[0]);
+    }
+}
+
+function ytSelectFormat(fid, el) {
+    selectedFormat = fid;
+    document.querySelectorAll('.format-option').forEach(e => e.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('downloadBtn').disabled = false;
+}
+
+async function startDownload() {
+    try {
+        const checkbox = document.getElementById('playlistCheckbox');
+        const isPlaylist = currentVideoData && currentVideoData.is_playlist && checkbox && checkbox.checked;
+        
+        document.getElementById('videoInfo').style.display = 'none';
+        
+        const statusArea = document.getElementById('statusArea');
+        statusArea.className = 'conversion-status'; // Reset class
+        document.getElementById('statusMessage').textContent = 'Starting...';
+        
+        ytUpdateProgress(0);
+
+        const response = await fetch('/api/youtube/download', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                url: document.getElementById('urlInput').value,
+                format_id: selectedFormat,
+                is_playlist: isPlaylist
+            })
+        });
+        
+        const res = await response.json();
+        
+        if (res.error) {
+            throw new Error(res.error);
+        }
+        
+        const jobId = res.job_id;
+        
+        const interval = setInterval(async () => {
+            try {
+                const statusRes = await fetch(`/api/youtube/status/${jobId}`);
+                const statusData = await statusRes.json();
+                
+                if (statusData.status === 'downloading') {
+                    ytUpdateProgress(statusData.progress);
+                    
+                    if (statusData.progress >= 99.9) {
+                         document.getElementById('statusMessage').textContent = 'Finalizing...';
+                    } else {
+                         document.getElementById('statusMessage').textContent = `Downloading... ${Math.round(statusData.progress)}%`;
+                    }
+                    
+                } else if (statusData.status === 'completed') {
+                    clearInterval(interval);
+                    ytUpdateProgress(100);
+                    showDownloadButton(jobId, statusData.filename);
+                } else if (statusData.status === 'error') {
+                    clearInterval(interval);
+                    throw new Error(statusData.error);
+                }
+            } catch (e) {
+                clearInterval(interval);
+                showError(e.message);
+            }
+        }, 1000);
+
+    } catch (e) {
+        showError(e.message);
+    }
+}
+
+function showDownloadButton(jobId, filename) {
+    const statusArea = document.getElementById('statusArea');
+    statusArea.className = 'result-panel animate-scale';
+    
+    const thumbHtml = currentVideoData && currentVideoData.thumbnail 
+        ? `<img src="${currentVideoData.thumbnail}" style="width: 160px; height: auto; border-radius: var(--radius-md); box-shadow: var(--shadow-md); margin: 0 auto var(--space-6); display: block;" alt="Thumbnail">`
+        : `<div class="result-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></div>`;
+    
+    statusArea.innerHTML = `
+        ${thumbHtml}
+        <h3 class="result-heading">Ready to Download</h3>
+        <p class="result-filename">${filename}</p>
+        <div style="display: flex; gap: var(--space-4); justify-content: center; margin-top: var(--space-6);">
+            <a href="/api/youtube/download_file/${jobId}" class="btn btn-primary">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                Download File
+            </a>
+            <button onclick="location.reload()" class="btn btn-secondary">
+                Convert Another
+            </button>
+        </div>
+    `;
+}
+
+function showError(message) {
+    const statusArea = document.getElementById('statusArea');
+    document.getElementById('videoInfo').style.display = 'none';
+    
+    statusArea.className = 'error-panel animate-scale'; 
+    
+    statusArea.innerHTML = `
+        <div class="error-icon">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        </div>
+        <h3 class="error-heading">Download Failed</h3>
+        <p class="error-description">${message}</p>
+        <button onclick="location.reload()" class="btn btn-secondary">
+            Try Again
+        </button>
+    `;
+}
+
+function ytUpdateProgress(percent) {
+    document.getElementById('progressBar').style.width = percent + '%';
+    document.getElementById('statusPercent').textContent = Math.round(percent) + '%';
+}
+</script>
+{% endblock %}

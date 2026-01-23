@@ -89,3 +89,37 @@ def cleanup_old_files(folder: Path, max_age_hours: int = 1) -> int:
 
 def get_file_size_mb(file_path: str) -> float:
     return os.path.getsize(file_path) / (1024 * 1024)
+
+
+def download_file_from_url(url: str, upload_folder: Path) -> Tuple[str, str, str]:
+    import urllib.request
+    from urllib.parse import urlparse
+    import tempfile
+    
+    # Parse filename from URL
+    path = urlparse(url).path
+    original_filename = os.path.basename(path)
+    if not original_filename:
+        original_filename = "downloaded_file"
+    
+    # Sanitize filename
+    original_filename = secure_filename(original_filename)
+    
+    # Generate ID and paths
+    file_id = generate_file_id()
+    ext = get_file_extension(original_filename)
+    if not ext:
+        # Try to guess extension from content-type if requests was used, but with urllib it's harder
+        # For now assume no extension if not in URL
+        pass
+        
+    saved_filename = f"{file_id}.{ext}" if ext else file_id
+    saved_path = upload_folder / saved_filename
+    
+    # Download
+    try:
+        urllib.request.urlretrieve(url, str(saved_path))
+    except Exception as e:
+        raise Exception(f"Failed to download file: {str(e)}")
+        
+    return file_id, str(saved_path), original_filename
