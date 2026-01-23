@@ -62,6 +62,8 @@ class VideoConverter(BaseConverter):
                 output_path,
                 codec=codec,
                 audio_codec='aac' if output_format != 'webm' else 'libvorbis',
+                threads=0,  # Use all available CPU cores
+                preset='fast',  # Faster encoding (options: ultrafast, superfast, veryfast, faster, fast, medium)
                 logger=None
             )
             

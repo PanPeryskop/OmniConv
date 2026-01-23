@@ -231,6 +231,67 @@ def download_file(job_id):
     return send_file(output_path, as_attachment=True, download_name=os.path.basename(output_path))
 
 
+@api_bp.route('/download-archive/<filename>', methods=['GET'])
+def download_archive_file(filename):
+    import re
+    if not re.match(r'^[\w\-. ]+$', filename):
+        return api_response(error={'type': 'InvalidFilenameError', 'message': 'Invalid filename'}, success=False), 400
+    
+    output_folder = current_app.config['OUTPUT_FOLDER']
+    file_path = os.path.join(output_folder, filename)
+    
+    if not os.path.exists(file_path):
+        return api_response(error={'type': 'FileNotFoundError', 'message': 'File not found in archive'}, success=False), 404
+    
+    if not os.path.abspath(file_path).startswith(os.path.abspath(output_folder)):
+        return api_response(error={'type': 'SecurityError', 'message': 'Access denied'}, success=False), 403
+    
+    return send_file(file_path, as_attachment=True, download_name=filename)
+
+
+@api_bp.route('/delete-archive/<filename>', methods=['DELETE'])
+def delete_archive_file(filename):
+    import re
+    if not re.match(r'^[\w\-. ]+$', filename):
+        return api_response(error={'type': 'InvalidFilenameError', 'message': 'Invalid filename'}, success=False), 400
+    
+    output_folder = current_app.config['OUTPUT_FOLDER']
+    upload_folder = current_app.config['UPLOAD_FOLDER']
+    
+    deleted_files = []
+    
+    # Try to delete from outputs folder
+    output_path = os.path.join(output_folder, filename)
+    if os.path.exists(output_path) and os.path.abspath(output_path).startswith(os.path.abspath(output_folder)):
+        try:
+            os.remove(output_path)
+            deleted_files.append('output')
+        except Exception as e:
+            pass
+    
+    # Try to find and delete matching input file from uploads folder
+    base_name = os.path.splitext(filename)[0]
+    # Remove common suffixes like _compressed
+    for suffix in ['_compressed', '_converted']:
+        if base_name.endswith(suffix):
+            base_name = base_name[:-len(suffix)]
+            break
+    
+    # Look for files with similar base name in uploads
+    if os.path.exists(upload_folder):
+        for upload_file in os.listdir(upload_folder):
+            # Match files that start with similar pattern (uuid_originalname)
+            if os.path.abspath(os.path.join(upload_folder, upload_file)).startswith(os.path.abspath(upload_folder)):
+                try:
+                    upload_path = os.path.join(upload_folder, upload_file)
+                    os.remove(upload_path)
+                    deleted_files.append('upload')
+                except Exception:
+                    pass
+    
+    return api_response(data={'deleted': deleted_files, 'filename': filename})
+
+
 @api_bp.route('/ocr', methods=['POST'])
 def ocr_file():
     data = request.get_json()

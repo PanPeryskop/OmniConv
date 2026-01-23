@@ -128,6 +128,18 @@
     color: var(--text-primary);
 }
 .history-action-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.history-action-btn.download-btn:hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+.history-action-btn.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.history-action-btn.disabled:hover {
+    border-color: var(--border-subtle);
+    color: var(--text-tertiary);
+}
 </style>
 
 <script>
@@ -203,6 +215,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
                 <div class="history-item-actions">
+                    ${item.outputFilename ? `
+                    <button class="history-action-btn download-btn" onclick="downloadArchiveFile('${item.outputFilename}')" title="Download">
+                        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    </button>
+                    ` : `
+                    <button class="history-action-btn disabled" title="File not available" disabled>
+                        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    </button>
+                    `}
                     <button class="history-action-btn" onclick="deleteHistoryItem(${index})" title="Delete">
                         <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                     </button>
@@ -211,11 +232,45 @@ document.addEventListener('DOMContentLoaded', () => {
         `).join('');
     }
     
-    window.deleteHistoryItem = function(index) {
+    window.deleteHistoryItem = async function(index) {
         const history = getHistory();
+        const item = history[index];
+        
+       if (item && item.outputFilename) {
+            try {
+                await fetch(`/api/delete-archive/${encodeURIComponent(item.outputFilename)}`, {
+                    method: 'DELETE'
+                });
+            } catch (e) {
+                console.warn('Could not delete files from disk:', e);
+            }
+        }
+        
         history.splice(index, 1);
         saveHistory(history);
         renderHistory();
+    };
+    
+    window.downloadArchiveFile = async function(filename) {
+        try {
+            const response = await fetch(`/api/download-archive/${encodeURIComponent(filename)}`);
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            } else {
+                const data = await response.json();
+                alert(data.error?.message || 'File not found. It may have been deleted.');
+            }
+        } catch (e) {
+            alert('Failed to download file. It may have been deleted.');
+        }
     };
     
     clearBtn.addEventListener('click', () => {

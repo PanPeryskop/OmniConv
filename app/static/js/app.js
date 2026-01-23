@@ -291,6 +291,7 @@ function saveToHistory(outputFilename) {
             inputName: inputName,
             inputFormat: inputExt,
             outputFormat: outputExt,
+            outputFilename: outputFilename,
             type: appState.fileType || 'document',
             timestamp: Date.now()
         });
