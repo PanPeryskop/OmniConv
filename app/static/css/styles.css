@@ -465,11 +465,47 @@ body {
 .result-heading { font-size: var(--text-xl); font-weight: 600; margin-bottom: var(--space-2); }
 .result-filename { color: var(--text-tertiary); font-size: var(--text-sm); margin-bottom: var(--space-6); word-break: break-all; }
 
-.error-panel { padding: var(--space-12); margin-top: var(--space-6); text-align: center; }
-.error-icon { width: 72px; height: 72px; margin: 0 auto var(--space-6); color: var(--color-error); }
-.error-icon svg { width: 100%; height: 100%; fill: none; stroke-width: 1.5; }
-.error-heading { font-size: var(--text-xl); font-weight: 600; margin-bottom: var(--space-2); }
-.error-description { color: var(--text-secondary); margin-bottom: var(--space-6); }
+.error-panel { 
+    padding: var(--space-8) var(--space-6); 
+    margin-top: var(--space-4); 
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+}
+
+.error-icon { 
+    width: 64px; 
+    height: 64px; 
+    margin: 0 auto var(--space-6); 
+    color: var(--color-error);
+    background: rgba(255, 69, 58, 0.1);
+    border-radius: 50%;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.error-icon svg { width: 100%; height: 100%; fill: none; stroke-width: 2; }
+
+.error-heading { 
+    font-size: var(--text-xl); 
+    font-weight: 600; 
+    margin-bottom: var(--space-2);
+    color: var(--text-primary);
+}
+
+.error-description { 
+    color: var(--text-secondary); 
+    margin-bottom: var(--space-8); 
+    max-width: 400px;
+    margin-inline: auto;
+    font-size: var(--text-base);
+    line-height: 1.5;
+}
 
 .btn {
     display: inline-flex;
