@@ -75,20 +75,17 @@ class VideoDownloaderService:
 
 
     def download_video(self, url: str, format_id: str = None, is_playlist: bool = False, progress_hook=None) -> str:
-        # Locate FFmpeg relative to this file or app
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         ffmpeg_path = os.path.join(base_dir, 'dist', 'OmniConv', 'ffmpeg', 'ffmpeg.exe')
         
-        # If not in dist, try local bin or path
         if not os.path.exists(ffmpeg_path):
-             ffmpeg_path = 'ffmpeg' # Fallback to PATH
+             ffmpeg_path = 'ffmpeg'
 
         ydl_opts = {
             'outtmpl': os.path.join(self.download_path, '%(title)s.%(ext)s'),
             'quiet': True,
             'no_warnings': True,
             'ffmpeg_location': os.path.dirname(ffmpeg_path) if 'ffmpeg.exe' in ffmpeg_path else None,
-            # Force overwrite to avoid errors with existing files
             'overwrites': True,
         }
         
