@@ -1,8 +1,3 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.10+-3776ab?style=for-the-badge&logo=python&logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/Flask-3.0+-000000?style=for-the-badge&logo=flask&logoColor=white" alt="Flask">
-</p>
-
 <h1 align="center">🔄 OmniConv</h1>
 
 <p align="center">
@@ -25,12 +20,14 @@
 |---------|-------------|
 | 🎵 **Audio Conversion** | Convert between MP3, WAV, FLAC, OGG, M4A, AAC, AIFF, WMA and more |
 | 🎬 **Video Conversion** | MP4, AVI, MKV, MOV, WEBM conversions + GIF extraction |
-| 📺 **YouTube Downloader** | Direct browser download, playlist support, quality selection |
+| 📺 **YouTube Downloader** | Direct browser download, playlist support, quality selection & realtime progress |
 | 🖼️ **Image Conversion** | PNG, JPG, WEBP, GIF, BMP, TIFF, HEIC, ICO support |
 | 📄 **Document Conversion** | PDF to DOCX with layout preservation |
 | 🔍 **OCR (AI-Powered)** | PaddleOCR with 35+ languages — works completely offline |
 | 📦 **Smart Compression** | Reduce file sizes with minimal quality loss using target size |
 | 📁 **Batch Processing** | Convert multiple files at once with drag & drop |
+| ⚡ **Optimized Performance** | Smart caching for invalid files & multi-core processing support |
+| ⚙️ **System Integration** | Auto-start capability & persistent user settings |
 | 🌙 **Dark/Light Mode** | Beautiful UI with theme switching |
 | 🔒 **100% Local** | All processing happens on your machine — no data leaves |
 
@@ -42,7 +39,7 @@
 
 ### Prerequisites
 
-- Python 3.10+
+- Python
 - FFmpeg (for audio/video processing)
 
 ### Installation
@@ -124,7 +121,7 @@ http://localhost:5000
 
 | Technology | Purpose |
 |------------|---------|
-| **Flask 3.0+** | Web framework |
+| **Flask** | Web framework |
 | **PaddleOCR** | AI-powered text recognition (faster than Tesseract) |
 | **MoviePy** | Video processing |
 | **Pydub** | Audio processing |

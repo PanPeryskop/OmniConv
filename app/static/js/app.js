@@ -10,7 +10,6 @@ const appState = {
     socket: null
 };
 
-// Initialize Socket.IO
 appState.socket = io();
 
 appState.socket.on('connect', () => {
@@ -126,7 +125,7 @@ function initUploadZone() {
     const zone = ui.uploadZone;
     const input = ui.fileInput;
     
-    if (!zone || !input) return; // Exit if elements don't exist
+    if (!zone || !input) return;
     
     ['dragenter', 'dragover'].forEach(event => {
         zone.addEventListener(event, (e) => { 
@@ -155,12 +154,6 @@ function initUploadZone() {
 }
 
 async function handleFileSelect(file) {
-    const maxSize = 500 * 1024 * 1024;
-    if (file.size > maxSize) {
-        showError('File is too large. Maximum size is 500MB.');
-        return;
-    }
-    
     ui.uploadZone.classList.add('uploading');
     updateProgress(0);
     
@@ -246,7 +239,6 @@ async function selectFormat(format, button) {
     button.classList.add('active');
     appState.selectedFormat = format;
     
-    // Show video options for video formats
     const videoOutputFormats = ['mp4', 'webm', 'avi', 'mkv', 'mov'];
     if (appState.fileType === 'video' && videoOutputFormats.includes(format.toLowerCase())) {
         if (ui.videoOptions) {
@@ -283,7 +275,6 @@ async function startConversion(format) {
         const result = await api.startConversion(appState.currentFileId, format, options);
         if (!result.success) throw new Error(result.error?.message || 'Conversion failed to start');
         appState.currentJobId = result.data.job_id;
-        // WebSocket events will handle updates
     } catch (error) {
         appState.isConverting = false;
         showError(error.message);
@@ -291,7 +282,6 @@ async function startConversion(format) {
 }
 
 function pollConversionStatus() {
-    // Deprecated in favor of WebSocket
     console.log('Polling deprecated');
 }
 
@@ -389,7 +379,6 @@ function initEventListeners() {
     if (ui.tryAgain) ui.tryAgain.addEventListener('click', resetApp);
     if (ui.startVideoConversion) ui.startVideoConversion.addEventListener('click', confirmVideoConversion);
     
-    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key === 'u') {
             e.preventDefault();
@@ -398,14 +387,11 @@ function initEventListeners() {
         }
         if (e.ctrlKey && e.key === 'Enter') {
             if (appState.currentFileId && !appState.isConverting) {
-                // If format selected, convert. If not, maybe just log or hint.
                 if (appState.selectedFormat) startConversion(appState.selectedFormat);
             }
         }
         if (e.key === 'Escape') {
             if (appState.isConverting) {
-                // Cancel not implemented in backend fully (thread kill is hard), but we can reset UI
-                // Only reset if error or modal
                 if (!ui.errorMessage.classList.contains('hidden')) resetApp();
                 if (!ui.videoOptions.classList.contains('hidden')) ui.videoOptions.classList.add('hidden');
             } else {
@@ -442,7 +428,7 @@ async function submitUrl() {
     if (!url) return;
 
     try {
-        ui.uploadZone.classList.remove('hidden'); // Show progress in upload zone context
+        ui.uploadZone.classList.remove('hidden');
         document.getElementById('urlZone').classList.add('hidden');
         ui.uploadZone.classList.add('uploading');
         updateProgress(10, 'Downloading from URL...');
@@ -471,7 +457,6 @@ async function submitUrl() {
     }
 }
 
-// Make functions global for onclick
 window.switchTab = switchTab;
 window.submitUrl = submitUrl;
 

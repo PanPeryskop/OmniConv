@@ -18,7 +18,8 @@ const translations = {
         "upload_tab": "Upload File",
         "url_tab": "From URL",
         "paste_link": "Paste Link",
-        "fetch_file": "Fetch File"
+        "fetch_file": "Fetch File",
+        "youtube_btn": "Web Video"
     },
     pl: {
         "convert_btn": "Konwertuj",
@@ -39,7 +40,8 @@ const translations = {
         "upload_tab": "Prześlij plik",
         "url_tab": "Z adresu URL",
         "paste_link": "Wklej link",
-        "fetch_file": "Pobierz plik"
+        "fetch_file": "Pobierz plik",
+        "youtube_btn": "Wideo z Sieci"
     },
     de: {
         "convert_btn": "Konvertieren",
@@ -60,6 +62,7 @@ const translations = {
         "upload_tab": "Datei hochladen",
         "url_tab": "Von URL",
         "paste_link": "Link einfügen",
-        "fetch_file": "Datei abrufen"
+        "fetch_file": "Datei abrufen",
+        "youtube_btn": "Web-Video"
     }
 };

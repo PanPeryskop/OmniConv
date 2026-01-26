@@ -8,11 +8,11 @@ class Config:
     OUTPUT_FOLDER = BASE_DIR / 'outputs'
     
     SECRET_KEY = os.environ.get('SECRET_KEY', 'omniconv-secret-key-change-in-production')
-    MAX_CONTENT_LENGTH = 500 * 1024 * 1024
+    MAX_CONTENT_LENGTH = None
     
     AUDIO_INPUT = {'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'ac3', 'alac', 
                    'dts', 'eac3', 'tta', 'wv', 'aiff', 'ape', 'wma', 'opus'}
-    AUDIO_OUTPUT = {'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aiff'}  # AAC disabled - not working
+    AUDIO_OUTPUT = {'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aiff'}
     
     VIDEO_INPUT = {'mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 
                    '3gp', 'mpeg', 'mpg', 'm4v', 'ts', 'mts', 'vob'}
@@ -23,9 +23,9 @@ class Config:
     IMAGE_OUTPUT = {'png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff', 'ico', 'pdf'}
     
     DOCUMENT_INPUT = {'pdf', 'md'}
-    DOCUMENT_OUTPUT = {'docx', 'txt', 'pdf'}  # pdf_ocr disabled - OCR not working
+    DOCUMENT_OUTPUT = {'docx', 'txt', 'pdf'}
     
-    OCR_ENABLED = False  # OCR disabled - not working
+    OCR_ENABLED = False
     OCR_DEFAULT_LANG = 'en'
     
     CLEANUP_AFTER_HOURS = 1

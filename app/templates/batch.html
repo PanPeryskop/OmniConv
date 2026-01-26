@@ -21,12 +21,11 @@
             </div>
             <h2 class="drop-heading">Drop multiple files</h2>
             <p class="drop-subtext">or click to browse • Max 20 files</p>
-            <p class="drop-formats">All supported formats • Max 500MB each</p>
+            <p class="drop-formats">All supported formats</p>
             <input type="file" id="batchFileInput" class="file-picker" multiple />
         </div>
     </div>
 
-    <!-- Grouped File Queue -->
     <div class="batch-queue hidden" id="batchQueue">
         <div class="queue-header">
             <h3 class="section-label" style="margin: 0;">Files in Queue</h3>
@@ -39,8 +38,6 @@
         </div>
         <div class="file-groups" id="fileGroups"></div>
     </div>
-
-    <!-- Format selection moved to groups -->
 
     <div class="batch-actions hidden" id="batchActions">
         <button class="btn btn-primary" id="startBatchBtn" style="width: 100%;">
@@ -110,7 +107,6 @@
     border-radius: var(--radius-sm);
 }
 
-/* File Groups */
 .file-groups {
     display: flex;
     flex-direction: column;
@@ -697,7 +693,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let fileId;
             
             if (file.isUploaded && file.fileId) {
-                // Already uploaded (extracted from archive)
                 fileId = file.fileId;
             } else {
                 const formData = new FormData();
@@ -782,7 +777,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         for (const file of newFiles) {
             if (isArchive(file.name)) {
-                // Show extracting status
                 const toast = document.createElement('div');
                 toast.style.cssText = 'position: fixed; bottom: 20px; right: 20px; background: var(--surface-glass-active); padding: 10px 20px; border-radius: 8px; z-index: 1000; border: 1px solid var(--border-default); backdrop-filter: blur(10px);';
                 toast.textContent = `Extracting ${file.name}...`;
@@ -795,19 +789,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const data = await res.json();
                     
                     if (data.success) {
-                        // Create mock File objects for the extracted files
-                        // Note: We can't create real File objects without usage of File constructor with content, 
-                        // but we don't have content here, only metadata.
-                        // However, processFile uploads the File object.
-                        // This strategy of "extract on client drop" is problematic if we can't get the file content back to upload again.
-                        // BUT: The backend already has the files in 'uploads/'.
-                        // So we need to store them in batchState with a flag that they are already uploaded.
-                        
-                        // Let's modify batchState to store 'uploaded: true' and 'file_id'.
-                        // And processFile should skip upload if file_id exists.
-                        
                         data.data.files.forEach(f => {
-                             // Mock file object - we only need property access in renderQueue
                              const mockFile = { 
                                  name: f.filename, 
                                  size: f.size, 
