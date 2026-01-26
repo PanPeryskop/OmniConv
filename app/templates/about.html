@@ -9,172 +9,55 @@
 </section>
 
 <section class="converter-area" style="max-width: 720px;">
+    {% for category, data in formats.items() %}
     <div class="format-category panel" style="padding: var(--space-6); margin-bottom: var(--space-4);">
         <div class="format-header">
-            <div class="format-icon type-audio">
+            <div class="format-icon type-{{ category }}">
+                {% if category == 'audio' %}
                 <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-            </div>
-            <div>
-                <h2 class="format-title">Audio</h2>
-                <p class="format-count">16 input • 7 output formats</p>
-            </div>
-        </div>
-        <div class="format-lists">
-            <div class="format-list">
-                <span class="format-list-label">Input</span>
-                <div class="format-tags">
-                    <span class="format-tag">MP3</span>
-                    <span class="format-tag">WAV</span>
-                    <span class="format-tag">OGG</span>
-                    <span class="format-tag">FLAC</span>
-                    <span class="format-tag">AAC</span>
-                    <span class="format-tag">WMA</span>
-                    <span class="format-tag">M4A</span>
-                    <span class="format-tag">AIFF</span>
-                    <span class="format-tag">APE</span>
-                    <span class="format-tag">OPUS</span>
-                    <span class="format-tag">AC3</span>
-                    <span class="format-tag">AMR</span>
-                    <span class="format-tag">CAF</span>
-                    <span class="format-tag">AU</span>
-                    <span class="format-tag">PCM</span>
-                    <span class="format-tag">WV</span>
-                </div>
-            </div>
-            <div class="format-list">
-                <span class="format-list-label">Output</span>
-                <div class="format-tags">
-                    <span class="format-tag">MP3</span>
-                    <span class="format-tag">WAV</span>
-                    <span class="format-tag">OGG</span>
-                    <span class="format-tag">FLAC</span>
-                    <span class="format-tag">AAC</span>
-                    <span class="format-tag">M4A</span>
-                    <span class="format-tag">WMA</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="format-category panel" style="padding: var(--space-6); margin-bottom: var(--space-4);">
-        <div class="format-header">
-            <div class="format-icon type-video">
+                {% elif category == 'video' %}
                 <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-            </div>
-            <div>
-                <h2 class="format-title">Video</h2>
-                <p class="format-count">14 input • 10 output formats</p>
-            </div>
-        </div>
-        <div class="format-lists">
-            <div class="format-list">
-                <span class="format-list-label">Input</span>
-                <div class="format-tags">
-                    <span class="format-tag">MP4</span>
-                    <span class="format-tag">AVI</span>
-                    <span class="format-tag">MKV</span>
-                    <span class="format-tag">MOV</span>
-                    <span class="format-tag">WMV</span>
-                    <span class="format-tag">FLV</span>
-                    <span class="format-tag">WEBM</span>
-                    <span class="format-tag">3GP</span>
-                    <span class="format-tag">MPEG</span>
-                    <span class="format-tag">MPG</span>
-                    <span class="format-tag">M4V</span>
-                    <span class="format-tag">TS</span>
-                    <span class="format-tag">MTS</span>
-                    <span class="format-tag">VOB</span>
-                </div>
-            </div>
-            <div class="format-list">
-                <span class="format-list-label">Output</span>
-                <div class="format-tags">
-                    <span class="format-tag">MP4</span>
-                    <span class="format-tag">WEBM</span>
-                    <span class="format-tag">AVI</span>
-                    <span class="format-tag">MKV</span>
-                    <span class="format-tag">MOV</span>
-                    <span class="format-tag">GIF</span>
-                    <span class="format-tag">MP3</span>
-                    <span class="format-tag">WAV</span>
-                    <span class="format-tag">AAC</span>
-                    <span class="format-tag">OGG</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="format-category panel" style="padding: var(--space-6); margin-bottom: var(--space-4);">
-        <div class="format-header">
-            <div class="format-icon type-image">
+                {% elif category == 'image' %}
                 <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-            </div>
-            <div>
-                <h2 class="format-title">Images</h2>
-                <p class="format-count">11 input • 8 output formats</p>
-            </div>
-        </div>
-        <div class="format-lists">
-            <div class="format-list">
-                <span class="format-list-label">Input</span>
-                <div class="format-tags">
-                    <span class="format-tag">JPG</span>
-                    <span class="format-tag">JPEG</span>
-                    <span class="format-tag">PNG</span>
-                    <span class="format-tag">GIF</span>
-                    <span class="format-tag">BMP</span>
-                    <span class="format-tag">TIFF</span>
-                    <span class="format-tag">WEBP</span>
-                    <span class="format-tag">ICO</span>
-                    <span class="format-tag">HEIC</span>
-                    <span class="format-tag">HEIF</span>
-                    <span class="format-tag">SVG</span>
-                </div>
-            </div>
-            <div class="format-list">
-                <span class="format-list-label">Output</span>
-                <div class="format-tags">
-                    <span class="format-tag">JPG</span>
-                    <span class="format-tag">PNG</span>
-                    <span class="format-tag">GIF</span>
-                    <span class="format-tag">BMP</span>
-                    <span class="format-tag">TIFF</span>
-                    <span class="format-tag">WEBP</span>
-                    <span class="format-tag">ICO</span>
-                    <span class="format-tag">PDF</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="format-category panel" style="padding: var(--space-6); margin-bottom: var(--space-4);">
-        <div class="format-header">
-            <div class="format-icon type-document">
+                {% elif category == 'document' %}
                 <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                {% elif category == 'ocr' %}
+                <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><text x="12" y="17" text-anchor="middle" font-size="6" fill="currentColor" style="font-weight: bold; font-family: sans-serif;">AI</text></svg>
+                {% else %}
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+                {% endif %}
             </div>
             <div>
-                <h2 class="format-title">Documents & OCR</h2>
-                <p class="format-count">AI-powered text extraction</p>
+                <h2 class="format-title">{{ category|title }}</h2>
+                <p class="format-count">
+                    {% if category == 'ocr' %}
+                    Powered by LightOnOCR-2-1B
+                    {% else %}
+                    {{ data.input|length }} input • {{ data.output|length }} output formats
+                    {% endif %}
+                </p>
             </div>
         </div>
         <div class="format-lists">
             <div class="format-list">
                 <span class="format-list-label">Input</span>
                 <div class="format-tags">
-                    <span class="format-tag">PDF</span>
-                    <span class="format-tag">MD</span>
+                    {% for fmt in data.input %}
+                    <span class="format-tag">{{ fmt|upper }}</span>
+                    {% endfor %}
                 </div>
             </div>
             <div class="format-list">
                 <span class="format-list-label">Output</span>
                 <div class="format-tags">
-                    <span class="format-tag">DOCX</span>
-                    <span class="format-tag">TXT</span>
-                    <span class="format-tag">PDF</span>
+                    {% for fmt in data.output %}
+                    <span class="format-tag">{{ fmt|upper }}</span>
+                    {% endfor %}
                 </div>
             </div>
         </div>
     </div>
+    {% endfor %}
 
     <div style="text-align: center; margin-top: var(--space-8);">
         <a href="/" class="btn btn-primary">

@@ -11,7 +11,7 @@ class ImageConverter(BaseConverter):
         'webp', 'ico', 'heic', 'heif'
     }
     
-    OUTPUT_FORMATS = {'png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff', 'ico', 'pdf'}
+    OUTPUT_FORMATS = {'png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff', 'ico', 'pdf', 'txt', 'pdf_ocr'}
     RGB_ONLY_FORMATS = {'jpg', 'jpeg', 'bmp', 'pdf'}
     DEFAULT_QUALITY = 90
     
@@ -38,6 +38,38 @@ class ImageConverter(BaseConverter):
         
         if output_format not in self.OUTPUT_FORMATS:
             raise UnsupportedFormatError(output_format, list(self.OUTPUT_FORMATS))
+            
+        if output_format in ('txt', 'pdf_ocr'):
+            from .ocr import OCRService
+            ocr = OCRService(self._progress_callback)
+            
+            if output_format == 'txt':
+                return ocr.ocr_image(input_path, output_path, options)
+            elif output_format == 'pdf_ocr':
+                try:
+                    self.report_progress(10)
+                    import tempfile
+                    
+                    temp_pdf = tempfile.mktemp(suffix=".pdf")
+                    image = Image.open(input_path)
+                    if image.mode != 'RGB':
+                        image = image.convert('RGB')
+                    image.save(temp_pdf, "PDF", resolution=100.0)
+                    
+                    self.report_progress(30)
+                    
+                    result = ocr.ocr_pdf_to_searchable(temp_pdf, output_path, options)
+                    
+                    try:
+                        import os
+                        os.remove(temp_pdf)
+                    except:
+                        pass
+                        
+                    return result
+                    
+                except Exception as e:
+                    raise ConversionError(str(e))
         
         try:
             self.report_progress(10)

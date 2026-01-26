@@ -1,73 +1,68 @@
 import os
-# Disable MKLDNN and PIR to avoid static graph mode issues with PaddleOCR-VL
-os.environ['FLAGS_use_mkldnn'] = '0'
-os.environ['FLAGS_enable_pir_api'] = '0'
-os.environ['FLAGS_pir_apply_inplace_pass'] = '0'
-# Force dynamic graph mode to fix "int(Tensor) is not supported in static graph mode" error
-os.environ['FLAGS_enable_eager_mode'] = '1'
-
-from typing import Optional, Dict, Any, List, Tuple
-from pathlib import Path
+import torch
 import gc
 import shutil
 import tempfile
-
+from pathlib import Path
+from typing import Optional, Dict, Any
+from transformers import LightOnOcrForConditionalGeneration, LightOnOcrProcessor
 from .converter import BaseConverter
-from ..utils.exceptions import ConversionError, OCRError
-
+from ..utils.exceptions import OCRError
 
 class OCRService(BaseConverter):
-    _pipeline = None
+    _model = None
+    _processor = None
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
     
-    def _get_pipeline(self):
-        if OCRService._pipeline is not None:
-            return OCRService._pipeline
+    def _get_resources(self):
+        if OCRService._model is not None and OCRService._processor is not None:
+            return OCRService._model, OCRService._processor
         
         try:
-            from paddleocr import PaddleOCRVL
+            device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+            dtype = torch.float32 if device == "mps" else torch.bfloat16
             
-            OCRService._pipeline = PaddleOCRVL()
-            return OCRService._pipeline
+            OCRService._model = LightOnOcrForConditionalGeneration.from_pretrained(
+                "lightonai/LightOnOCR-2-1B", 
+                torch_dtype=dtype
+            ).to(device)
+            
+            OCRService._processor = LightOnOcrProcessor.from_pretrained("lightonai/LightOnOCR-2-1B")
+            
+            return OCRService._model, OCRService._processor
             
         except Exception as e:
-            raise OCRError(f"Failed to initialize OCR: {str(e)}")
+            raise OCRError(str(e))
     
     def _extract_text(self, image_path: str) -> str:
-        """Extract text from image using PaddleOCR-VL.
-        
-        According to PaddleOCR-VL documentation, the predict() method returns
-        result objects with a 'markdown' attribute containing the parsed text.
-        """
-        pipeline = self._get_pipeline()
+        model, processor = self._get_resources()
         
         try:
-            output = pipeline.predict(image_path)
+            device = model.device
+            dtype = model.dtype
             
-            text_parts = []
-            for res in output:
-                # Primary: use markdown attribute (recommended by PaddleOCR-VL docs)
-                if hasattr(res, 'markdown'):
-                    md = res.markdown
-                    # markdown can be a dict with 'markdown_text' key or a string
-                    if isinstance(md, dict):
-                        text = md.get('markdown_text', '') or md.get('text', '')
-                        text_parts.append(str(text))
-                    elif md:
-                        text_parts.append(str(md))
-                # Fallback: try text attribute
-                elif hasattr(res, 'text') and res.text:
-                    text_parts.append(str(res.text))
-                # Fallback: try rec_texts for legacy compatibility
-                elif hasattr(res, 'rec_texts') and res.rec_texts:
-                    text_parts.extend(res.rec_texts)
+            conversation = [{"role": "user", "content": [{"type": "image", "url": image_path}]}]
             
-            return '\n'.join(text_parts) if text_parts else ""
+            inputs = processor.apply_chat_template(
+                conversation,
+                add_generation_prompt=True,
+                tokenize=True,
+                return_dict=True,
+                return_tensors="pt",
+            )
+            
+            inputs = {k: v.to(device=device, dtype=dtype) if v.is_floating_point() else v.to(device) for k, v in inputs.items()}
+            
+            output_ids = model.generate(**inputs, max_new_tokens=1024)
+            generated_ids = output_ids[0, inputs["input_ids"].shape[1]:]
+            output_text = processor.decode(generated_ids, skip_special_tokens=True)
+            
+            return output_text
             
         except Exception as e:
-            raise OCRError(f"OCR failed: {str(e)}")
+            raise OCRError(str(e))
     
     def convert(
         self,
@@ -83,11 +78,60 @@ class OCRService(BaseConverter):
         if ext == '.pdf':
             if output_format == 'pdf':
                 return self.ocr_pdf_to_searchable(input_path, output_path, options)
+            elif output_format == 'docx':
+                return self.ocr_to_docx(input_path, output_path, options)
             else:
                 return self.ocr_pdf_to_txt(input_path, output_path, options)
         else:
+            if output_format == 'docx':
+                return self.ocr_to_docx(input_path, output_path, options)
             return self.ocr_image(input_path, output_path, options)
-    
+
+    def ocr_to_docx(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
+        from docx import Document
+        
+        try:
+            self.report_progress(10)
+            
+            if input_path.lower().endswith('.pdf'):
+                import fitz
+                doc = fitz.open(input_path)
+                full_text = ""
+                temp_dir = tempfile.mkdtemp(prefix="ocr_docx_")
+                
+                try:
+                    for i, page in enumerate(doc):
+                        if self.is_cancelled:
+                            doc.close()
+                            return None
+                            
+                        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                        page_path = os.path.join(temp_dir, f"page_{i}.png")
+                        pix.save(page_path)
+                        
+                        text = self._extract_text(page_path)
+                        if text:
+                            full_text += text + "\n\n"
+                        
+                        self.report_progress(10 + int((i + 1) / len(doc) * 80))
+                        
+                finally:
+                    doc.close()
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+            else:
+                full_text = self._extract_text(input_path)
+                self.report_progress(90)
+
+            document = Document()
+            document.add_paragraph(full_text)
+            document.save(output_path)
+            
+            self.report_progress(100)
+            return output_path
+            
+        except Exception as e:
+            raise OCRError(str(e))
+
     def ocr_image(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
         try:
             self.report_progress(10)
@@ -106,7 +150,7 @@ class OCRService(BaseConverter):
         except OCRError:
             raise
         except Exception as e:
-            raise OCRError(f"Image OCR failed: {str(e)}")
+            raise OCRError(str(e))
     
     def ocr_pdf_to_searchable(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
         import fitz
@@ -156,7 +200,7 @@ class OCRService(BaseConverter):
         except OCRError:
             raise
         except Exception as e:
-            raise OCRError(f"PDF OCR failed: {str(e)}")
+            raise OCRError(str(e))
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
     
@@ -206,7 +250,7 @@ class OCRService(BaseConverter):
         except OCRError:
             raise
         except Exception as e:
-            raise OCRError(f"PDF OCR failed: {str(e)}")
+            raise OCRError(str(e))
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
     
@@ -214,7 +258,7 @@ class OCRService(BaseConverter):
         try:
             return self._extract_text(image_path)
         except Exception as e:
-            raise OCRError(f"Text extraction failed: {str(e)}")
+            raise OCRError(str(e))
     
     @staticmethod
     def get_supported_input_formats() -> set:
@@ -222,4 +266,4 @@ class OCRService(BaseConverter):
     
     @staticmethod
     def get_supported_output_formats() -> set:
-        return {'txt', 'pdf'}
+        return {'txt', 'pdf', 'docx'}

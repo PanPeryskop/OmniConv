@@ -16,7 +16,7 @@ class VideoDownloaderService:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
-            is_playlist = 'entries' in info
+            is_playlist = 'entries' in info or info.get('_type') == 'playlist'
             
             result = {
                 'title': info.get('title'),
@@ -28,7 +28,8 @@ class VideoDownloaderService:
             }
             
             if is_playlist:
-                for entry in info.get('entries', []):
+                entries_data = info.get('entries', [])
+                for i, entry in enumerate(entries_data):
                     if entry:
                         result['entries'].append({
                             'id': entry.get('id'),
@@ -48,7 +49,6 @@ class VideoDownloaderService:
             seen_formats = set()
 
             for f in info.get('formats', []):
-                # Filter for useful formats (video+audio or best audio/video)
                 if f.get('ext') == 'mp4' and f.get('vcodec') != 'none':
                     resolution = f.get('resolution') or f"{f.get('width')}x{f.get('height')}"
                     fid = f.get('format_id')
@@ -62,14 +62,21 @@ class VideoDownloaderService:
                             'note': f.get('format_note')
                         })
                         seen_formats.add(resolution)
-            
-            # Add audio only option
             formats.append({
                 'format_id': 'bestaudio/best',
                 'ext': 'mp3',
                 'resolution': 'Audio Only',
                 'note': 'best quality'
             })
+            
+            if len(formats) == 1: 
+                 formats.insert(0, {
+                    'format_id': 'bestvideo+bestaudio/best',
+                    'ext': 'mp4',
+                    'resolution': 'Best Available',
+                    'filesize': None,
+                    'note': 'best quality'
+                })
             
             return formats
 
@@ -113,13 +120,9 @@ class VideoDownloaderService:
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            # Return absolute path of the downloaded file
-            # For playlists this might return the last file or be complex, 
-            # but for single video:
             if 'requested_downloads' in info:
                 return info['requested_downloads'][0]['filepath']
             else:
-                 # Fallback/estimate
                  filename = ydl.prepare_filename(info)
                  if format_id == 'bestaudio/best':
                      filename = os.path.splitext(filename)[0] + '.mp3'

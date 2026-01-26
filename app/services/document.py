@@ -11,7 +11,7 @@ from ..utils.exceptions import (
 
 class DocumentConverter(BaseConverter):
     INPUT_FORMATS = {'pdf', 'md'}
-    OUTPUT_FORMATS = {'docx', 'txt', 'pdf'}  # pdf_ocr disabled - OCR not working
+    OUTPUT_FORMATS = {'docx', 'txt', 'pdf', 'pdf_ocr'}
     
     def convert(
         self,
