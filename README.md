@@ -23,7 +23,7 @@
 | 📺 **YouTube Downloader** | Direct browser download, playlist support, quality selection & realtime progress |
 | 🖼️ **Image Conversion** | PNG, JPG, WEBP, GIF, BMP, TIFF, HEIC, ICO support |
 | 📄 **Document Conversion** | PDF to DOCX with layout preservation |
-| 🔍 **OCR (AI-Powered)** | PaddleOCR with 35+ languages — works completely offline |
+| 🔍 **OCR (AI-Powered)** | LightOnOCR (2-1B) — state-of-the-art vision-language model |
 | 📦 **Smart Compression** | Reduce file sizes with minimal quality loss using target size |
 | 📁 **Batch Processing** | Convert multiple files at once with drag & drop |
 | ⚡ **Optimized Performance** | Smart caching for invalid files & multi-core processing support |
@@ -31,7 +31,7 @@
 | 🌙 **Dark/Light Mode** | Beautiful UI with theme switching |
 | 🔒 **100% Local** | All processing happens on your machine — no data leaves |
 
-> ⚠️ **Note:** OCR functionality is temporarily disabled due to CUDA/GPU compatibility issues that prevent proper testing. This feature will be enabled in an upcoming update once the dependencies are resolved.
+
 
 ---
 
@@ -46,7 +46,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/OmniConv.git
+git clone https://github.com/PanPeryskop/OmniConv
 cd OmniConv
 
 # Create virtual environment
@@ -111,7 +111,7 @@ http://localhost:5000
 |-------|--------|
 | PDF, DOCX, DOC, TXT, RTF, ODT, XLS, XLSX, MD | DOCX, PDF, TXT |
 
-> 🔍 **OCR Languages:** English, Polish, German, French, Spanish, Chinese, Japanese, Korean, Arabic, Russian, and 25+ more!
+> 🔍 **OCR Model:** Uses LightOnOCR-2-1B for high-accuracy text extraction from images and PDFs.
 
 </details>
 
@@ -122,7 +122,7 @@ http://localhost:5000
 | Technology | Purpose |
 |------------|---------|
 | **Flask** | Web framework |
-| **PaddleOCR** | AI-powered text recognition (faster than Tesseract) |
+| **Transformers** | LightOnOCR model for advanced text recognition |
 | **MoviePy** | Video processing |
 | **Pydub** | Audio processing |
 | **Pillow** | Image processing |
