@@ -47,7 +47,7 @@ def create_tray_icon():
     return icon
 
 if __name__ == '__main__':
-    # threading.Timer(1.5, open_browser).start()
+    threading.Timer(1.5, open_browser).start()
     
     socketio = app.socketio
     
