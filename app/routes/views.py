@@ -22,11 +22,6 @@ def batch():
     return render_template('batch.html')
 
 
-@views_bp.route('/history')
-def history():
-    return render_template('history.html')
-
-
 @views_bp.route('/compress')
 def compress():
     return render_template('compress.html')

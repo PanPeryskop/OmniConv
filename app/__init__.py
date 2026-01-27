@@ -5,6 +5,20 @@ from flask_cors import CORS
 from .config import Config
 
 
+def cleanup_folder(folder_path):
+    if os.path.exists(folder_path):
+        for filename in os.listdir(folder_path):
+            file_path = os.path.join(folder_path, filename)
+            try:
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    import shutil
+                    shutil.rmtree(file_path)
+            except:
+                pass
+
+
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
@@ -14,6 +28,9 @@ def create_app(config_class=Config):
     from .routes.websocket import init_socketio
     socketio = init_socketio(app)
     app.socketio = socketio
+    
+    cleanup_folder(app.config['UPLOAD_FOLDER'])
+    cleanup_folder(app.config['OUTPUT_FOLDER'])
     
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
