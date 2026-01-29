@@ -223,9 +223,9 @@ def get_output_formats_for_type(file_type: str) -> list:
     elif file_type == 'video':
         return sorted(VideoConverter.get_supported_output_formats())
     elif file_type == 'image':
-        return sorted(ImageConverter.get_supported_output_formats())
+        return sorted(['png', 'jpg', 'jpeg', 'webp', 'ico', 'ocr-pdf', 'ocr-docx', 'ocr-txt', 'ocr-md', 'ocr-html'])
     elif file_type == 'document':
-        return sorted(DocumentConverter.get_supported_output_formats())
+        return sorted(['pdf', 'docx', 'ocr-docx', 'txt', 'ocr-txt', 'md', 'ocr-md', 'ocr-pdf', 'html', 'ocr-html'])
     return []
 
 
@@ -261,7 +261,12 @@ def start_conversion():
         return api_response(error={'type': 'UnsupportedFormatError', 'message': f'Format {output_format} not available'}, success=False), 400
     
     output_folder = current_app.config['OUTPUT_FOLDER']
-    output_path = get_output_path(output_folder, job['original_filename'], output_format)
+    
+    target_extension = output_format
+    if output_format.lower().startswith('ocr-'):
+        target_extension = output_format[4:]
+        
+    output_path = get_output_path(output_folder, job['original_filename'], target_extension)
     
     job_id = generate_file_id()
     
@@ -284,23 +289,46 @@ def start_conversion():
 
 
 def run_conversion(job, output_format, options, progress_callback):
+    print(f"DEBUG: run_conversion started for {job['job_id']} format={output_format} type={job['file_type']}")
+    file_type = job['file_type']
+    
+    if output_format.startswith('ocr-'):
+        options['force_ocr'] = True
+        output_format = output_format[4:]
+        print(f"DEBUG: Force OCR enabled, new format={output_format}")
+    
     try:
-        file_type = job['file_type']
         input_path = job['input_path']
         output_path = job['output_path']
         
+        print(f"DEBUG: Selecting converter for {file_type}...")
         if file_type == 'audio':
             converter = AudioConverter(progress_callback)
         elif file_type == 'video':
             converter = VideoConverter(progress_callback)
         elif file_type == 'image':
-            converter = ImageConverter(progress_callback)
+            if output_format in ['txt', 'docx', 'md', 'html'] or (output_format == 'pdf' and options.get('force_ocr')):
+                print("DEBUG: Using OCRService for image")
+                try:
+                    converter = OCRService(progress_callback)
+                    print("DEBUG: OCRService instantiated success")
+                except Exception as ie:
+                    print(f"DEBUG: OCRService init failed: {ie}")
+                    raise ie
+            else:
+                converter = ImageConverter(progress_callback)
         elif file_type == 'document':
-            converter = DocumentConverter(progress_callback)
+            if options.get('force_ocr'):
+                print("DEBUG: Using OCRService for document")
+                converter = OCRService(progress_callback)
+            else:
+                converter = DocumentConverter(progress_callback)
         else:
             raise UnsupportedFormatError(file_type)
         
+        print(f"DEBUG: Starting converter.convert...")
         result_path = converter.convert(input_path, output_path, output_format, options)
+        print(f"DEBUG: Convert finished, result={result_path}")
         
         job['status'] = 'completed'
         job['progress'] = 100
@@ -537,3 +565,19 @@ def run_compression(job, target_size_mb, progress_callback):
 def handle_file_too_large(e):
     max_size = current_app.config.get('MAX_CONTENT_LENGTH', 0) / (1024 * 1024)
     return api_response(error={'type': 'FileTooLargeError', 'message': f'File exceeds maximum size of {max_size:.0f}MB'}, success=False), 413
+@api_bp.route('/chat', methods=['POST'])
+def chat():
+    data = request.get_json()
+    if not data or 'message' not in data:
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'Message required'}, success=False), 400
+        
+    message = data.get('message')
+    response_id = data.get('response_id')
+    
+    try:
+        from ..services.llm import LLMService
+        llm = LLMService()
+        result = llm.chat_with_context(message, response_id)
+        return api_response(data=result)
+    except Exception as e:
+        return api_response(error={'type': 'ChatError', 'message': str(e)}, success=False), 500

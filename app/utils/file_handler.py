@@ -18,7 +18,7 @@ FILE_TYPE_MAP = {
     'jpg': 'image', 'jpeg': 'image', 'png': 'image', 'gif': 'image',
     'bmp': 'image', 'tiff': 'image', 'tif': 'image', 'webp': 'image',
     'ico': 'image', 'heic': 'image', 'heif': 'image',
-    'pdf': 'document', 'md': 'document'
+    'pdf': 'document', 'md': 'document', 'markdown': 'document'
 }
 
 

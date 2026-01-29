@@ -91,6 +91,56 @@
         </div>
     </div>
 
+    <div class="video-options hidden" id="ocrOptions">
+        <h3 class="section-label">OCR Engine</h3>
+        <div class="preset-selector">
+            <select id="ocrSelect" class="preset-dropdown">
+                <option value="lighton" selected>LightOn (Fast, Raw)</option>
+                <option value="qwen">Qwen 3-VL (Best Quality, Slower)</option>
+                <option value="lighton_mistral">LightOn + Mistral (Fast + AI Correction)</option>
+            </select>
+            
+            <div id="ocrThemeContainer" class="hidden" style="margin-top: var(--space-2);">
+                 <select id="ocrThemeSelect" class="preset-dropdown">
+                    <option value="light" selected>Light Theme (Standard)</option>
+                    <option value="dark">Dark Theme (Night Mode)</option>
+                </select>
+                </select>
+            </div>
+            
+            <div id="ocrCssContainer" class="hidden" style="margin-top: var(--space-4); border-top: 1px solid var(--border-subtle); padding-top: var(--space-2);">
+                <div class="checkbox-wrapper" style="margin-bottom: var(--space-2);">
+                    <input type="checkbox" id="ocrLimitCss" class="custom-checkbox">
+                    <label for="ocrLimitCss">Limit CSS Length</label>
+                </div>
+                
+                <div id="ocrCssSliderContainer" class="hidden" style="padding-left: var(--space-4);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span class="text-xs text-muted">Concise</span>
+                        <span class="text-xs text-muted">Detailed</span>
+                    </div>
+                    <input type="range" id="ocrCssLength" min="200" max="2000" step="100" value="1000" style="width: 100%;">
+                    <div class="text-xs text-right text-muted" id="ocrCssValueDisplay">Max ~1000 chars</div>
+                </div>
+            </div>
+            <p class="preset-hint">Choose your preferred text extraction engine</p>
+            <button class="btn btn-primary" id="startOCRConversion" style="margin-top: var(--space-4);">
+                <svg viewBox="0 0 24 24" style="width: 18px; height: 18px; margin-right: 8px;">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                Convert Document
+            </button>
+        </div>
+    </div>
+    
+    <div class="video-options hidden" id="aiOptions">
+        <!-- AI options removed as Qwen3-VL handles this natively -->
+    </div>
+
 <style>
 .video-options {
     margin-top: var(--space-4);
@@ -237,7 +287,7 @@
             </svg>
         </div>
         <h3 class="feature-title">Documents</h3>
-        <p class="feature-description">PDF to DOCX, Powered by LightOnOCR-2-1B</p>
+        <p class="feature-description">PDF to DOCX, Powered by Qwen3-VL</p>
     </div>
 </section>
 {% endblock %}

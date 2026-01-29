@@ -490,12 +490,32 @@ document.addEventListener('DOMContentLoaded', () => {
     function showSettings() {
         els.settings.classList.remove('hidden');
         
-        const maxTarget = Math.max(1, Math.floor(state.originalSizeMB * 0.9));
-        const defaultTarget = Math.min(10, maxTarget);
+        const originalMB = state.originalSizeMB;
         
-        els.slider.max = Math.min(100, Math.ceil(state.originalSizeMB));
+        // Adapt slider limits to file size
+        // Min: 10% of original size, or 0.01MB minimum
+        const minVal = parseFloat(Math.max(0.01, originalMB * 0.1).toFixed(2));
+        // Max: Original size
+        const maxVal = parseFloat(originalMB.toFixed(2));
+        
+        els.slider.min = minVal;
+        els.slider.max = maxVal;
+        
+        // Adapt step size based on scale
+        if (originalMB > 500) els.slider.step = 5;
+        else if (originalMB > 100) els.slider.step = 1;
+        else if (originalMB > 10) els.slider.step = 0.5;
+        else els.slider.step = 0.1;
+        
+        const defaultTarget = parseFloat((originalMB * 0.6).toFixed(2));
         els.slider.value = defaultTarget;
         state.targetSizeMB = defaultTarget;
+        
+        const labels = els.settings.querySelectorAll('.slider-labels span');
+        if (labels.length >= 2) {
+            labels[0].textContent = minVal + ' MB';
+            labels[1].textContent = maxVal + ' MB';
+        }
         
         updateSlider();
         updateSizeInfo();

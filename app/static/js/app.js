@@ -63,8 +63,98 @@ const ui = {
     themeToggle: document.getElementById('themeToggle'),
     videoOptions: document.getElementById('videoOptions'),
     presetSelect: document.getElementById('presetSelect'),
-    startVideoConversion: document.getElementById('startVideoConversion')
+    startVideoConversion: document.getElementById('startVideoConversion'),
+    ocrOptions: document.getElementById('ocrOptions'),
+    ocrSelect: document.getElementById('ocrSelect'),
+    ocrThemeContainer: document.getElementById('ocrThemeContainer'),
+    ocrThemeSelect: document.getElementById('ocrThemeSelect'),
+    startOCRConversion: document.getElementById('startOCRConversion'),
+    aiOptions: document.getElementById('aiOptions'),
+    useLLM: document.getElementById('useLLM'),
+    startAIConversion: document.getElementById('startAIConversion'),
+    ocrCssContainer: document.getElementById('ocrCssContainer'),
+    ocrLimitCss: document.getElementById('ocrLimitCss'),
+    ocrCssSliderContainer: document.getElementById('ocrCssSliderContainer'),
+    ocrCssLength: document.getElementById('ocrCssLength'),
+    ocrCssValueDisplay: document.getElementById('ocrCssValueDisplay')
 };
+
+// ... existing code ...
+
+function initEventListeners() {
+    if (ui.themeToggle) ui.themeToggle.addEventListener('click', toggleTheme);
+    if (ui.removeFile) ui.removeFile.addEventListener('click', resetApp);
+    if (ui.convertAnother) ui.convertAnother.addEventListener('click', resetApp);
+    if (ui.tryAgain) ui.tryAgain.addEventListener('click', resetApp);
+    if (ui.startVideoConversion) ui.startVideoConversion.addEventListener('click', confirmVideoConversion);
+    if (ui.startOCRConversion) ui.startOCRConversion.addEventListener('click', confirmOCRConversion);
+    if (ui.startAIConversion) ui.startAIConversion.addEventListener('click', () => startConversion(appState.selectedFormat));
+    
+    // OCR Engine Change Listener
+    // OCR Engine Change Listener
+    if (ui.ocrSelect) {
+        const updateThemeVisibility = () => {
+            const container = document.getElementById('ocrThemeContainer');
+            const val = ui.ocrSelect.value;
+            console.log('OCR Engine:', val);
+            
+            if (container) {
+                const cssContainer = document.getElementById('ocrCssContainer');
+                if (val === 'qwen' || val === 'lighton_mistral') {
+                    container.classList.remove('hidden');
+                    if (cssContainer) cssContainer.classList.remove('hidden');
+                    console.log('Showing theme container');
+                } else {
+                    container.classList.add('hidden');
+                    if (cssContainer) cssContainer.classList.add('hidden');
+                    console.log('Hiding theme container');
+                }
+            }
+        };
+
+        ui.ocrSelect.addEventListener('change', updateThemeVisibility);
+        
+        // CSS Limit Logic
+        if (ui.ocrLimitCss && ui.ocrCssLength && ui.ocrCssValueDisplay) {
+            ui.ocrLimitCss.addEventListener('change', (e) => {
+               if (e.target.checked) {
+                   ui.ocrCssSliderContainer.classList.remove('hidden');
+               } else {
+                   ui.ocrCssSliderContainer.classList.add('hidden');
+               }
+            });
+            
+            ui.ocrCssLength.addEventListener('input', (e) => {
+                ui.ocrCssValueDisplay.textContent = `Max ~${e.target.value} chars`;
+            });
+        }
+        
+        // Init state immediately
+        updateThemeVisibility();
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'u') {
+            e.preventDefault();
+            switchTab('upload');
+            ui.fileInput.click();
+        }
+        if (e.ctrlKey && e.key === 'Enter') {
+            if (appState.currentFileId && !appState.isConverting) {
+                if (appState.selectedFormat) startConversion(appState.selectedFormat);
+            }
+        }
+        if (e.key === 'Escape') {
+            if (appState.isConverting) {
+                if (!ui.errorMessage.classList.contains('hidden')) resetApp();
+                if (!ui.videoOptions.classList.contains('hidden')) ui.videoOptions.classList.add('hidden');
+                if (!ui.aiOptions.classList.contains('hidden')) ui.aiOptions.classList.add('hidden');
+            } else {
+                if (appState.currentFileId) resetApp();
+            }
+        }
+    });
+}
 
 function initTheme() {
     const savedTheme = localStorage.getItem('theme-preference') || 'dark';
@@ -235,18 +325,32 @@ function showFormatSelection(formats) {
 }
 
 async function selectFormat(format, button) {
+    console.log('Format selected:', format);
     document.querySelectorAll('.format-option').forEach(btn => btn.classList.remove('active'));
     button.classList.add('active');
     appState.selectedFormat = format;
     
+    if (ui.videoOptions) ui.videoOptions.classList.add('hidden');
+    if (ui.aiOptions) ui.aiOptions.classList.add('hidden');
+    if (ui.ocrOptions) ui.ocrOptions.classList.add('hidden');
+
     const videoOutputFormats = ['mp4', 'webm', 'avi', 'mkv', 'mov'];
+    const ocrOutputFormats = ['pdf', 'docx', 'md', 'txt', 'html', 'ocr-pdf', 'ocr-docx', 'ocr-md', 'ocr-txt', 'ocr-html'];
+
     if (appState.fileType === 'video' && videoOutputFormats.includes(format.toLowerCase())) {
         if (ui.videoOptions) {
             ui.videoOptions.classList.remove('hidden');
             ui.videoOptions.classList.add('animate-slide');
         }
+    } else if (ocrOutputFormats.includes(format.toLowerCase())) {
+        if (ui.ocrOptions) {
+            ui.ocrOptions.classList.remove('hidden');
+            ui.ocrOptions.classList.add('animate-slide');
+        } else {
+             setTimeout(() => startConversion(format), 300);
+        }
     } else {
-        if (ui.videoOptions) ui.videoOptions.classList.add('hidden');
+        console.log('Immediate conversion triggered for:', format);
         setTimeout(() => startConversion(format), 300);
     }
 }
@@ -255,23 +359,48 @@ function confirmVideoConversion() {
     startConversion(appState.selectedFormat);
 }
 
+function confirmOCRConversion() {
+    startConversion(appState.selectedFormat);
+}
+
 async function startConversion(format) {
+    console.log('startConversion called for:', format, 'isConverting:', appState.isConverting);
     if (appState.isConverting) return;
+    
+    // Capture options BEFORE hiding UI elements
+    const options = {};
+    if (appState.fileType === 'video' && ui.presetSelect && ui.videoOptions && !ui.videoOptions.classList.contains('hidden')) {
+        options.preset = ui.presetSelect.value;
+    }
+    if (ui.ocrSelect && ui.ocrOptions && !ui.ocrOptions.classList.contains('hidden')) {
+        options.ocr_engine = ui.ocrSelect.value;
+        if (ui.ocrThemeSelect && !ui.ocrThemeContainer.classList.contains('hidden')) {
+            options.ocr_theme = ui.ocrThemeSelect.value;
+        }
+        // Capture CSS Limit
+        if (ui.ocrLimitCss && ui.ocrLimitCss.checked && !ui.ocrCssContainer.classList.contains('hidden')) {
+            options.css_limit_enabled = true;
+            options.css_limit_value = ui.ocrCssLength.value;
+        }
+        console.log('DEBUG: OCR Options captured:', options.ocr_engine, options.ocr_theme, options.css_limit_enabled);
+    }
+    if (ui.useLLM && ui.useLLM.checked) {
+        options.use_llm = true;
+    }
+
     appState.isConverting = true;
     
     ui.formatSelection.classList.add('hidden');
     ui.fileInfo.classList.add('hidden');
     if (ui.videoOptions) ui.videoOptions.classList.add('hidden');
+    if (ui.aiOptions) ui.aiOptions.classList.add('hidden');
+    if (ui.ocrOptions) ui.ocrOptions.classList.add('hidden');
     ui.conversionProgress.classList.remove('hidden');
     ui.conversionProgress.classList.add('animate-scale');
     
     updateConversionProgress(0, 'Starting conversion...');
     
     try {
-        const options = {};
-        if (appState.fileType === 'video' && ui.presetSelect) {
-            options.preset = ui.presetSelect.value;
-        }
         const result = await api.startConversion(appState.currentFileId, format, options);
         if (!result.success) throw new Error(result.error?.message || 'Conversion failed to start');
         appState.currentJobId = result.data.job_id;
@@ -365,41 +494,17 @@ function resetApp() {
     ui.formatSelection.classList.add('hidden');
     ui.conversionProgress.classList.add('hidden');
     ui.downloadSection.classList.add('hidden');
+    ui.downloadSection.classList.add('hidden');
     if (ui.videoOptions) ui.videoOptions.classList.add('hidden');
+    if (ui.aiOptions) ui.aiOptions.classList.add('hidden');
+    if (ui.useLLM) ui.useLLM.checked = false;
     ui.errorMessage.classList.add('hidden');
     ui.fileInput.value = '';
     ui.progressFill.style.width = '0%';
     ui.conversionFill.style.width = '0%';
 }
 
-function initEventListeners() {
-    if (ui.themeToggle) ui.themeToggle.addEventListener('click', toggleTheme);
-    if (ui.removeFile) ui.removeFile.addEventListener('click', resetApp);
-    if (ui.convertAnother) ui.convertAnother.addEventListener('click', resetApp);
-    if (ui.tryAgain) ui.tryAgain.addEventListener('click', resetApp);
-    if (ui.startVideoConversion) ui.startVideoConversion.addEventListener('click', confirmVideoConversion);
-    
-    document.addEventListener('keydown', (e) => {
-        if (e.ctrlKey && e.key === 'u') {
-            e.preventDefault();
-            switchTab('upload');
-            ui.fileInput.click();
-        }
-        if (e.ctrlKey && e.key === 'Enter') {
-            if (appState.currentFileId && !appState.isConverting) {
-                if (appState.selectedFormat) startConversion(appState.selectedFormat);
-            }
-        }
-        if (e.key === 'Escape') {
-            if (appState.isConverting) {
-                if (!ui.errorMessage.classList.contains('hidden')) resetApp();
-                if (!ui.videoOptions.classList.contains('hidden')) ui.videoOptions.classList.add('hidden');
-            } else {
-                if (appState.currentFileId) resetApp();
-            }
-        }
-    });
-}
+
 
 function init() {
     initTheme();

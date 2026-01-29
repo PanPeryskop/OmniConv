@@ -111,7 +111,10 @@ http://localhost:5000
 |-------|--------|
 | PDF, DOCX, DOC, TXT, RTF, ODT, XLS, XLSX, MD | DOCX, PDF, TXT |
 
-> 🔍 **OCR Model:** Uses LightOnOCR-2-1B for high-accuracy text extraction from images and PDFs.
+> 🔍 **OCR Engine Options:**
+> - **Qwen 3-VL:** State-of-the-art multimodal AI (high accuracy, slower).
+> - **LightOn (PaddleOCR):** Fast, local OCR engine for raw text extraction.
+> - **LightOn + Mistral:** Combines fast PaddleOCR extraction with Mistral 3-3B for smart text correction.
 
 </details>
 

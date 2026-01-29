@@ -117,13 +117,18 @@ function displayInfo(data) {
     
     document.getElementById('videoTitle').textContent = data.title;
     document.getElementById('uploader').textContent = data.uploader;
-    document.getElementById('thumbnail').src = data.thumbnail;
+    if (data.thumbnail) {
+        document.getElementById('thumbnail').src = data.thumbnail;
+        document.getElementById('thumbnail').style.display = 'block';
+    } else {
+        document.getElementById('thumbnail').style.display = 'none';
+    }
     
     if (data.is_playlist) {
         document.getElementById('playlistInfo').style.display = 'block';
         document.getElementById('playlistCount').textContent = `${data.entries.length} videos`;
-        document.getElementById('formatSection').style.display = 'none'; // Simplify for playlist initially
-        selectedFormat = 'best'; // Default for playlist
+        document.getElementById('formatSection').style.display = 'none'; 
+        selectedFormat = 'best'; 
         document.getElementById('downloadBtn').disabled = false;
     } else {
         document.getElementById('playlistInfo').style.display = 'none';
@@ -143,7 +148,6 @@ function renderFormats(formats) {
         container.appendChild(el);
     });
 
-    // Auto-select first option (usually best)
     if (formats.length > 0) {
         ytSelectFormat(formats[0].format_id, container.children[0]);
     }
@@ -164,7 +168,7 @@ async function startDownload() {
         document.getElementById('videoInfo').style.display = 'none';
         
         const statusArea = document.getElementById('statusArea');
-        statusArea.className = 'conversion-status'; // Reset class
+        statusArea.className = 'conversion-status'; 
         document.getElementById('statusMessage').textContent = 'Starting...';
         
         ytUpdateProgress(0);

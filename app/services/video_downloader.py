@@ -94,6 +94,15 @@ class VideoDownloaderService:
             'no_warnings': True,
             'ffmpeg_location': os.path.dirname(ffmpeg_path) if 'ffmpeg.exe' in ffmpeg_path else None,
             'overwrites': True,
+            'noplaylist': True,
+            'force_ipv4': True,
+            'geo_bypass': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Referer': 'https://www.youtube.com/',
+            }
         }
         
         if progress_hook:
@@ -113,11 +122,6 @@ class VideoDownloaderService:
         else:
             ydl_opts['format'] = 'bestvideo+bestaudio/best'
         
-        if is_playlist:
-            ydl_opts['yes_playlist'] = True
-        else:
-            ydl_opts['noplaylist'] = True
-
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             if 'requested_downloads' in info:
@@ -127,3 +131,59 @@ class VideoDownloaderService:
                  if format_id == 'bestaudio/best':
                      filename = os.path.splitext(filename)[0] + '.mp3'
                  return filename
+
+    def download_playlist(self, url: str, format_id: str = None, progress_hook=None) -> List[str]:
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        ffmpeg_path = os.path.join(base_dir, 'dist', 'OmniConv', 'ffmpeg', 'ffmpeg.exe')
+
+        if not os.path.exists(ffmpeg_path):
+            ffmpeg_path = 'ffmpeg'
+            
+        playlist_folder = os.path.join(self.download_path, f"playlist_{int(os.path.getmtime(self.download_path))}")
+        os.makedirs(playlist_folder, exist_ok=True)
+
+        ydl_opts = {
+            'outtmpl': os.path.join(playlist_folder, '%(title)s.%(ext)s'),
+            'quiet': True,
+            'no_warnings': True,
+            'ffmpeg_location': os.path.dirname(ffmpeg_path) if 'ffmpeg.exe' in ffmpeg_path else None,
+            'overwrites': True,
+            'yes_playlist': True,
+            'ignoreerrors': True,
+            'force_ipv4': True,
+            'geo_bypass': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Referer': 'https://www.youtube.com/',
+            }
+        }
+
+        if progress_hook:
+            ydl_opts['progress_hooks'] = [progress_hook]
+
+        if format_id == 'bestaudio/best':
+            ydl_opts.update({
+                'format': 'bestaudio/best',
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }],
+            })
+        elif format_id:
+             ydl_opts['format'] = f"{format_id}+bestaudio/best" if format_id != 'best' else 'bestvideo+bestaudio/best'
+        else:
+            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.extract_info(url, download=True)
+            
+        final_files = []
+        for f in os.listdir(playlist_folder):
+            full_path = os.path.join(playlist_folder, f)
+            if os.path.isfile(full_path) and not f.endswith(('.part', '.ytdl')):
+                final_files.append(full_path)
+
+        return final_files

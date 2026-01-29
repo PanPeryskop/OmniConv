@@ -1,6 +1,160 @@
 {
-    "total_conversions": 0,
-    "total_size_saved_mb": 0,
-    "formats": {},
-    "recent_activity": []
+    "total_conversions": 28,
+    "total_size_saved_mb": 109.99837112426758,
+    "formats": {
+        "gif->compressed": 1,
+        "pdf->pdf_ocr": 1,
+        "pdf->txt": 1,
+        "png->pdf_ocr": 1,
+        "png->md": 6,
+        "png->pdf": 3,
+        "png->html": 8,
+        "png->docx": 3,
+        "jpg->html": 1,
+        "pdf->pdf": 1,
+        "png->webp": 1,
+        "png->jpeg": 1
+    },
+    "recent_activity": [
+        {
+            "timestamp": "2026-01-29T18:39:54.139764",
+            "type": "conversion",
+            "details": "png->jpeg"
+        },
+        {
+            "timestamp": "2026-01-29T18:38:09.221747",
+            "type": "conversion",
+            "details": "png->html"
+        },
+        {
+            "timestamp": "2026-01-29T18:11:52.033922",
+            "type": "conversion",
+            "details": "png->webp"
+        },
+        {
+            "timestamp": "2026-01-29T18:04:14.177284",
+            "type": "conversion",
+            "details": "png->html"
+        },
+        {
+            "timestamp": "2026-01-29T17:44:41.977099",
+            "type": "conversion",
+            "details": "png->md"
+        },
+        {
+            "timestamp": "2026-01-29T17:41:52.816832",
+            "type": "conversion",
+            "details": "png->pdf"
+        },
+        {
+            "timestamp": "2026-01-29T17:07:05.725160",
+            "type": "conversion",
+            "details": "png->docx"
+        },
+        {
+            "timestamp": "2026-01-29T17:04:59.741750",
+            "type": "conversion",
+            "details": "png->docx"
+        },
+        {
+            "timestamp": "2026-01-29T16:59:14.458912",
+            "type": "conversion",
+            "details": "png->html"
+        },
+        {
+            "timestamp": "2026-01-29T16:46:06.709252",
+            "type": "conversion",
+            "details": "pdf->pdf"
+        },
+        {
+            "timestamp": "2026-01-29T16:23:41.849295",
+            "type": "conversion",
+            "details": "jpg->html"
+        },
+        {
+            "timestamp": "2026-01-29T16:21:01.738067",
+            "type": "conversion",
+            "details": "png->html"
+        },
+        {
+            "timestamp": "2026-01-29T16:20:27.805757",
+            "type": "conversion",
+            "details": "png->docx"
+        },
+        {
+            "timestamp": "2026-01-29T16:17:43.695315",
+            "type": "conversion",
+            "details": "png->html"
+        },
+        {
+            "timestamp": "2026-01-29T16:13:59.682858",
+            "type": "conversion",
+            "details": "png->html"
+        },
+        {
+            "timestamp": "2026-01-29T16:00:51.535565",
+            "type": "conversion",
+            "details": "png->html"
+        },
+        {
+            "timestamp": "2026-01-29T15:58:40.558423",
+            "type": "conversion",
+            "details": "png->pdf"
+        },
+        {
+            "timestamp": "2026-01-29T15:55:25.456738",
+            "type": "conversion",
+            "details": "png->html"
+        },
+        {
+            "timestamp": "2026-01-29T15:40:31.455937",
+            "type": "conversion",
+            "details": "png->md"
+        },
+        {
+            "timestamp": "2026-01-29T15:34:08.635891",
+            "type": "conversion",
+            "details": "png->pdf"
+        },
+        {
+            "timestamp": "2026-01-29T15:27:17.736132",
+            "type": "conversion",
+            "details": "png->md"
+        },
+        {
+            "timestamp": "2026-01-29T15:26:02.888827",
+            "type": "conversion",
+            "details": "png->md"
+        },
+        {
+            "timestamp": "2026-01-29T15:21:30.992595",
+            "type": "conversion",
+            "details": "png->md"
+        },
+        {
+            "timestamp": "2026-01-29T15:19:53.794535",
+            "type": "conversion",
+            "details": "png->md"
+        },
+        {
+            "timestamp": "2026-01-29T15:12:34.716030",
+            "type": "conversion",
+            "details": "png->pdf_ocr"
+        },
+        {
+            "timestamp": "2026-01-29T15:07:38.547197",
+            "type": "conversion",
+            "details": "pdf->txt"
+        },
+        {
+            "timestamp": "2026-01-29T14:59:50.784337",
+            "type": "conversion",
+            "details": "pdf->pdf_ocr"
+        },
+        {
+            "timestamp": "2026-01-27T14:57:17.583271",
+            "type": "conversion",
+            "details": "gif->compressed"
+        }
+    ]
 }

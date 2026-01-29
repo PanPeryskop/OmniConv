@@ -11,6 +11,8 @@ youtube_bp = Blueprint('youtube', __name__)
 # { job_id: { status: 'pending'|'downloading'|'completed'|'error', progress: int, filename: str, error: str, path: str } }
 JOBS = {}
 
+import shutil
+
 def background_download(job_id, app, url, format_id, is_playlist):
     with app.app_context():
         try:
@@ -30,34 +32,48 @@ def background_download(job_id, app, url, format_id, is_playlist):
                     except:
                         pass
                 elif d['status'] == 'finished':
-                    JOBS[job_id]['progress'] = 100 # Phase 1 done (download), might still merge
+                    JOBS[job_id]['progress'] = 100
 
-            file_path = service.download_video(url, format_id, is_playlist, progress_hook=progress_hook)
-            
-            # Verify file exists and is not empty
-            if not file_path or not os.path.exists(file_path):
-                raise Exception("Download failed: File not found")
-            
-            if os.path.getsize(file_path) == 0:
-                # Try to remove empty file
-                try: 
-                    os.remove(file_path)
-                except: 
-                    pass
-                raise Exception("Download failed: File is empty")
+            if is_playlist:
+                files = service.download_playlist(url, format_id, progress_hook=progress_hook)
+                
+                if not files:
+                    raise Exception("Download failed: No files found in playlist")
+                
+                playlist_dir = os.path.dirname(files[0])
+                playlist_name = os.path.basename(playlist_dir)
+                zip_path = shutil.make_archive(playlist_dir, 'zip', playlist_dir)
+                
+                shutil.rmtree(playlist_dir) 
+                
+                JOBS[job_id]['status'] = 'completed'
+                JOBS[job_id]['progress'] = 100
+                JOBS[job_id]['path'] = zip_path
+                JOBS[job_id]['filename'] = os.path.basename(zip_path)
+                
+            else:
+                file_path = service.download_video(url, format_id, is_playlist, progress_hook=progress_hook)
+                
+                if not file_path or not os.path.exists(file_path):
+                    raise Exception("Download failed: File not found")
+                
+                if os.path.getsize(file_path) == 0:
+                    try: 
+                        os.remove(file_path)
+                    except: 
+                        pass
+                    raise Exception("Download failed: File is empty")
 
-            JOBS[job_id]['status'] = 'completed'
-            JOBS[job_id]['progress'] = 100
-            JOBS[job_id]['path'] = file_path
-            JOBS[job_id]['filename'] = os.path.basename(file_path)
+                JOBS[job_id]['status'] = 'completed'
+                JOBS[job_id]['progress'] = 100
+                JOBS[job_id]['path'] = file_path
+                JOBS[job_id]['filename'] = os.path.basename(file_path)
             
         except Exception as e:
             msg = str(e)
-            # Remove ANSI color codes
             import re
             ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
             msg = ansi_escape.sub('', msg)
-            # Remove common prefixes
             msg = msg.replace('ERROR:', '').strip()
             
             print(f"Job {job_id} failed: {msg}") 
