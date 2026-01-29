@@ -139,7 +139,7 @@ class LLMService:
             print(f"LLM Image generation failed: {str(e)}")
             raise e
 
-    def chat_with_context(self, message: str, previous_response_id: str = None) -> dict:
+    def chat_with_context(self, message: str, previous_response_id: str = None):
         system_msg = None
         if not previous_response_id:
             context = self._get_project_context()
@@ -154,9 +154,21 @@ class LLMService:
 
         payload = {
             "model": "mistralai/ministral-3-3b", 
+            "messages": [
+                {"role": "system", "content": system_msg} if system_msg else None,
+                {"role": "user", "content": message}
+            ],
+            "temperature": 0.7,
+            "stream": True
+        }
+        payload["messages"] = [m for m in payload["messages"] if m]
+        
+
+        payload = {
+            "model": "mistralai/ministral-3-3b", 
             "input": message,
             "temperature": 0.7,
-            "stream": False,
+            "stream": True,
             "store": True
         }
         
@@ -167,20 +179,36 @@ class LLMService:
             payload["previous_response_id"] = previous_response_id
 
         try:
-            result = self._send_request(payload)
-            response_text = ""
-            response_id = result.get('response_id')
-            
-            if 'output' in result:
-                for item in result['output']:
-                    if item.get('type') == 'message':
-                        response_text = item['content']
-                        break
-            
-            return {"response": response_text, "response_id": response_id}
-            
+            with requests.post(self.api_url, json=payload, stream=True, timeout=1800) as response:
+                response.raise_for_status()
+                
+                for line in response.iter_lines():
+                    if line:
+                        line = line.decode('utf-8')
+                        if line.startswith("data: "):
+                            json_str = line[6:]
+                            if json_str.strip() == "[DONE]":
+                                break
+                            try:
+                                data = json.loads(json_str)
+\
+                                
+                                content = ""
+                                if "choices" in data:
+                                    delta = data["choices"][0].get("delta", {})
+                                    content = delta.get("content", "")
+                                    
+                                if not content and "content" in data:
+                                    content = data["content"]
+                                    
+                                if content:
+                                    yield content
+                                    
+                            except json.JSONDecodeError:
+                                pass
+                                
         except Exception as e:
-            return {"response": f"Error: {str(e)}", "response_id": previous_response_id}
+            yield f"Error: {str(e)}"
 
     def _get_project_context(self) -> str:
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

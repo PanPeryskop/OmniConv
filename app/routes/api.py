@@ -1,6 +1,6 @@
 import os
 import threading
-from flask import Blueprint, request, jsonify, send_file, current_app
+from flask import Blueprint, request, jsonify, send_file, current_app, Response, stream_with_context
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from ..utils.file_handler import (
@@ -577,7 +577,13 @@ def chat():
     try:
         from ..services.llm import LLMService
         llm = LLMService()
-        result = llm.chat_with_context(message, response_id)
-        return api_response(data=result)
+        
+        # Generator for streaming response
+        def generate():
+            for chunk in llm.chat_with_context(message, response_id):
+                yield chunk
+                
+        return Response(stream_with_context(generate()), mimetype='text/plain')
+        
     except Exception as e:
         return api_response(error={'type': 'ChatError', 'message': str(e)}, success=False), 500

@@ -29,7 +29,8 @@ document.addEventListener('DOMContentLoaded', () => {
         input.value = '';
 
         const loadingId = addLoadingIndicator();
-
+        let botMessageDiv = null;
+        
         try {
             const response = await fetch('/api/chat', {
                 method: 'POST',
@@ -40,21 +41,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
 
-            const data = await response.json();
-            
-            removeLoadingIndicator(loadingId);
+            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
 
-            if (data.success) {
-                const result = data.data;
-                currentResponseId = result.response_id;
-                addMessage(result.response || "No response text.", 'bot');
-            } else {
-                addMessage("Error: " + (data.error?.message || "Unknown error"), 'bot');
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let accumulatedText = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                // On first chunk received
+                if (!botMessageDiv) {
+                    removeLoadingIndicator(loadingId);
+                    botMessageDiv = addMessage('', 'bot');
+                }
+
+                const chunk = decoder.decode(value, { stream: true });
+                accumulatedText += chunk;
+                botMessageDiv.innerHTML = parseMarkdown(accumulatedText);
+                scrollToBottom();
+            }
+            
+            // If stream finished empty (unlikely but possible)
+            if (!botMessageDiv) {
+                 removeLoadingIndicator(loadingId);
+                 addMessage("No response.", 'bot');
             }
 
         } catch (error) {
             removeLoadingIndicator(loadingId);
-            addMessage("Network Error: " + error.message, 'bot');
+            if (!botMessageDiv) botMessageDiv = addMessage('', 'bot');
+            botMessageDiv.innerHTML += `<div style="color: #ff6b6b; margin-top: 5px;">Error: ${error.message}</div>`;
         }
     }
 
@@ -75,6 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         messagesContainer.appendChild(div);
         scrollToBottom();
+        return div;
     }
 
     function addLoadingIndicator() {
