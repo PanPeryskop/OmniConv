@@ -96,11 +96,13 @@ function initEventListeners() {
         const updateThemeVisibility = () => {
             const container = document.getElementById('ocrThemeContainer');
             const val = ui.ocrSelect.value;
-            console.log('OCR Engine:', val);
+            const isHtmlFormat = appState.selectedFormat && (appState.selectedFormat.toLowerCase() === 'html' || appState.selectedFormat.toLowerCase() === 'ocr-html');
+            
+            console.log('OCR Engine:', val, 'Format:', appState.selectedFormat);
             
             if (container) {
                 const cssContainer = document.getElementById('ocrCssContainer');
-                if (val === 'qwen' || val === 'lighton_mistral') {
+                if ((val === 'qwen' || val === 'lighton_mistral') && isHtmlFormat) {
                     container.classList.remove('hidden');
                     if (cssContainer) cssContainer.classList.remove('hidden');
                     console.log('Showing theme container');
@@ -346,6 +348,11 @@ async function selectFormat(format, button) {
         if (ui.ocrOptions) {
             ui.ocrOptions.classList.remove('hidden');
             ui.ocrOptions.classList.add('animate-slide');
+            // Trigger visibility update in case format changed
+            if (ui.ocrSelect) { 
+                const event = new Event('change');
+                ui.ocrSelect.dispatchEvent(event);
+            }
         } else {
              setTimeout(() => startConversion(format), 300);
         }

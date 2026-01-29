@@ -20,7 +20,7 @@ class OCRService(BaseConverter):
                 
                 if engine == 'lighton_mistral':
                     self.report_progress(50)
-                    text = self.llm.correct_text(text)
+                    text = self.llm.correct_text(text, output_format)
                     
                     # If HTML requested, use LLM to format it with theme
                     if output_format in ['html', 'ocr-html']:

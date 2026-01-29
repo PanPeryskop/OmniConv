@@ -22,13 +22,22 @@ class LLMService:
             print(f"LLM request failed: {str(e)}")
             raise e
 
-    def correct_text(self, text: str) -> str:
+    def correct_text(self, text: str, output_format: str = 'txt') -> str:
         if not text or not text.strip():
             return text
 
+        system_prompt = "You are a specialized post-OCR text correction assistant. Fix OCR errors, typos, and formatting inconsistencies."
+        
+        if output_format in ['md', 'ocr-md']:
+            system_prompt += " Output valid Markdown. Use headers, lists, and tables where appropriate. Do NOT add CSS or HTML tags."
+        elif output_format in ['txt', 'ocr-txt', 'docx', 'ocr-docx', 'pdf', 'ocr-pdf']:
+            system_prompt += " Output ONLY plain text. Maintain original layout and spacing. Do NOT use Markdown or HTML."
+        else:
+            system_prompt += " Maintain original meaning and structure. Output ONLY the corrected text."
+
         payload = {
             "model": "mistralai/ministral-3-3b", 
-            "system_prompt": "You are a specialized post-OCR text correction assistant. Fix OCR errors, typos, and formatting inconsistencies. Maintain original meaning and structure. Output ONLY the corrected text.",
+            "system_prompt": system_prompt,
             "input": text,
             "temperature": 0.3,
             "stream": False
