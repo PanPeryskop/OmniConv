@@ -28,9 +28,13 @@ class LLMService:
 
         system_prompt = "You are a specialized post-OCR text correction assistant. Fix OCR errors, typos, and formatting inconsistencies."
         
-        if output_format in ['md', 'ocr-md']:
-            system_prompt += " Output valid Markdown. Use headers, lists, and tables where appropriate. Do NOT add CSS or HTML tags."
-        elif output_format in ['txt', 'ocr-txt', 'docx', 'ocr-docx', 'pdf', 'ocr-pdf']:
+        if output_format == 'md':
+            system_prompt += (
+                " Format the output as proper Markdown. Use # for main headings, ## for subheadings, "
+                "- for bullet lists, 1. for numbered lists, **bold** and *italic* for emphasis, "
+                "| table | syntax | for tables. Structure content logically. Do NOT add HTML tags."
+            )
+        elif output_format in ['txt', 'docx', 'pdf']:
             system_prompt += " Output ONLY plain text. Maintain original layout and spacing. Do NOT use Markdown or HTML."
         else:
             system_prompt += " Maintain original meaning and structure. Output ONLY the corrected text."

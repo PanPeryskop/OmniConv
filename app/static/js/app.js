@@ -337,27 +337,33 @@ async function selectFormat(format, button) {
     if (ui.ocrOptions) ui.ocrOptions.classList.add('hidden');
 
     const videoOutputFormats = ['mp4', 'webm', 'avi', 'mkv', 'mov'];
-    const ocrOutputFormats = ['pdf', 'docx', 'md', 'txt', 'html', 'ocr-pdf', 'ocr-docx', 'ocr-md', 'ocr-txt', 'ocr-html'];
+    const ocrPrefixedFormats = ['ocr-pdf', 'ocr-docx', 'ocr-md', 'ocr-txt', 'ocr-html'];
+    const imageTextFormats = ['ocr-pdf', 'ocr-docx', 'ocr-md', 'ocr-txt', 'ocr-html'];
 
     if (appState.fileType === 'video' && videoOutputFormats.includes(format.toLowerCase())) {
         if (ui.videoOptions) {
             ui.videoOptions.classList.remove('hidden');
             ui.videoOptions.classList.add('animate-slide');
         }
-    } else if (ocrOutputFormats.includes(format.toLowerCase())) {
+    } else if (appState.fileType === 'image' && imageTextFormats.includes(format.toLowerCase())) {
         if (ui.ocrOptions) {
             ui.ocrOptions.classList.remove('hidden');
             ui.ocrOptions.classList.add('animate-slide');
-            // Trigger visibility update in case format changed
             if (ui.ocrSelect) { 
                 const event = new Event('change');
                 ui.ocrSelect.dispatchEvent(event);
             }
-        } else {
-             setTimeout(() => startConversion(format), 300);
+        }
+    } else if (appState.fileType === 'document' && ocrPrefixedFormats.includes(format.toLowerCase())) {
+        if (ui.ocrOptions) {
+            ui.ocrOptions.classList.remove('hidden');
+            ui.ocrOptions.classList.add('animate-slide');
+            if (ui.ocrSelect) { 
+                const event = new Event('change');
+                ui.ocrSelect.dispatchEvent(event);
+            }
         }
     } else {
-        console.log('Immediate conversion triggered for:', format);
         setTimeout(() => startConversion(format), 300);
     }
 }

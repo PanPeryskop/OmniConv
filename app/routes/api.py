@@ -225,7 +225,7 @@ def get_output_formats_for_type(file_type: str) -> list:
     elif file_type == 'image':
         return sorted(['png', 'jpg', 'jpeg', 'webp', 'ico', 'ocr-pdf', 'ocr-docx', 'ocr-txt', 'ocr-md', 'ocr-html'])
     elif file_type == 'document':
-        return sorted(['pdf', 'docx', 'ocr-docx', 'txt', 'ocr-txt', 'md', 'ocr-md', 'ocr-pdf', 'html', 'ocr-html'])
+        return sorted(['docx', 'html', 'md', 'ocr-docx', 'ocr-html', 'ocr-md', 'ocr-pdf', 'ocr-txt', 'pdf', 'txt'])
     return []
 
 
@@ -289,46 +289,34 @@ def start_conversion():
 
 
 def run_conversion(job, output_format, options, progress_callback):
-    print(f"DEBUG: run_conversion started for {job['job_id']} format={output_format} type={job['file_type']}")
     file_type = job['file_type']
     
     if output_format.startswith('ocr-'):
         options['force_ocr'] = True
         output_format = output_format[4:]
-        print(f"DEBUG: Force OCR enabled, new format={output_format}")
     
     try:
         input_path = job['input_path']
         output_path = job['output_path']
         
-        print(f"DEBUG: Selecting converter for {file_type}...")
         if file_type == 'audio':
             converter = AudioConverter(progress_callback)
         elif file_type == 'video':
             converter = VideoConverter(progress_callback)
         elif file_type == 'image':
-            if output_format in ['txt', 'docx', 'md', 'html'] or (output_format == 'pdf' and options.get('force_ocr')):
-                print("DEBUG: Using OCRService for image")
-                try:
-                    converter = OCRService(progress_callback)
-                    print("DEBUG: OCRService instantiated success")
-                except Exception as ie:
-                    print(f"DEBUG: OCRService init failed: {ie}")
-                    raise ie
+            if options.get('force_ocr'):
+                converter = OCRService(progress_callback)
             else:
                 converter = ImageConverter(progress_callback)
         elif file_type == 'document':
             if options.get('force_ocr'):
-                print("DEBUG: Using OCRService for document")
                 converter = OCRService(progress_callback)
             else:
                 converter = DocumentConverter(progress_callback)
         else:
             raise UnsupportedFormatError(file_type)
         
-        print(f"DEBUG: Starting converter.convert...")
         result_path = converter.convert(input_path, output_path, output_format, options)
-        print(f"DEBUG: Convert finished, result={result_path}")
         
         job['status'] = 'completed'
         job['progress'] = 100
@@ -415,7 +403,6 @@ def delete_archive_file(filename):
     
     deleted_files = []
     
-    # Try to delete from outputs folder
     output_path = os.path.join(output_folder, filename)
     if os.path.exists(output_path) and os.path.abspath(output_path).startswith(os.path.abspath(output_folder)):
         try:
@@ -424,18 +411,14 @@ def delete_archive_file(filename):
         except Exception as e:
             pass
     
-    # Try to find and delete matching input file from uploads folder
     base_name = os.path.splitext(filename)[0]
-    # Remove common suffixes like _compressed
     for suffix in ['_compressed', '_converted']:
         if base_name.endswith(suffix):
             base_name = base_name[:-len(suffix)]
             break
     
-    # Look for files with similar base name in uploads
     if os.path.exists(upload_folder):
         for upload_file in os.listdir(upload_folder):
-            # Match files that start with similar pattern (uuid_originalname)
             if os.path.abspath(os.path.join(upload_folder, upload_file)).startswith(os.path.abspath(upload_folder)):
                 try:
                     upload_path = os.path.join(upload_folder, upload_file)
