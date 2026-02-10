@@ -1,21 +1,63 @@
 {
-    "total_conversions": 28,
-    "total_size_saved_mb": 109.99837112426758,
+    "total_conversions": 36,
+    "total_size_saved_mb": 116.6255750656128,
     "formats": {
         "gif->compressed": 1,
         "pdf->pdf_ocr": 1,
-        "pdf->txt": 1,
+        "pdf->txt": 4,
         "png->pdf_ocr": 1,
         "png->md": 6,
         "png->pdf": 3,
-        "png->html": 8,
+        "png->html": 9,
         "png->docx": 3,
         "jpg->html": 1,
         "pdf->pdf": 1,
         "png->webp": 1,
-        "png->jpeg": 1
+        "png->jpeg": 1,
+        "pdf->html": 1,
+        "pdf->md": 3
     },
     "recent_activity": [
+        {
+            "timestamp": "2026-02-03T15:35:28.374467",
+            "type": "conversion",
+            "details": "pdf->md"
+        },
+        {
+            "timestamp": "2026-02-03T15:28:35.488247",
+            "type": "conversion",
+            "details": "pdf->md"
+        },
+        {
+            "timestamp": "2026-02-03T15:20:17.484102",
+            "type": "conversion",
+            "details": "pdf->md"
+        },
+        {
+            "timestamp": "2026-01-29T19:10:13.997413",
+            "type": "conversion",
+            "details": "pdf->txt"
+        },
+        {
+            "timestamp": "2026-01-29T19:03:41.521266",
+            "type": "conversion",
+            "details": "pdf->txt"
+        },
+        {
+            "timestamp": "2026-01-29T19:02:49.182497",
+            "type": "conversion",
+            "details": "pdf->txt"
+        },
+        {
+            "timestamp": "2026-01-29T18:59:19.254967",
+            "type": "conversion",
+            "details": "pdf->html"
+        },
+        {
+            "timestamp": "2026-01-29T18:49:15.381054",
+            "type": "conversion",
+            "details": "png->html"
+        },
         {
             "timestamp": "2026-01-29T18:39:54.139764",
             "type": "conversion",
