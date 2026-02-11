@@ -12,10 +12,6 @@ const appState = {
 
 appState.socket = io();
 
-appState.socket.on('connect', () => {
-    console.log('Connected to WebSocket server');
-});
-
 appState.socket.on('conversion_progress', (data) => {
     if (data.job_id === appState.currentJobId) {
         updateConversionProgress(data.progress, getStatusMessage(data.progress));
@@ -26,6 +22,7 @@ appState.socket.on('conversion_complete', (data) => {
     if (data.job_id === appState.currentJobId) {
         appState.isConverting = false;
         showDownloadSection(data.filename);
+        Toast.success('Conversion complete!');
     }
 });
 
@@ -33,6 +30,7 @@ appState.socket.on('conversion_error', (data) => {
     if (data.job_id === appState.currentJobId) {
         appState.isConverting = false;
         showError(data.error || 'Conversion failed');
+        Toast.error(data.error || 'Conversion failed');
     }
 });
 
@@ -79,8 +77,6 @@ const ui = {
     ocrCssValueDisplay: document.getElementById('ocrCssValueDisplay')
 };
 
-// ... existing code ...
-
 function initEventListeners() {
     if (ui.themeToggle) ui.themeToggle.addEventListener('click', toggleTheme);
     if (ui.removeFile) ui.removeFile.addEventListener('click', resetApp);
@@ -89,34 +85,27 @@ function initEventListeners() {
     if (ui.startVideoConversion) ui.startVideoConversion.addEventListener('click', confirmVideoConversion);
     if (ui.startOCRConversion) ui.startOCRConversion.addEventListener('click', confirmOCRConversion);
     if (ui.startAIConversion) ui.startAIConversion.addEventListener('click', () => startConversion(appState.selectedFormat));
-    
-    // OCR Engine Change Listener
-    // OCR Engine Change Listener
+
     if (ui.ocrSelect) {
         const updateThemeVisibility = () => {
             const container = document.getElementById('ocrThemeContainer');
             const val = ui.ocrSelect.value;
             const isHtmlFormat = appState.selectedFormat && (appState.selectedFormat.toLowerCase() === 'html' || appState.selectedFormat.toLowerCase() === 'ocr-html');
-            
-            console.log('OCR Engine:', val, 'Format:', appState.selectedFormat);
-            
+
             if (container) {
                 const cssContainer = document.getElementById('ocrCssContainer');
                 if ((val === 'qwen' || val === 'lighton_mistral') && isHtmlFormat) {
                     container.classList.remove('hidden');
                     if (cssContainer) cssContainer.classList.remove('hidden');
-                    console.log('Showing theme container');
                 } else {
                     container.classList.add('hidden');
                     if (cssContainer) cssContainer.classList.add('hidden');
-                    console.log('Hiding theme container');
                 }
             }
         };
 
         ui.ocrSelect.addEventListener('change', updateThemeVisibility);
-        
-        // CSS Limit Logic
+
         if (ui.ocrLimitCss && ui.ocrCssLength && ui.ocrCssValueDisplay) {
             ui.ocrLimitCss.addEventListener('change', (e) => {
                if (e.target.checked) {
@@ -125,13 +114,12 @@ function initEventListeners() {
                    ui.ocrCssSliderContainer.classList.add('hidden');
                }
             });
-            
+
             ui.ocrCssLength.addEventListener('input', (e) => {
                 ui.ocrCssValueDisplay.textContent = `Max ~${e.target.value} chars`;
             });
         }
-        
-        // Init state immediately
+
         updateThemeVisibility();
     }
 
@@ -147,12 +135,39 @@ function initEventListeners() {
             }
         }
         if (e.key === 'Escape') {
+            const chatWindow = document.getElementById('chat-window');
+            if (chatWindow && chatWindow.classList.contains('open')) {
+                chatWindow.classList.remove('open');
+                return;
+            }
+            const modal = document.getElementById('mobileModal');
+            if (modal && !modal.classList.contains('hidden')) {
+                modal.classList.add('hidden');
+                return;
+            }
             if (appState.isConverting) {
                 if (!ui.errorMessage.classList.contains('hidden')) resetApp();
-                if (!ui.videoOptions.classList.contains('hidden')) ui.videoOptions.classList.add('hidden');
-                if (!ui.aiOptions.classList.contains('hidden')) ui.aiOptions.classList.add('hidden');
+                if (ui.videoOptions && !ui.videoOptions.classList.contains('hidden')) ui.videoOptions.classList.add('hidden');
+                if (ui.aiOptions && !ui.aiOptions.classList.contains('hidden')) ui.aiOptions.classList.add('hidden');
             } else {
                 if (appState.currentFileId) resetApp();
+            }
+        }
+        if (e.key === 'd' && !e.ctrlKey && !e.metaKey && !e.altKey &&
+            document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+            toggleTheme();
+        }
+    });
+
+    document.addEventListener('paste', (e) => {
+        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const item of items) {
+            if (item.kind === 'file') {
+                e.preventDefault();
+                handleFileSelect(item.getAsFile());
+                return;
             }
         }
     });
@@ -172,14 +187,28 @@ function toggleTheme() {
 
 const api = {
     baseUrl: '/api',
-    
-    async upload(file) {
-        const formData = new FormData();
-        formData.append('file', file);
-        const response = await fetch(`${this.baseUrl}/upload`, { method: 'POST', body: formData });
-        return response.json();
+
+    upload(file, onProgress) {
+        return new Promise((resolve, reject) => {
+            const formData = new FormData();
+            formData.append('file', file);
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `${this.baseUrl}/upload`);
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable && onProgress) {
+                    onProgress(Math.round((e.loaded / e.total) * 100));
+                }
+            });
+            xhr.addEventListener('load', () => {
+                try { resolve(JSON.parse(xhr.responseText)); }
+                catch { reject(new Error('Invalid response')); }
+            });
+            xhr.addEventListener('error', () => reject(new Error('Upload failed')));
+            xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
+            xhr.send(formData);
+        });
     },
-    
+
     async uploadUrl(url) {
         const response = await fetch(`${this.baseUrl}/upload-url`, {
             method: 'POST',
@@ -188,12 +217,12 @@ const api = {
         });
         return response.json();
     },
-    
+
     async getFormats(fileId) {
         const response = await fetch(`${this.baseUrl}/formats/${fileId}`);
         return response.json();
     },
-    
+
     async startConversion(fileId, outputFormat, options = {}) {
         const response = await fetch(`${this.baseUrl}/convert`, {
             method: 'POST',
@@ -202,12 +231,12 @@ const api = {
         });
         return response.json();
     },
-    
+
     async getStatus(jobId) {
         const response = await fetch(`${this.baseUrl}/status/${jobId}`);
         return response.json();
     },
-    
+
     getDownloadUrl(jobId) {
         return `${this.baseUrl}/download/${jobId}`;
     }
@@ -216,30 +245,30 @@ const api = {
 function initUploadZone() {
     const zone = ui.uploadZone;
     const input = ui.fileInput;
-    
+
     if (!zone || !input) return;
-    
+
     ['dragenter', 'dragover'].forEach(event => {
-        zone.addEventListener(event, (e) => { 
-            e.preventDefault(); 
-            e.stopPropagation(); 
-            zone.classList.add('dragging'); 
+        zone.addEventListener(event, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.add('dragging');
         });
     });
-    
+
     ['dragleave', 'drop'].forEach(event => {
-        zone.addEventListener(event, (e) => { 
-            e.preventDefault(); 
-            e.stopPropagation(); 
-            zone.classList.remove('dragging'); 
+        zone.addEventListener(event, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.remove('dragging');
         });
     });
-    
+
     zone.addEventListener('drop', (e) => {
         const files = e.dataTransfer.files;
         if (files.length > 0) handleFileSelect(files[0]);
     });
-    
+
     input.addEventListener('change', (e) => {
         if (e.target.files.length > 0) handleFileSelect(e.target.files[0]);
     });
@@ -248,35 +277,30 @@ function initUploadZone() {
 async function handleFileSelect(file) {
     ui.uploadZone.classList.add('uploading');
     updateProgress(0);
-    
+
     try {
-        const progressInterval = setInterval(() => {
-            const currentWidth = parseFloat(ui.progressFill.style.width) || 0;
-            if (currentWidth < 90) updateProgress(currentWidth + Math.random() * 15);
-        }, 200);
-        
-        const result = await api.upload(file);
-        
-        clearInterval(progressInterval);
+        const result = await api.upload(file, (pct) => updateProgress(pct));
+
         updateProgress(100);
-        
+
         if (!result.success) throw new Error(result.error?.message || 'Upload failed');
-        
+
         appState.currentFileId = result.data.file_id;
         appState.fileType = result.data.file_type;
         appState.fileName = file.name;
         appState.outputFormats = result.data.output_formats;
-        
+
         setTimeout(() => {
-            showFileInfo(file.name, result.data.file_type);
+            showFileInfo(file.name, result.data.file_type, file);
             showFormatSelection(result.data.output_formats);
             ui.uploadZone.classList.remove('uploading');
             ui.uploadZone.classList.add('hidden');
-        }, 400);
-        
+        }, 300);
+
     } catch (error) {
         ui.uploadZone.classList.remove('uploading');
         showError(error.message);
+        Toast.error(error.message);
     }
 }
 
@@ -285,12 +309,48 @@ function updateProgress(percentage) {
     ui.progressText.textContent = `Uploading... ${Math.round(percentage)}%`;
 }
 
-function showFileInfo(filename, fileType) {
+function showFileInfo(filename, fileType, file) {
     ui.fileName.textContent = filename;
     ui.fileType.textContent = fileType;
     ui.fileIcon.innerHTML = getFileTypeIcon(fileType);
     ui.fileInfo.classList.remove('hidden');
     ui.fileInfo.classList.add('animate-slide');
+
+    if (file && fileType === 'image') {
+        const thumb = document.createElement('img');
+        thumb.className = 'file-thumb';
+        thumb.src = URL.createObjectURL(file);
+        thumb.alt = filename;
+        thumb.addEventListener('load', () => URL.revokeObjectURL(thumb.src));
+        const existing = ui.fileInfo.querySelector('.file-thumb');
+        if (existing) existing.remove();
+        ui.fileInfo.querySelector('.file-details')?.prepend(thumb);
+    } else if (file && fileType === 'video') {
+        const video = document.createElement('video');
+        video.src = URL.createObjectURL(file);
+        video.muted = true;
+        video.addEventListener('loadeddata', () => {
+            video.currentTime = 1;
+        });
+        video.addEventListener('seeked', () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 48;
+            canvas.height = 48;
+            const ctx = canvas.getContext('2d');
+            const scale = Math.max(48 / video.videoWidth, 48 / video.videoHeight);
+            const w = video.videoWidth * scale;
+            const h = video.videoHeight * scale;
+            ctx.drawImage(video, (48 - w) / 2, (48 - h) / 2, w, h);
+            const thumb = document.createElement('img');
+            thumb.className = 'file-thumb';
+            thumb.src = canvas.toDataURL();
+            thumb.alt = filename;
+            const existing = ui.fileInfo.querySelector('.file-thumb');
+            if (existing) existing.remove();
+            ui.fileInfo.querySelector('.file-details')?.prepend(thumb);
+            URL.revokeObjectURL(video.src);
+        });
+    }
 }
 
 function getFileTypeIcon(type) {
@@ -305,15 +365,15 @@ function getFileTypeIcon(type) {
 
 function showFormatSelection(formats) {
     ui.formatGrid.innerHTML = '';
-    
-    const inputExtension = appState.fileName 
-        ? appState.fileName.split('.').pop().toLowerCase() 
+
+    const inputExtension = appState.fileName
+        ? appState.fileName.split('.').pop().toLowerCase()
         : null;
-    
-    const filteredFormats = formats.filter(format => 
+
+    const filteredFormats = formats.filter(format =>
         format.toLowerCase() !== inputExtension
     );
-    
+
     filteredFormats.forEach(format => {
         const btn = document.createElement('button');
         btn.className = 'format-option';
@@ -327,11 +387,10 @@ function showFormatSelection(formats) {
 }
 
 async function selectFormat(format, button) {
-    console.log('Format selected:', format);
     document.querySelectorAll('.format-option').forEach(btn => btn.classList.remove('active'));
     button.classList.add('active');
     appState.selectedFormat = format;
-    
+
     if (ui.videoOptions) ui.videoOptions.classList.add('hidden');
     if (ui.aiOptions) ui.aiOptions.classList.add('hidden');
     if (ui.ocrOptions) ui.ocrOptions.classList.add('hidden');
@@ -349,7 +408,7 @@ async function selectFormat(format, button) {
         if (ui.ocrOptions) {
             ui.ocrOptions.classList.remove('hidden');
             ui.ocrOptions.classList.add('animate-slide');
-            if (ui.ocrSelect) { 
+            if (ui.ocrSelect) {
                 const event = new Event('change');
                 ui.ocrSelect.dispatchEvent(event);
             }
@@ -358,7 +417,7 @@ async function selectFormat(format, button) {
         if (ui.ocrOptions) {
             ui.ocrOptions.classList.remove('hidden');
             ui.ocrOptions.classList.add('animate-slide');
-            if (ui.ocrSelect) { 
+            if (ui.ocrSelect) {
                 const event = new Event('change');
                 ui.ocrSelect.dispatchEvent(event);
             }
@@ -377,10 +436,8 @@ function confirmOCRConversion() {
 }
 
 async function startConversion(format) {
-    console.log('startConversion called for:', format, 'isConverting:', appState.isConverting);
     if (appState.isConverting) return;
-    
-    // Capture options BEFORE hiding UI elements
+
     const options = {};
     if (appState.fileType === 'video' && ui.presetSelect && ui.videoOptions && !ui.videoOptions.classList.contains('hidden')) {
         options.preset = ui.presetSelect.value;
@@ -390,19 +447,17 @@ async function startConversion(format) {
         if (ui.ocrThemeSelect && !ui.ocrThemeContainer.classList.contains('hidden')) {
             options.ocr_theme = ui.ocrThemeSelect.value;
         }
-        // Capture CSS Limit
         if (ui.ocrLimitCss && ui.ocrLimitCss.checked && !ui.ocrCssContainer.classList.contains('hidden')) {
             options.css_limit_enabled = true;
             options.css_limit_value = ui.ocrCssLength.value;
         }
-        console.log('DEBUG: OCR Options captured:', options.ocr_engine, options.ocr_theme, options.css_limit_enabled);
     }
     if (ui.useLLM && ui.useLLM.checked) {
         options.use_llm = true;
     }
 
     appState.isConverting = true;
-    
+
     ui.formatSelection.classList.add('hidden');
     ui.fileInfo.classList.add('hidden');
     if (ui.videoOptions) ui.videoOptions.classList.add('hidden');
@@ -410,9 +465,9 @@ async function startConversion(format) {
     if (ui.ocrOptions) ui.ocrOptions.classList.add('hidden');
     ui.conversionProgress.classList.remove('hidden');
     ui.conversionProgress.classList.add('animate-scale');
-    
+
     updateConversionProgress(0, 'Starting conversion...');
-    
+
     try {
         const result = await api.startConversion(appState.currentFileId, format, options);
         if (!result.success) throw new Error(result.error?.message || 'Conversion failed to start');
@@ -420,11 +475,8 @@ async function startConversion(format) {
     } catch (error) {
         appState.isConverting = false;
         showError(error.message);
+        Toast.error(error.message);
     }
-}
-
-function pollConversionStatus() {
-    console.log('Polling deprecated');
 }
 
 function updateConversionProgress(percentage, statusText) {
@@ -448,7 +500,7 @@ function showDownloadSection(filename) {
     ui.downloadSection.classList.add('animate-scale');
     ui.outputFilename.textContent = filename;
     ui.downloadBtn.onclick = () => { window.location.href = api.getDownloadUrl(appState.currentJobId); };
-    
+
     saveToHistory(filename);
 }
 
@@ -458,7 +510,7 @@ function saveToHistory(outputFilename) {
         const inputName = appState.fileName || 'Unknown';
         const inputExt = inputName.split('.').pop()?.toUpperCase() || '?';
         const outputExt = outputFilename.split('.').pop()?.toUpperCase() || '?';
-        
+
         history.unshift({
             inputName: inputName,
             inputFormat: inputExt,
@@ -467,14 +519,13 @@ function saveToHistory(outputFilename) {
             type: appState.fileType || 'document',
             timestamp: Date.now()
         });
-        
+
         const maxHistory = 50;
         if (history.length > maxHistory) history.length = maxHistory;
-        
+
         localStorage.setItem('omniconv_history', JSON.stringify(history));
-    } catch (e) {
-        console.error('Failed to save history:', e);
-    }
+        renderRecentHistory();
+    } catch (e) { /* noop */ }
 }
 
 function showError(message) {
@@ -496,17 +547,16 @@ function resetApp() {
     appState.outputFormats = [];
     appState.selectedFormat = null;
     appState.isConverting = false;
-    
-    if (appState.pollInterval) { 
-        clearInterval(appState.pollInterval); 
-        appState.pollInterval = null; 
+
+    if (appState.pollInterval) {
+        clearInterval(appState.pollInterval);
+        appState.pollInterval = null;
     }
-    
+
     ui.uploadZone.classList.remove('hidden', 'uploading');
     ui.fileInfo.classList.add('hidden');
     ui.formatSelection.classList.add('hidden');
     ui.conversionProgress.classList.add('hidden');
-    ui.downloadSection.classList.add('hidden');
     ui.downloadSection.classList.add('hidden');
     if (ui.videoOptions) ui.videoOptions.classList.add('hidden');
     if (ui.aiOptions) ui.aiOptions.classList.add('hidden');
@@ -515,14 +565,59 @@ function resetApp() {
     ui.fileInput.value = '';
     ui.progressFill.style.width = '0%';
     ui.conversionFill.style.width = '0%';
+
+    const thumb = ui.fileInfo.querySelector('.file-thumb');
+    if (thumb) thumb.remove();
 }
 
+function renderRecentHistory() {
+    const container = document.getElementById('recentHistory');
+    if (!container) return;
 
+    const history = JSON.parse(localStorage.getItem('omniconv_history') || '[]');
+    if (history.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const recent = history.slice(0, 5);
+    const typeIcons = {
+        audio: '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
+        video: '<svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>',
+        image: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
+        document: '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>'
+    };
+
+    const timeAgo = (ts) => {
+        const diff = Date.now() - ts;
+        if (diff < 60000) return 'just now';
+        if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+        if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+        return `${Math.floor(diff / 86400000)}d ago`;
+    };
+
+    container.innerHTML = `
+        <h3 class="section-label">Recent Conversions</h3>
+        <div class="history-list">
+            ${recent.map(item => `
+                <div class="history-item">
+                    <div class="history-item-info">
+                        <div class="history-item-icon">${typeIcons[item.type] || typeIcons.document}</div>
+                        <span class="history-item-name">${item.inputName}</span>
+                    </div>
+                    <span class="history-item-badge">${item.inputFormat} → ${item.outputFormat}</span>
+                    <span class="history-item-time">${timeAgo(item.timestamp)}</span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
 
 function init() {
     initTheme();
     initUploadZone();
     initEventListeners();
+    renderRecentHistory();
 }
 
 function switchTab(tab) {
@@ -533,10 +628,13 @@ function switchTab(tab) {
 
     if (tab === 'upload') {
         ui.uploadZone.classList.remove('hidden');
+        ui.uploadZone.classList.add('tab-content');
         document.getElementById('urlZone').classList.add('hidden');
     } else {
         ui.uploadZone.classList.add('hidden');
-        document.getElementById('urlZone').classList.remove('hidden');
+        const urlZone = document.getElementById('urlZone');
+        urlZone.classList.remove('hidden');
+        urlZone.classList.add('tab-content');
     }
 }
 
@@ -554,14 +652,14 @@ async function submitUrl() {
         const result = await api.uploadUrl(url);
 
         updateProgress(100);
-        
+
         if (!result.success) throw new Error(result.error?.message || 'Download failed');
-        
+
         appState.currentFileId = result.data.file_id;
         appState.fileType = result.data.file_type;
         appState.fileName = result.data.filename;
         appState.outputFormats = result.data.output_formats;
-        
+
         setTimeout(() => {
             showFileInfo(result.data.filename, result.data.file_type);
             showFormatSelection(result.data.output_formats);
@@ -572,6 +670,7 @@ async function submitUrl() {
     } catch (error) {
         ui.uploadZone.classList.remove('uploading');
         showError(error.message);
+        Toast.error(error.message);
     }
 }
 

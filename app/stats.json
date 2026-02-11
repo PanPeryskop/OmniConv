@@ -1,6 +1,6 @@
 {
-    "total_conversions": 36,
-    "total_size_saved_mb": 116.6255750656128,
+    "total_conversions": 39,
+    "total_size_saved_mb": 126.24338150024414,
     "formats": {
         "gif->compressed": 1,
         "pdf->pdf_ocr": 1,
@@ -8,16 +8,32 @@
         "png->pdf_ocr": 1,
         "png->md": 6,
         "png->pdf": 3,
-        "png->html": 9,
+        "png->html": 11,
         "png->docx": 3,
         "jpg->html": 1,
         "pdf->pdf": 1,
         "png->webp": 1,
         "png->jpeg": 1,
         "pdf->html": 1,
-        "pdf->md": 3
+        "pdf->md": 3,
+        "jpg->png": 1
     },
     "recent_activity": [
+        {
+            "timestamp": "2026-02-11T01:43:05.986118",
+            "type": "conversion",
+            "details": "png->html"
+        },
+        {
+            "timestamp": "2026-02-11T01:37:37.122687",
+            "type": "conversion",
+            "details": "png->html"
+        },
+        {
+            "timestamp": "2026-02-11T01:10:05.212177",
+            "type": "conversion",
+            "details": "jpg->png"
+        },
         {
             "timestamp": "2026-02-03T15:35:28.374467",
             "type": "conversion",

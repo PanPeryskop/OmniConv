@@ -40,11 +40,12 @@ class LLMService:
             system_prompt += " Maintain original meaning and structure. Output ONLY the corrected text."
 
         payload = {
-            "model": "mistralai/ministral-3-3b", 
+            "model": "ministral-3-8b-instruct-2512", 
             "system_prompt": system_prompt,
             "input": text,
             "temperature": 0.3,
-            "stream": False
+            "stream": False,
+            "presence_penalty": 0.6,
         }
 
         try:
@@ -75,14 +76,15 @@ class LLMService:
             "Use appropriate tags (h1, h2, p, ul, li, etc.). "
             f"CRITICAL: Add a <style> block in the <head> with CSS to make the document look simple, modern, and beautiful. {theme_prompt} "
             f"{css_limit_instruction} "
-            "(e.g., proper typography from Google Fonts like Inter, comfortable spacing, clean layout, subtle shadows). "
+            "(e.g., proper typography, comfortable spacing, clean layout). "
+            "Do NOT use frameworks. Do NOT use extensive styling. "
             "Format the output as a full HTML document (<!DOCTYPE html>...). "
             "Output ONLY the raw HTML code. Do NOT wrap in markdown code blocks."
             "Keep css reasonable length it cannot be too long. too be honest shorter the better"
         )
 
         payload = {
-            "model": "mistralai/ministral-3-3b", 
+            "model": "ministral-3-8b-instruct-2512", 
             "system_prompt": prompt,
             "input": text,
             "temperature": 0.3,
@@ -166,7 +168,7 @@ class LLMService:
             )
 
         payload = {
-            "model": "mistralai/ministral-3-3b", 
+            "model": "ministral-3-8b-instruct-2512", 
             "messages": [
                 {"role": "system", "content": system_msg} if system_msg else None,
                 {"role": "user", "content": message}
@@ -178,7 +180,7 @@ class LLMService:
         
 
         payload = {
-            "model": "mistralai/ministral-3-3b", 
+            "model": "ministral-3-8b-instruct-2512", 
             "input": message,
             "temperature": 0.7,
             "stream": True,

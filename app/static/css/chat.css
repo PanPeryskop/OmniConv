@@ -356,3 +356,9 @@
 }
 .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
 .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+.chat-error {
+    color: var(--color-error, #ff6b6b);
+    margin-top: 5px;
+    font-size: 0.85em;
+}

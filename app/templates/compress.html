@@ -428,17 +428,23 @@ document.addEventListener('DOMContentLoaded', () => {
         updateUploadProgress(0);
 
         try {
-            const progressInterval = setInterval(() => {
-                const current = parseFloat(els.progressFill.style.width) || 0;
-                if (current < 90) updateUploadProgress(current + Math.random() * 15);
-            }, 200);
-
             const formData = new FormData();
             formData.append('file', file);
-            const res = await fetch('/api/upload', { method: 'POST', body: formData });
-            const data = await res.json();
 
-            clearInterval(progressInterval);
+            const data = await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/upload');
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) updateUploadProgress((e.loaded / e.total) * 100);
+                });
+                xhr.addEventListener('load', () => {
+                    try { resolve(JSON.parse(xhr.responseText)); }
+                    catch { reject(new Error('Invalid response')); }
+                });
+                xhr.addEventListener('error', () => reject(new Error('Upload failed')));
+                xhr.send(formData);
+            });
+
             updateUploadProgress(100);
 
             if (!data.success) throw new Error(data.error?.message || 'Upload failed');
@@ -456,6 +462,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             els.zone.classList.remove('uploading');
             showError(err.message);
+            Toast.error(err.message);
         }
     }
 
@@ -492,10 +499,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const originalMB = state.originalSizeMB;
         
-        // Adapt slider limits to file size
-        // Min: 10% of original size, or 0.01MB minimum
         const minVal = parseFloat(Math.max(0.01, originalMB * 0.1).toFixed(2));
-        // Max: Original size
         const maxVal = parseFloat(originalMB.toFixed(2));
         
         els.slider.min = minVal;
@@ -633,6 +637,7 @@ document.addEventListener('DOMContentLoaded', () => {
         els.progress.classList.add('hidden');
         els.download.classList.remove('hidden');
         els.download.classList.add('animate-scale');
+        Toast.success('Compression complete!');
 
         const savedPercent = Math.max(0, ((state.originalSizeMB - state.targetSizeMB) / state.originalSizeMB * 100)).toFixed(0);
         els.finalSize.textContent = state.targetSizeMB + ' MB';
@@ -652,6 +657,7 @@ document.addEventListener('DOMContentLoaded', () => {
         els.errorText.textContent = message;
         els.error.classList.remove('hidden');
         els.error.classList.add('animate-scale');
+        Toast.error(message);
     }
 
     function reset() {

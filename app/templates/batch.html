@@ -54,6 +54,7 @@
         <div class="progress-track large">
             <div class="progress-bar" id="batchProgressBar"></div>
         </div>
+        <div class="batch-current-file" id="batchCurrentFile" aria-live="polite"></div>
         <div class="file-list" id="progressList" style="margin-top: var(--space-6);"></div>
     </div>
 
@@ -777,10 +778,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         for (const file of newFiles) {
             if (isArchive(file.name)) {
-                const toast = document.createElement('div');
-                toast.style.cssText = 'position: fixed; bottom: 20px; right: 20px; background: var(--surface-glass-active); padding: 10px 20px; border-radius: 8px; z-index: 1000; border: 1px solid var(--border-default); backdrop-filter: blur(10px);';
-                toast.textContent = `Extracting ${file.name}...`;
-                document.body.appendChild(toast);
+                const toast = Toast.info(`Extracting ${file.name}...`, 0);
                 
                 try {
                     const formData = new FormData();
@@ -801,15 +799,14 @@ document.addEventListener('DOMContentLoaded', () => {
                              }
                         });
                         renderQueue();
+                        Toast.success(`Extracted ${data.data.files.length} files from ${file.name}`);
                     } else {
-                        console.error(data.error);
-                        alert(`Failed to extract ${file.name}: ${data.error.message}`);
+                        Toast.error(`Failed to extract ${file.name}: ${data.error.message}`);
                     }
                 } catch (e) {
-                    console.error(e);
-                    alert(`Failed to extract ${file.name}`);
+                    Toast.error(`Failed to extract ${file.name}`);
                 } finally {
-                    document.body.removeChild(toast);
+                    Toast.dismiss(toast);
                 }
             } else {
                 if (batchState.files.length < MAX_FILES) {
@@ -840,14 +837,24 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('select').forEach(s => s.disabled = true);
         
         let completedCount = 0;
+        const currentFileEl = document.getElementById('batchCurrentFile');
         
         for (let i = 0; i < batchState.files.length; i++) {
+            if (currentFileEl) {
+                currentFileEl.textContent = `Converting ${i + 1} of ${batchState.files.length}: ${batchState.files[i].name}`;
+            }
             const success = await processFile(batchState.files[i], i);
             if (success) completedCount++;
-            
         }
         
+        if (currentFileEl) currentFileEl.textContent = '';
         batchState.converting = false;
+        
+        if (completedCount > 0) {
+            Toast.success(`${completedCount} of ${batchState.files.length} files converted`);
+        } else {
+            Toast.error('Batch conversion failed');
+        }
         
         setTimeout(() => {
             els.queue.classList.add('hidden');
@@ -863,7 +870,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     els.batchAnother.addEventListener('click', () => {
-        location.reload(); 
+        batchState.files = [];
+        batchState.results = [];
+        batchState.converting = false;
+        batchState.collapsedGroups.clear();
+        batchState.groupFormats = {};
+        els.complete.classList.add('hidden');
+        els.zone.classList.remove('hidden');
+        els.input.value = '';
+        els.startBtn.disabled = false;
+        els.startBtn.innerHTML = `<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start Batch Conversion`;
+        renderQueue();
     });
 
     els.downloadAllBtn.addEventListener('click', () => {

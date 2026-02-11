@@ -11,9 +11,9 @@
 </section>
 
 <section class="converter-area">
-    <div class="tabs" style="display: flex; gap: var(--space-4); margin-bottom: var(--space-4); border-bottom: 1px solid var(--border-subtle); padding-bottom: var(--space-2);">
-        <button class="tab-btn active" onclick="switchTab('upload')" style="background: none; border: none; font: inherit; cursor: pointer; color: var(--text-primary); border-bottom: 2px solid var(--text-primary); padding: var(--space-2);">Upload File</button>
-        <button class="tab-btn" onclick="switchTab('url')" style="background: none; border: none; font: inherit; cursor: pointer; color: var(--text-tertiary); padding: var(--space-2);">From URL</button>
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('upload')" data-i18n="upload_tab">Upload File</button>
+        <button class="tab-btn" onclick="switchTab('url')" data-i18n="url_tab">From URL</button>
     </div>
 
     <div class="panel drop-area" id="uploadZone">
@@ -38,10 +38,10 @@
         </div>
     </div>
 
-    <div class="panel hidden" id="urlZone" style="padding: var(--space-8); text-align: center;">
-        <h2 class="drop-heading">Paste Link</h2>
-        <input type="url" id="urlInput" placeholder="https://example.com/video.mp4" style="width: 100%; padding: var(--space-3); border-radius: var(--radius-lg); border: 1px solid var(--border-subtle); background: var(--bg-secondary); color: var(--text-primary); margin-bottom: var(--space-4);">
-        <button class="btn btn-primary" onclick="submitUrl()">Fetch File</button>
+    <div class="panel hidden tab-content" id="urlZone" style="padding: var(--space-8); text-align: center;">
+        <h2 class="drop-heading" data-i18n="paste_link">Paste Link</h2>
+        <input type="url" id="urlInput" class="compress-url-input" placeholder="https://example.com/video.mp4">
+        <button class="btn btn-primary" onclick="submitUrl()" data-i18n="fetch_file">Fetch File</button>
     </div>
 
 
@@ -290,4 +290,6 @@
         <p class="feature-description">PDF to DOCX, Powered by Qwen3-VL</p>
     </div>
 </section>
+
+<section class="recent-history" id="recentHistory"></section>
 {% endblock %}

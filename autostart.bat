@@ -9,7 +9,14 @@ set "STARTUP_FOLDER=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 
 echo Configuring autostart for OmniConv...
 
-powershell -Command "$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%STARTUP_FOLDER%\%SHORTCUT_NAME%'); $Shortcut.TargetPath = 'wscript.exe'; $Shortcut.Arguments = '//nologo \""%TARGET_VBS%\""'; $Shortcut.WorkingDirectory = '%SCRIPT_DIR%'; $Shortcut.IconLocation = '%ICON_PATH%'; $Shortcut.Save()"
+powershell -NoProfile -Command ^
+  "$ws = New-Object -ComObject WScript.Shell;" ^
+  "$lnk = $ws.CreateShortcut('%STARTUP_FOLDER%\%SHORTCUT_NAME%');" ^
+  "$lnk.TargetPath = 'wscript.exe';" ^
+  "$lnk.Arguments = '//nologo \""%TARGET_VBS%""\"';" ^
+  "$lnk.WorkingDirectory = '%SCRIPT_DIR%';" ^
+  "$lnk.IconLocation = '%ICON_PATH%';" ^
+  "$lnk.Save()"
 
 echo.
 echo Success! OmniConv added to startup.

@@ -47,10 +47,11 @@ class OCRService(BaseConverter):
                 prompt = (
                     "Transcribe the content of this image into clean, semantically correct HTML5. "
                     "Use appropriate tags (h1, p, table, etc.). "
-                    f"Add a <style> block with CSS to make the document look modern and premium. {theme_prompt} "
+                    f"Add a <style> block with CSS to make the document look siple, modern and premium. {theme_prompt} "
                     f"{css_limit_instruction} "
-                    "Focus on excellent typography, spacing, and clean layout. "
-                    "Keep the CSS efficient and reasonable."
+                    "Focus on readability and clean layout. "
+                    "Use MINIMAL CSS. Do not use frameworks. "
+                    "Do not embed images or SVGs. Use placeholders if necessary. "
                     "Output ONLY the raw HTML code."
                 )
             elif output_format == 'md':
