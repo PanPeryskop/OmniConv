@@ -1,0 +1,988 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="studio-wrapper">
+    <header class="studio-toolbar">
+        <div class="toolbar-group">
+            <h1 class="toolbar-title">Voice Studio</h1>
+            <span class="toolbar-badge">BETA</span>
+        </div>
+        <div class="toolbar-group">
+            <button class="btn btn-secondary btn-sm" onclick="exportProject()">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Export Project</span>
+            </button>
+        </div>
+    </header>
+    <div class="studio-workspace">
+        <aside class="panel panel-left">
+            <div class="panel-tabs">
+                <button class="tab-btn active" onclick="switchTab('voice')" id="btn-voice">
+                    <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                    Voice
+                </button>
+                <button class="tab-btn" onclick="switchTab('dialogue')" id="btn-dialogue">
+                    <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/></svg>
+                    Dialogue
+                </button>
+                <button class="tab-btn" onclick="switchTab('subtitle')" id="btn-subtitle">
+                    <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
+                    Subtitles
+                </button>
+                <button class="tab-btn" onclick="switchTab('audiobook')" id="btn-audiobook">
+                    <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                    Audiobook
+                </button>
+            </div>
+
+            <div class="panel-content custom-scrollbar">
+                <div id="tab-voice" class="studio-tab active">
+                    <div class="control-group">
+                        <label class="label">Voice Prompt</label>
+                        <div class="input-wrapper" style="position: relative;">
+                            <textarea id="voicePrompt" class="input textarea-sm" placeholder="Describe the voice character, tone, and pacing..."></textarea>
+                            <button id="btn-voice-magic" class="btn-icon ai-prompt-btn" title="Auto-Generate Description">
+                                <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>
+                            </button>
+                        </div>
+                        <div class="pills-container">
+                            <button class="pill" onclick="addTag('Male')">Male</button>
+                            <button class="pill" onclick="addTag('Female')">Female</button>
+                            <button class="pill" onclick="addTag('Deep')">Deep</button>
+                            <button class="pill" onclick="addTag('Raspy')">Raspy</button>
+                            <button class="pill" onclick="addTag('Soft')">Soft</button>
+                            <button class="pill" onclick="addTag('Fast')">Fast</button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <div class="label-row">
+                            <label class="label">Script</label>
+                        </div>
+                        <div class="input-wrapper" style="position: relative;">
+                            <textarea id="scriptText" class="input textarea-lg" placeholder="Enter the text to be spoken..."></textarea>
+                            <button id="btn-story-magic" class="btn btn-secondary btn-sm ai-story-btn" style="position: absolute; right: 8px; bottom: 8px; z-index: 5;">
+                                <svg viewBox="0 0 24 24" width="14" height="14" style="margin-right: 4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                Generate Story/Monologue
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="action-area">
+                        <button class="btn btn-primary btn-block" id="generateBtn" onclick="generateSpeech()">
+                            <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            <span>Generate Audio</span>
+                            <div class="loader hidden"></div>
+                        </button>
+                    </div>
+                </div>
+                <div id="tab-dialogue" class="studio-tab hidden">
+                    <div class="control-group">
+                        <label class="label">Mode</label>
+                        <div class="pills-container" style="margin-top: 0; margin-bottom: 12px;">
+                            <button class="pill active" id="mode-auto" onclick="switchDialogueMode('auto')">Auto (AI)</button>
+                            <button class="pill" id="mode-manual" onclick="switchDialogueMode('manual')">Manual (Write)</button>
+                        </div>
+                    </div>
+
+                    <div id="dialogue-auto" class="control-group">
+                        <label class="label">Scene Setup (AI)</label>
+                        <textarea id="dialoguePrompt" class="input textarea-md" placeholder="Enter scene description (e.g. A heated argument between two detectives)..."></textarea>
+                        <button class="btn btn-secondary btn-block mt-4" id="btn-gen-dialogue" onclick="generateDialogueStream()">
+                            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 0 1 9-9"/></svg>
+                            Generate Script (Stream)
+                        </button>
+                    </div>
+
+                    <div id="dialogue-manual" class="control-group hidden">
+                        <label class="label">Manual Script</label>
+                        <textarea id="manualScript" class="input textarea-lg" oninput="handleManualInput(this.value)" placeholder="Character Name: Dialogue line..."></textarea>
+                        <div class="row mt-4" style="display: flex; gap: 8px;">
+                             <button class="btn btn-secondary btn-sm" onclick="addScriptLine()">+ Line</button>
+                             <button class="btn btn-secondary btn-sm" onclick="clearScript()">Clear</button>
+                             <button class="btn btn-secondary btn-sm" style="margin-left: auto;" onclick="parseManualScript()">Parse</button>
+                        </div>
+                    </div>
+
+                    <div id="dialogueWorkspace" class="v-stack gap-4 hidden">
+                        <div class="header-sm" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>Cast & Voices</span>
+                            <button class="btn-icon" title="Auto-Assign Voices (AI)" onclick="autoAssignVoices()">
+                                <svg viewBox="0 0 24 24"><path d="M14.5 2l5 5m-5-5l5 5m-5-5l-8.5 8.5a2.1 2.1 0 0 0 3 3L19.5 7m-5-5l-1 1M5 22h.01M5 19h.01M2 19h.01M8 19h.01"/></svg>
+                            </button>
+                        </div>
+                        <div id="characterList" class="character-grid"></div>
+
+                        <div class="header-sm mt-4">Scene Script</div>
+                        <div id="scriptLines" class="script-lines"></div>
+
+                        <button class="btn btn-primary btn-block mt-4" onclick="generateFullScene()">
+                            <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            Generate Full Audio
+                        </button>
+                    </div>
+                </div>
+                <div id="tab-subtitle" class="studio-tab hidden">
+                    <div class="drop-zone" id="subDropZone">
+                        <div class="drop-icon-box">
+                            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        </div>
+                        <span class="drop-label">Upload Video/Audio</span>
+                        <input type="file" id="subFile" hidden>
+                    </div>
+
+                    <div class="control-group mt-6">
+                        <label class="label">Format</label>
+                        <select id="subFormat" class="input select">
+                            <option value="srt">SRT (Subtitles)</option>
+                            <option value="vtt">VTT (Web)</option>
+                            <option value="txt">TXT (Transcript)</option>
+                        </select>
+                    </div>
+
+                    <button class="btn btn-primary btn-block mt-6" onclick="generateSubtitles()">Generate Subtitles</button>
+                    
+                    <div id="subResult" class="result-box hidden">
+                        <textarea id="subContent" class="input textarea-md" readonly></textarea>
+                        <a id="subDownload" class="btn btn-secondary btn-block mt-4" download>Download File</a>
+                    </div>
+                </div>
+                <div id="tab-audiobook" class="studio-tab hidden">
+                    <div class="drop-zone" id="bookDropZone">
+                         <div class="drop-icon-box">
+                              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                         </div>
+                         <span class="drop-label">Drop PDF / EPUB / TXT</span>
+                         <input type="file" id="bookFile" hidden>
+                    </div>
+                    
+                    <div class="divider-vertical" style="width: 100%; height: 1px; margin: 16px 0;"></div>
+                    
+                    <div class="control-group">
+                        <label class="label">Target Language (Optional)</label>
+                        <select id="bookLang" class="input select">
+                            <option value="">Original (No Translation)</option>
+                            <option value="Polish">Polish</option>
+                            <option value="English">English</option>
+                            <option value="German">German</option>
+                            <option value="French">French</option>
+                            <option value="Spanish">Spanish</option>
+                            <option value="Italian">Italian</option>
+                        </select>
+                    </div>
+
+                    <label class="label">Or Paste Text</label>
+                    <textarea id="bookText" class="input textarea-md" placeholder="Paste story text here..."></textarea>
+                    
+                    <div id="bookProgress" class="hidden mt-6">
+                        <div class="label-row">
+                            <span class="label" id="bookStatus">Processing...</span>
+                            <span class="label" id="bookPercent">0%</span>
+                        </div>
+                        <div style="height: 4px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden;">
+                            <div id="bookBar" style="height: 100%; background: var(--primary); width: 0%; transition: width 0.3s;"></div>
+                        </div>
+                        <div class="streaming-output" id="bookLog" style="height: 100px; margin-top: 8px; font-size: 10px; color: var(--text-tertiary);"></div>
+                    </div>
+
+                    <div class="action-area mt-6">
+                        <button class="btn btn-primary btn-block" onclick="generateAudiobook()">
+                            <svg viewBox="0 0 24 24" width="16" height="16"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+                            Generate Audiobook
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        <main class="panel panel-center">
+            <div class="viewport">
+                <div id="previewPlaceholder" class="viewport-empty">
+                    <div class="empty-icon">
+                        <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                    </div>
+                    <span>No audio generated yet</span>
+                </div>
+                
+                <div id="audioPlayerContainer" class="audio-player-wrapper hidden">
+                    <div class="waveform-viz" id="waveformViz">
+                        <div class="bar" style="height: 40%"></div><div class="bar" style="height: 70%"></div><div class="bar" style="height: 50%"></div>
+                        <div class="bar" style="height: 80%"></div><div class="bar" style="height: 30%"></div><div class="bar" style="height: 90%"></div>
+                        <div class="bar" style="height: 60%"></div><div class="bar" style="height: 40%"></div><div class="bar" style="height: 70%"></div>
+                        <div class="bar" style="height: 30%"></div><div class="bar" style="height: 50%"></div><div class="bar" style="height: 80%"></div>
+                    </div>
+                    <audio id="mainAudio" controls class="native-audio"></audio>
+                    <div class="player-actions">
+                        <div class="trim-controls" id="trimControls" style="display: none; gap: 8px; align-items: center; width: 100%;">
+                            <label class="label" style="font-size: 11px; white-space: nowrap;">Trim:</label>
+                            <input type="number" id="trimStart" class="input" style="width: 70px; padding: 4px 6px; font-size: 12px;" placeholder="Start" value="0" min="0" step="0.1">
+                            <span style="color: var(--text-muted);">–</span>
+                            <input type="number" id="trimEnd" class="input" style="width: 70px; padding: 4px 6px; font-size: 12px;" placeholder="End" min="0" step="0.1">
+                            <button class="btn btn-secondary btn-sm" onclick="trimAudio()">✂ Trim</button>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <select id="playbackSpeed" class="input" style="width: 70px; padding: 4px; font-size: 11px;" onchange="setPlaybackSpeed(this.value)">
+                                <option value="0.5">0.5×</option>
+                                <option value="0.75">0.75×</option>
+                                <option value="1" selected>1×</option>
+                                <option value="1.25">1.25×</option>
+                                <option value="1.5">1.5×</option>
+                                <option value="2">2×</option>
+                            </select>
+                            <a id="downloadAudio" class="btn btn-ghost btn-sm" download="generated_audio.wav">
+                                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Download WAV
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="timeline-area">
+                <div class="timeline-toolbar">
+                    <span class="timeline-label">00:00:00</span>
+                    <div class="timeline-actions">
+                        <button class="icon-btn" onclick="zoomTimeline(1)" title="Zoom In"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+                        <button class="icon-btn" onclick="zoomTimeline(-1)" title="Zoom Out"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+                    </div>
+                </div>
+                <div class="timeline-tracks">
+                    <div class="track">
+                        <div class="track-header">Voice</div>
+                        <div class="track-lane"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <aside class="panel panel-right">
+            <div class="panel-header">
+                <h3>Analysis</h3>
+            </div>
+            <div class="panel-content custom-scrollbar">
+                <div class="drop-zone small" id="ocrDropZone">
+                    <div class="drop-icon-box small">
+                         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    </div>
+                    <span class="drop-label">Drop to Analyze</span>
+                    <input type="file" id="ocrFile" hidden>
+                </div>
+
+                <div id="analysisOutput" class="analysis-results hidden">
+                    <div class="label-row"><label class="label">AI Insight</label></div>
+                    <div id="analysisText" class="analysis-text"></div>
+                </div>
+
+                <div class="bottom-action">
+                    <button class="btn btn-secondary btn-block" onclick="runAnalysis()">Analyze File</button>
+                </div>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<div id="aiModal" class="modal-backdrop hidden">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Generate Script</h3>
+            <button class="close-btn" onclick="closeAIModal()">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <label class="label">Scene Description</label>
+            <textarea id="aiPrompt" class="input textarea-md" placeholder="E.g. Two astronauts arguing about who ate the last protein bar..."></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary btn-block" onclick="runAiGen()">Generate</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    :root {
+        --studio-nav-width: 320px;
+        --studio-aside-width: 300px;
+    }
+
+    .main-container {
+        max-width: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        height: calc(100vh - 73px);
+        overflow: hidden;
+    }
+
+</style>
+
+<link rel="stylesheet" href="{{ url_for('static', filename='css/studio.css') }}">
+<script src="{{ url_for('static', filename='js/studio-layout.js') }}"></script>
+
+<script>
+    let currentGenMode = 'dialogue'; 
+
+    function openVoiceDescribeModal() {
+        currentGenMode = 'description';
+        document.querySelector('#aiModal h3').textContent = 'Generate Voice Description';
+        document.querySelector('#aiModal .label').textContent = 'Character Context';
+        document.getElementById('aiPrompt').value = '';
+        document.getElementById('aiPrompt').placeholder = 'E.g. An old wizard who is tired but kind...';
+        const modal = document.getElementById('aiModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('active');
+    }
+
+    function openScriptGenModal() {
+        currentGenMode = 'story';
+        document.querySelector('#aiModal h3').textContent = 'Generate Story/Monologue';
+        document.querySelector('#aiModal .label').textContent = 'Story Topic / Concept';
+        document.getElementById('aiPrompt').value = '';
+        document.getElementById('aiPrompt').placeholder = 'E.g. A cyberpunk noir monologue about rain...';
+        const modal = document.getElementById('aiModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('active');
+    }
+
+    function closeAIModal() {
+        const modal = document.getElementById('aiModal');
+        modal.classList.remove('active');
+        modal.classList.add('hidden');
+    }
+
+    document.getElementById('btn-voice-magic').addEventListener('click', openVoiceDescribeModal);
+    document.getElementById('btn-story-magic').addEventListener('click', openScriptGenModal);
+
+    async function runAiGen() {
+        const prompt = document.getElementById('aiPrompt').value.trim();
+        if (!prompt) return showToast('Please enter a description', 'warning');
+
+        let targetElem = null;
+        if (currentGenMode === 'description') targetElem = document.getElementById('voicePrompt');
+        else if (currentGenMode === 'story') targetElem = document.getElementById('scriptText');
+        else return Modal.show('Error', 'Invalid generation mode.');
+
+        const btn = document.querySelector('#aiModal .btn-primary');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Generating...';
+
+        try {
+            const response = await fetch('/api/studio/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt, mode: currentGenMode })
+            });
+
+            if (targetElem) {
+                targetElem.value = ''; 
+                closeAIModal(); 
+                targetElem.focus();
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value);
+                
+                if (targetElem) {
+                    targetElem.value += chunk;
+                    targetElem.scrollTop = targetElem.scrollHeight;
+                }
+            }
+        } catch (e) {
+            Modal.show('Generation Failed', 'AI Could not generate text.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
+            if (document.getElementById('aiModal').classList.contains('active')) closeAIModal();
+        }
+    }
+
+    function exportProject() {
+        Modal.show('Export Project', 'Project export functionality is coming soon.');
+    }
+
+    function zoomTimeline(direction) {
+        showToast(`Timeline Zoom ${direction > 0 ? 'In' : 'Out'} (Coming Soon)`);
+    }
+
+    const APP = {
+        subFileId: null,
+        analysisFileId: null,
+        isStreaming: false
+    };
+
+    function switchTab(tab) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(`btn-${tab}`).classList.add('active');
+        document.querySelectorAll('.studio-tab').forEach(t => t.classList.add('hidden'));
+        document.getElementById(`tab-${tab}`).classList.remove('hidden');
+    }
+
+    function addTag(tag) {
+        const el = document.getElementById('voicePrompt');
+        el.value = el.value ? `${el.value}, ${tag}` : tag;
+    }
+
+    const Modal = {
+        show: (title, message, buttons = []) => {
+            const id = 'modal-' + Date.now();
+            const backdrop = document.createElement('div');
+            backdrop.className = 'modal-backdrop active';
+            backdrop.id = id;
+            
+            backdrop.onclick = (e) => {
+                if(e.target === backdrop) Modal.close(id);
+            };
+            
+            let btnHtml = '';
+            if (buttons.length === 0) {
+                 btnHtml = `<button class="btn btn-primary btn-sm" onclick="Modal.close('${id}')">OK</button>`;
+            } else {
+                 buttons.forEach(b => {
+                     btnHtml += `<button class="btn ${b.class || 'btn-secondary'} btn-sm" onclick="${b.onclick}; Modal.close('${id}')">${b.text}</button>`;
+                 });
+            }
+
+            backdrop.innerHTML = `
+                <div class="modal">
+                    <div class="modal-header">
+                        <h3>${title}</h3>
+                        <button class="close-btn" onclick="Modal.close('${id}')">
+                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
+                    </div>
+                    <div class="modal-body">${message}</div>
+                    <div class="modal-footer">${btnHtml}</div>
+                </div>
+            `;
+            document.body.appendChild(backdrop);
+        },
+        close: (id) => {
+            const el = document.getElementById(id);
+            if(el) {
+                el.classList.remove('active');
+                setTimeout(() => el.remove(), 200);
+            }
+        }
+    };
+
+    window.alert = (msg) => Modal.show('System Message', msg);
+
+    function showToast(msg, type='info') {
+        if(window.Toast) window.Toast.show(msg, type);
+        else console.log(msg);
+    }
+
+    let SCENE = { chars: {}, lines: [] };
+    let DIALOGUE_MODE = 'auto';
+
+    function switchDialogueMode(mode) {
+        DIALOGUE_MODE = mode;
+        document.querySelectorAll('#tab-dialogue .pills-container button').forEach(b => b.classList.remove('active'));
+        document.getElementById(`mode-${mode}`).classList.add('active');
+        
+        if(mode === 'auto') {
+            document.getElementById('dialogue-auto').classList.remove('hidden');
+            document.getElementById('dialogue-manual').classList.add('hidden');
+        } else {
+            document.getElementById('dialogue-auto').classList.add('hidden');
+            document.getElementById('dialogue-manual').classList.remove('hidden');
+        }
+        document.getElementById('dialogueWorkspace').classList.add('hidden');
+    }
+
+    function parseManualScript() {
+        const text = document.getElementById('manualScript').value;
+        if(!text.trim()) return Modal.show('Input Required', 'Please enter a script.');
+        
+        parseAndRenderScene(text);
+        
+        if(SCENE.lines.length > 0) showToast('Script parsed successfully');
+    }
+
+    async function autoAssignVoices() {
+        if(Object.keys(SCENE.chars).length === 0) return showToast('No characters to assign.');
+        
+        const btn = document.querySelector('#dialogueWorkspace .header-sm .btn-icon');
+        btn.classList.add('pulse');
+        
+        let context = document.getElementById('dialoguePrompt').value.trim();
+        if(!context && SCENE.lines.length > 0) {
+            context = SCENE.lines.slice(0, 5).map(l => `${l.char}: ${l.text}`).join('\n');
+        }
+        
+        try {
+            const res = await fetch('/api/studio/generate', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({
+                    prompt: `Context:\n${context}\n\nCharacters: ${Object.keys(SCENE.chars).join(', ')}`, 
+                    mode:'character_profiles'
+                })
+            });
+            
+            const reader = res.body.getReader();
+            const dec = new TextDecoder();
+            let fullText = '';
+            
+            while(true) {
+                const {done, value} = await reader.read();
+                if(done) break;
+                fullText += dec.decode(value);
+            }
+            
+            const lines = fullText.split('\n');
+            lines.forEach(line => {
+                const match = line.match(/^(.+?):\s*(.+)$/);
+                if(match) {
+                    const name = match[1].trim();
+                    const desc = match[2].trim();
+                    if(SCENE.chars.hasOwnProperty(name)) {
+                        SCENE.chars[name] = desc;
+                    }
+                }
+            });
+            
+            renderSceneUI();
+            showToast('Voices assigned by AI');
+            
+        } catch(e) { Modal.show('Error', 'Failed to assign voices.'); }
+        finally { btn.classList.remove('pulse'); }
+    }
+
+    async function generateDialogueStream() {
+        const prompt = document.getElementById('dialoguePrompt').value.trim();
+        if(!prompt) return Modal.show('Input Required', 'Describe the scene first.');
+        
+        const btn = document.getElementById('btn-gen-dialogue');
+        btn.disabled = true;
+        btn.innerHTML = 'Writing Script...';
+        
+        let fullText = '';
+        try {
+            const res = await fetch('/api/studio/generate', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({prompt, mode:'dialogue'}) 
+            });
+            const reader = res.body.getReader();
+            const dec = new TextDecoder();
+            while(true) {
+                const {done, value} = await reader.read();
+                if(done) break;
+                fullText += dec.decode(value);
+            }
+            parseAndRenderScene(fullText);
+        } catch(e) { Modal.show('Error', 'Failed to generate script'); }
+        finally { 
+            btn.disabled = false; 
+            btn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 0 1 9-9"/></svg> Generate Script`; 
+        }
+    }
+
+    function parseAndRenderScene(text) {
+        SCENE = { chars: {}, lines: [] };
+        const lines = text.split('\n');
+        
+        lines.forEach(line => {
+            const match = line.match(/^(.+?):\s*(.+)$/);
+            if(match) {
+                const name = match[1].trim();
+                const content = match[2].trim();
+                if(!name || !content) return;
+                
+                if(name.includes('Character Name') && content.includes('Dialogue line')) return;
+
+                if(!SCENE.chars[name]) SCENE.chars[name] = '';
+                SCENE.lines.push({ char: name, text: content, audio: null });
+            }
+        });
+
+        if(SCENE.lines.length === 0) return Modal.show('Parse Error', 'No dialogue lines detected. Ensure format is "Name: Text".');
+
+        renderSceneUI();
+        document.getElementById('dialogueWorkspace').classList.remove('hidden');
+    }
+
+    function renderSceneUI() {
+        const charGrid = document.getElementById('characterList');
+        charGrid.innerHTML = Object.keys(SCENE.chars).map((name, i) => `
+            <div class="character-card">
+                <span class="char-name">${name}</span>
+                <input class="input" placeholder="Voice description..." 
+                       value="${SCENE.chars[name]}" 
+                       onchange="SCENE.chars['${name}'] = this.value">
+            </div>
+        `).join('');
+
+        const scriptBox = document.getElementById('scriptLines');
+        scriptBox.innerHTML = SCENE.lines.map((line, idx) => `
+            <div class="script-line" id="line-${idx}">
+                <div class="line-char">${line.char}</div>
+                <div class="line-text" contenteditable="true" onblur="updateLine(${idx}, this.innerText)">${line.text}</div>
+                <div class="line-actions">
+                    <button class="icon-btn" onclick="playLine(${idx})" title="Generate & Play">
+                        <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    </button>
+                    <a id="dl-${idx}" class="icon-btn hidden" download title="Download">
+                        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    </a>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function updateLine(idx, text) { SCENE.lines[idx].text = text; }
+
+    async function playLine(idx) {
+        const line = SCENE.lines[idx];
+        const voice = SCENE.chars[line.char];
+        if(!voice) return showToast(`Set voice for ${line.char}`, 'warning');
+        
+        const btn = document.querySelector(`#line-${idx} button`);
+        btn.classList.add('pulse');
+        
+        try {
+            const res = await fetch('/api/studio/tts', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({text: line.text, voice_description: voice}) 
+            });
+            const data = await res.json();
+            if(data.success) {
+                const audio = new Audio(data.data.url);
+                audio.play();
+                SCENE.lines[idx].audio = data.data.url;
+                const dl = document.getElementById(`dl-${idx}`);
+                dl.href = data.data.url;
+                dl.classList.remove('hidden');
+                return new Promise(resolve => audio.onended = resolve);
+            }
+        } catch(e) { showToast('Gen failed', 'error'); }
+        finally { btn.classList.remove('pulse'); }
+    }
+
+    async function generateFullScene() {
+        const btn = document.querySelector('#dialogueWorkspace .btn-primary');
+        btn.disabled = true;
+        btn.textContent = 'Generating & Playing Scene...';
+        
+        for(let i=0; i<SCENE.lines.length; i++) {
+            await playLine(i);
+            await new Promise(r => setTimeout(r, 300));
+        }
+        
+        btn.disabled = false;
+        btn.innerHTML = `<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> Generate Full Audio`;
+        
+        const audioUrls = SCENE.lines.filter(l => l.audio).map(l => l.audio);
+        if(audioUrls.length >= 2) {
+            showToast('Merging audio files...', 'info');
+            try {
+                const res = await fetch('/api/studio/merge', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({urls: audioUrls, gap_ms: 400})
+                });
+                const data = await res.json();
+                if(data.success) {
+                    document.getElementById('previewPlaceholder').classList.add('hidden');
+                    document.getElementById('audioPlayerContainer').classList.remove('hidden');
+                    const audio = document.getElementById('mainAudio');
+                    audio.src = data.data.url;
+                    const dl = document.getElementById('downloadAudio');
+                    dl.href = data.data.url;
+                    dl.download = 'full_scene.wav';
+                    APP.currentAudioUrl = data.data.url;
+                    showToast('Full scene merged!', 'success');
+                }
+            } catch(e) { showToast('Merge failed', 'error'); }
+        }
+    }
+
+    function setPlaybackSpeed(speed) {
+        document.getElementById('mainAudio').playbackRate = parseFloat(speed);
+    }
+
+    async function trimAudio() {
+        if(!APP.currentAudioUrl) return showToast('No audio to trim', 'warning');
+        const start = parseFloat(document.getElementById('trimStart').value) || 0;
+        const end = parseFloat(document.getElementById('trimEnd').value) || null;
+        
+        showToast('Trimming...', 'info');
+        try {
+            const res = await fetch('/api/studio/trim', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: APP.currentAudioUrl, start, end})
+            });
+            const data = await res.json();
+            if(data.success) {
+                const audio = document.getElementById('mainAudio');
+                audio.src = data.data.url;
+                audio.play();
+                const dl = document.getElementById('downloadAudio');
+                dl.href = data.data.url;
+                dl.download = data.data.filename;
+                APP.currentAudioUrl = data.data.url;
+                showToast('Trimmed!', 'success');
+            } else {
+                Modal.show('Trim Error', data.error.message);
+            }
+        } catch(e) { showToast('Trim failed', 'error'); }
+    }
+
+    async function generateSpeech() {
+        const text = document.getElementById('scriptText').value.trim();
+        const desc = document.getElementById('voicePrompt').value.trim();
+        if(!text || !desc) return Modal.show('Missing Input', 'Please provide both script text and a voice description.');
+
+        const btn = document.getElementById('generateBtn');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span>Generating...</span><div class="loader"></div>';
+
+        try {
+            const res = await fetch('/api/studio/tts', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({text, voice_description:desc})
+            });
+            const data = await res.json();
+            if(data.success) {
+                document.getElementById('previewPlaceholder').classList.add('hidden');
+                document.getElementById('audioPlayerContainer').classList.remove('hidden');
+                const audio = document.getElementById('mainAudio');
+                audio.src = data.data.url;
+                audio.play();
+                const dl = document.getElementById('downloadAudio');
+                dl.href = data.data.url;
+                dl.download = data.data.filename || 'generated_audio.wav';
+                audio.onloadedmetadata = () => {
+                    document.getElementById('trimEnd').value = audio.duration.toFixed(1);
+                    document.getElementById('trimControls').style.display = 'flex';
+                };
+                APP.currentAudioUrl = data.data.url;
+                showToast('Audio Generated', 'success');
+            } else {
+                Modal.show('Generation Error', data.error.message || 'Unknown error occurred');
+            }
+        } catch(e) { Modal.show('Network Error', 'Could not connect to server.'); }
+        finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
+
+    function setupDrop(zoneId, inputId, callback) {
+        const zone = document.getElementById(zoneId);
+        const input = document.getElementById(inputId);
+        zone.onclick = () => input.click();
+        zone.ondragover = (e) => { e.preventDefault(); zone.style.borderColor = 'var(--text-primary)'; zone.style.background = 'var(--surface-glass-active)'; };
+        zone.ondragleave = (e) => { e.preventDefault(); zone.style.borderColor = ''; zone.style.background = ''; };
+        zone.ondrop = (e) => { e.preventDefault(); callback(e.dataTransfer.files[0]); };
+        input.onchange = (e) => { if(e.target.files[0]) callback(e.target.files[0]); };
+    }
+
+    setupDrop('subDropZone', 'subFile', async (f) => {
+        showToast(`Uploading ${f.name}...`);
+        const fd = new FormData(); fd.append('file', f);
+        try {
+            const res = await fetch('/api/upload', {method:'POST', body:fd});
+            const d = await res.json();
+            if(d.success) {
+                APP.subFileId = d.data.file_id;
+                document.querySelector('#subDropZone .drop-label').textContent = f.name;
+                showToast('File Ready');
+            }
+        } catch(e) { showToast('Upload failed', 'error'); }
+    });
+
+    setupDrop('ocrDropZone', 'ocrFile', async (f) => {
+        showToast(`Uploading...`);
+        const fd = new FormData(); fd.append('file', f);
+        try {
+            const res = await fetch('/api/upload', {method:'POST', body:fd});
+            const d = await res.json();
+            if(d.success) {
+                APP.analysisFileId = d.data.file_id;
+                document.querySelector('#ocrDropZone .drop-label').textContent = f.name;
+            }
+        } catch(e) { showToast('Upload failed', 'error'); }
+    });
+
+    async function generateSubtitles() {
+        if(!APP.subFileId) return Modal.show('File Required', 'Please upload a video or audio file first.');
+        showToast('Generating subtitles...');
+        const btn = document.querySelector('#tab-subtitle .btn-primary');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Generating...';
+
+        const fmt = document.getElementById('subFormat').value;
+        try {
+            const res = await fetch('/api/studio/transcribe', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({file_id:APP.subFileId, format:fmt})
+            });
+            const data = await res.json();
+            if(data.success) {
+                document.getElementById('subResult').classList.remove('hidden');
+                document.getElementById('subContent').value = data.data.content;
+                document.getElementById('subDownload').href = data.data.url;
+                document.getElementById('subDownload').download = data.data.filename;
+                showToast('Success', 'success');
+            } else {
+                Modal.show('Error', data.error.message);
+            }
+        } catch(e) { Modal.show('Network Error', 'Could not generate subtitles.'); }
+        finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+    }
+
+    async function runAnalysis() {
+        if(!APP.analysisFileId) return Modal.show('File Required', 'Please upload a file to analyze.');
+        
+        const btn = document.querySelector('#ocrDropZone').parentElement.querySelector('.btn-secondary'); 
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Analyzing...';
+        
+        document.getElementById('analysisOutput').classList.remove('hidden');
+        document.getElementById('analysisText').textContent = 'Thinking...';
+        
+        try {
+            const res = await fetch('/api/studio/describe', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({file_id:APP.analysisFileId})
+            });
+            const data = await res.json();
+            if(data.success) document.getElementById('analysisText').textContent = data.data.description;
+            else {
+                document.getElementById('analysisText').textContent = 'Analysis failed.';
+                Modal.show('Analysis Failed', data.error.message);
+            }
+        } catch(e) { 
+            document.getElementById('analysisText').textContent = 'Error.';
+            Modal.show('Network Error', 'Analysis failed.'); 
+        } finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+    }
+    let parseTimeout;
+    function handleManualInput(text) {
+        clearTimeout(parseTimeout);
+        parseTimeout = setTimeout(() => {
+            if(text.trim()) parseAndRenderScene(text);
+        }, 1000);
+    }
+    
+    function addScriptLine() {
+        const el = document.getElementById('manualScript');
+        const val = el.value;
+        el.value = val + (val ? '\n' : '') + 'Character: ';
+        el.focus();
+    }
+    
+    function clearScript() {
+        if(confirm('Clear script?')) {
+             document.getElementById('manualScript').value = '';
+             SCENE = { chars: {}, lines: [] };
+             document.getElementById('characterList').innerHTML = '';
+             document.getElementById('scriptLines').innerHTML = '';
+             document.getElementById('dialogueWorkspace').classList.add('hidden');
+        }
+    }
+
+    let bookFile = null;
+    setupDrop('bookDropZone', 'bookFile', (f) => {
+        bookFile = f;
+        document.querySelector('#bookDropZone .drop-label').textContent = f.name;
+    });
+
+    async function generateAudiobook() {
+        const text = document.getElementById('bookText').value.trim();
+        if(!bookFile && !text) return Modal.show('Input Required', 'Please upload a file or paste text.');
+        
+        const btn = document.querySelector('#tab-audiobook .btn-primary');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = 'Starting...';
+        
+        const uiLog = document.getElementById('bookLog');
+        const uiBar = document.getElementById('bookBar');
+        const uiStatus = document.getElementById('bookStatus');
+        const uiPercent = document.getElementById('bookPercent');
+        
+        document.getElementById('bookProgress').classList.remove('hidden');
+        uiLog.innerHTML = '';
+        uiBar.style.width = '0%';
+        
+        try {
+            const lang = document.getElementById('bookLang').value;
+            let body;
+            let headers = {};
+            if(bookFile) {
+                body = new FormData();
+                body.append('file', bookFile);
+                if(lang) body.append('target_language', lang);
+            } else {
+                body = JSON.stringify({text, target_language: lang});
+                headers['Content-Type'] = 'application/json';
+            }
+            
+            const res = await fetch('/api/studio/audiobook', { method: 'POST', body, headers });
+            const reader = res.body.getReader();
+            const dec = new TextDecoder();
+            
+            while(true) {
+                const {done, value} = await reader.read();
+                if(done) break;
+                const chunk = dec.decode(value, {stream: true});
+                const lines = chunk.split('\n');
+                
+                for(const line of lines) {
+                    if(!line.trim()) continue;
+                    try {
+                        const d = JSON.parse(line);
+                        if(d.error) throw new Error(d.error);
+                        
+                        if(d.message) {
+                            uiStatus.textContent = d.status;
+                            uiLog.innerHTML += `<div>${d.message}</div>`;
+                            uiLog.scrollTop = uiLog.scrollHeight;
+                        }
+                        if(d.progress) {
+                            uiBar.style.width = `${d.progress}%`;
+                            uiPercent.textContent = `${d.progress}%`;
+                        }
+                        if(d.url) {
+                            document.getElementById('previewPlaceholder').classList.add('hidden');
+                            document.getElementById('audioPlayerContainer').classList.remove('hidden');
+                            const audio = document.getElementById('mainAudio');
+                            audio.src = d.url;
+                            audio.play();
+                            const dl = document.getElementById('downloadAudio');
+                            dl.href = d.url;
+                            dl.download = d.filename;
+                            showToast('Audiobook Ready!', 'success');
+                        }
+                    } catch(e) { console.error(e); }
+                }
+            }
+        } catch(e) {
+            Modal.show('Error', e.message || 'Generation failed');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    }
+</script>
+{% endblock %}

@@ -26,9 +26,6 @@ class ArchiveService:
                     tar_ref.extractall(extract_to)
                     extracted_files = [os.path.join(extract_to, f) for f in tar_ref.getnames()]
             
-            # Note: rar and 7z require external libraries/tools not standard in python
-            # supporting only zip/tar for "clean code" standard lib solution
-            
         except Exception as e:
             raise Exception(f"Failed to extract archive: {str(e)}")
             

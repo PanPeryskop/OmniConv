@@ -40,7 +40,7 @@ class LLMService:
             system_prompt += " Maintain original meaning and structure. Output ONLY the corrected text."
 
         payload = {
-            "model": "ministral-3-8b-instruct-2512", 
+            "model": os.environ.get("LLM_FORMATTING_MODEL", "ministral-3-8b-instruct-2512"), 
             "system_prompt": system_prompt,
             "input": text,
             "temperature": 0.3,
@@ -48,6 +48,76 @@ class LLMService:
             "presence_penalty": 0.6,
         }
 
+        try:
+            result = self._send_request(payload)
+            if 'output' in result and len(result['output']) > 0:
+                for item in result['output']:
+                    if item.get('type') == 'message':
+                        return item['content'].strip()
+            return text
+        except Exception:
+            return text
+
+    def translate_text(self, text: str, target_language: str) -> str:
+        if not text or not text.strip() or not target_language:
+            return text
+            
+        system_prompt = (
+            f"You are a professional translator. Translate the following text into {target_language}. "
+            "Preserve the original tone, style, and formatting. "
+            "CRITICAL: Output ONLY the translated text. Do NOT add ANY explanations, notes, or conversational filler. "
+            "Do NOT say 'Here is the translation'. Just output the text."
+        )
+        
+        payload = {
+            "model": os.environ.get("LLM_TEXT_MODEL", "ministral-3-8b-instruct-2512"),
+            "system_prompt": system_prompt,
+            "input": text,
+            "temperature": 0.3,
+            "stream": False
+        }
+        
+        try:
+            result = self._send_request(payload)
+            if 'output' in result and len(result['output']) > 0:
+                for item in result['output']:
+                    if item.get('type') == 'message':
+                        content = item['content'].strip()
+                        # Simple check to remove potential conversational prefixes
+                        if content.startswith("**") and "**" in content[2:]:
+                             content = content.split("**", 2)[-1].strip()
+                        if content.lower().startswith("here is the translation"):
+                            content = content.split(":", 1)[-1].strip()
+                        return content
+            return text
+        except Exception:
+            return text
+
+    def prep_text_for_audio(self, text: str) -> str:
+        if not text or not text.strip(): return ""
+        
+        system_prompt = (
+            "You are an expert editor preparing text for an audiobook. "
+            "Your task is to CLEAN and NORMALIZE the text for Text-to-Speech.\n"
+            "If the input is an error message, just output it as is.\n"
+            "output ONLY the result. Do NOT explain what you did.\n"
+            "RULES:\n"
+            "1. Remove page numbers, headers, footers, and citation markers.\n"
+            "2. Fix broken line breaks within sentences.\n"
+            "3. Remove URLs and non-narrative artifacts.\n"
+            "4. Expand abbreviations (e.g. 'St.' -> 'Saint').\n"
+            "CRITICAL: Output ONLY the clean, narrative text. Do NOT start with 'Here is the cleaned text'. "
+            "Do NOT list changes made. Just give the text."
+        )
+        
+        payload = {
+            "model": os.environ.get("LLM_FORMATTING_MODEL", "ministral-3-8b-instruct-2512"),
+            "system_prompt": system_prompt,
+            "input": text,
+            "temperature": 0.1,
+            "stream": False
+        }
+        
         try:
             result = self._send_request(payload)
             if 'output' in result and len(result['output']) > 0:
@@ -84,7 +154,7 @@ class LLMService:
         )
 
         payload = {
-            "model": "ministral-3-8b-instruct-2512", 
+            "model": os.environ.get("LLM_FORMATTING_MODEL", "ministral-3-8b-instruct-2512"), 
             "system_prompt": prompt,
             "input": text,
             "temperature": 0.3,
@@ -119,7 +189,6 @@ class LLMService:
             with open(image_path, "rb") as image_file:
                 base64_image = base64.b64encode(image_file.read()).decode('utf-8')
 
-            # Enhanced prompt for structure
             full_prompt = (
                 f"{prompt}\n\n"
                 "Ensure outstanding formatting. If outputting Markdown, use proper headers, lists, and tables. "
@@ -128,7 +197,7 @@ class LLMService:
             )
 
             payload = {
-                "model": "qwen/qwen3-vl-8b",
+                "model": os.environ.get("LLM_OCR_MODEL", "qwen/qwen3-vl-8b"),
                 "input": [
                     {
                         "type": "text",
@@ -168,7 +237,7 @@ class LLMService:
             )
 
         payload = {
-            "model": "ministral-3-8b-instruct-2512", 
+            "model": os.environ.get("LLM_TEXT_MODEL", "ministral-3-8b-instruct-2512"), 
             "messages": [
                 {"role": "system", "content": system_msg} if system_msg else None,
                 {"role": "user", "content": message}
@@ -180,7 +249,7 @@ class LLMService:
         
 
         payload = {
-            "model": "ministral-3-8b-instruct-2512", 
+            "model": os.environ.get("LLM_TEXT_MODEL", "ministral-3-8b-instruct-2512"), 
             "input": message,
             "temperature": 0.7,
             "stream": True,
@@ -225,6 +294,79 @@ class LLMService:
         except Exception as e:
             yield f"Error: {str(e)}"
 
+    def generate_dialogue_stream(self, prompt: str, mode: str = "dialogue", character_count: int = 2):
+        if mode == "story":
+            system_prompt = (
+                "You are a creative storyteller. Write a compelling short story or monologue based on the user's prompt. "
+                "The output should be a single cohesive text suitable for a voiceover or audiobook. "
+                "Do NOT use script format (Character: Line). Write in standard prose. "
+                "Keep it engaging and within 200-300 words unless specified otherwise."
+            )
+        elif mode == "description":
+            system_prompt = (
+                "You are an expert audio director. Create a detailed voice description for a text-to-speech AI. "
+                "Based on the user's input/context, describe the speaker's gender, age, tone, emotion, pace, and accent. "
+                "Keep it concise (1-2 sentences). Example: 'A raspy, elderly male voice, speaking slowly with a hint of melancholy.'"
+            )
+        elif mode == "character_profiles":
+            system_prompt = (
+                "You are an expert casting director. Given a script or scene description, analyze the characters and propose detailed voice descriptions for a TTS engine. "
+                "Format the output strictly as:\n"
+                "Character Name: Voice Description\n"
+                "Character Name: Voice Description\n"
+                "Include details like gender, age, accent, tone, pitch, and emotion. Keep descriptions concise (under 20 words).\n"
+                "CRITICAL: Do NOT write any dialogue lines. Do NOT write a script. ONLY write the voice descriptions."
+            )
+        else:
+            system_prompt = (
+                f"You are an expert scriptwriter for audio dramas. Write a compelling, natural dialogue based on the user's prompt. "
+                f"The scene involves exactly {character_count} characters. "
+                "Format the output strictly as follows:\n"
+                "Character Name: [Dialogue line]\n"
+                "Character Name: [Dialogue line]\n\n"
+                "Do NOT include scene descriptions, parentheticals, or actions (e.g., *laughs*, (sighs)). "
+                "Focus purely on the spoken words. "
+                "Keep the dialogue engaging, with distinct character voices. "
+                "Ensure the conversation flows logically and has a clear beginning, middle, and end."
+            )
+
+        payload = {
+            "model": os.environ.get("LLM_TEXT_MODEL", "ministral-3-8b-instruct-2512"),
+            "system_prompt": system_prompt,
+            "input": prompt,
+            "temperature": 0.7,
+            "stream": True
+        }
+
+        try:
+            with requests.post(self.api_url, json=payload, stream=True, timeout=1800) as response:
+                response.raise_for_status()
+                for line in response.iter_lines():
+                    if line:
+                        line = line.decode('utf-8')
+                        if line.startswith("data: "):
+                            json_str = line[6:]
+                            if json_str.strip() == "[DONE]": break
+                            try:
+                                data = json.loads(json_str)
+                                content = ""
+                                if "choices" in data:
+                                    delta = data["choices"][0].get("delta", {})
+                                    content = delta.get("content", "")
+                                if not content and "content" in data:
+                                    content = data["content"]
+                                if content: yield content
+                            except json.JSONDecodeError: pass
+        except Exception as e:
+            yield f"Error: {str(e)}"
+
+    def generate_dialogue(self, prompt: str, character_count: int = 2) -> str:
+        full_text = ""
+        for chunk in self.generate_dialogue_stream(prompt, character_count):
+             if not chunk.startswith("Error:"):
+                 full_text += chunk
+        return full_text
+
     def _get_project_context(self) -> str:
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         context = []
@@ -250,7 +392,6 @@ class LLMService:
                 try:
                     with open(kf_path, 'r', encoding='utf-8') as f:
                         content = f.read()
-                        # Truncate if too long
                         if len(content) > 2000: content = content[:2000] + "...[TRUNCATED]"
                         context.append(f"--- {kf} ---\n{content}\n")
                 except:

@@ -23,7 +23,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, cacheCopy));
           return response;
         })
-        .catch(() => caches.match('/')); // Offline fallback
+        .catch(() => caches.match('/'));
         
       return cached || networked;
     })

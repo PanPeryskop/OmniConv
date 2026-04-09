@@ -59,5 +59,4 @@ class StatsService:
     def get_stats(self) -> Dict[str, Any]:
         return self._load_stats()
 
-# Global instance
 stats_service = StatsService(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'stats.json'))

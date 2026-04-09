@@ -11,12 +11,10 @@ class AudioConverter(BaseConverter):
         'dts', 'eac3', 'tta', 'wv', 'aiff', 'ape', 'wma', 'opus'
     }
     
-    # AAC disabled - conversion not working
     OUTPUT_FORMATS = {'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aiff'}
     
     FORMAT_CODECS = {
         'mp3': 'libmp3lame',
-        # 'aac': 'aac',  # Disabled - not working
         'm4a': 'aac',
         'ogg': 'libvorbis',
         'flac': 'flac',
@@ -26,7 +24,6 @@ class AudioConverter(BaseConverter):
     
     DEFAULT_BITRATES = {
         'mp3': '192k',
-        # 'aac': '192k',  # Disabled - not working
         'm4a': '192k',
         'ogg': '192k',
     }

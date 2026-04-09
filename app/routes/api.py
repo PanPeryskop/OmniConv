@@ -2,6 +2,7 @@ import os
 import threading
 from flask import Blueprint, request, jsonify, send_file, current_app, Response, stream_with_context
 from werkzeug.exceptions import RequestEntityTooLarge
+import json
 
 from ..utils.file_handler import (
     get_file_extension,
@@ -24,7 +25,9 @@ from ..services import (
     OCRService,
     VideoCompressor,
     AudioCompressor,
-    ImageCompressor
+    ImageCompressor,
+    AudioDesignService,
+    SubtitleGenService
 )
 from .websocket import emit_progress, emit_complete, emit_error
 from ..services.stats import stats_service as stats
@@ -159,10 +162,8 @@ def upload_archive():
         upload_folder = current_app.config['UPLOAD_FOLDER']
         archive_service.upload_folder = upload_folder # Ensure correct folder
         
-        # Save archive first
         file_id, saved_path, original_filename = save_uploaded_file(file, upload_folder)
         
-        # Extract
         extract_dir = os.path.join(upload_folder, f"extracted_{file_id}")
         os.makedirs(extract_dir, exist_ok=True)
         
@@ -170,14 +171,10 @@ def upload_archive():
         
         result_files = []
         for file_path in extracted_files:
-            # Register as uploaded file
             f_name = os.path.basename(file_path)
             f_id = generate_file_id()
             f_ext = get_file_extension(f_name)
             
-            # Move to main upload folder or keep in extracted? 
-            # Keeping in extracted might be messy for cleanup.
-            # Let's move to upload folder with unique name
             new_path = os.path.join(upload_folder, f"{f_id}.{f_ext}") if f_ext else os.path.join(upload_folder, f_id)
             import shutil
             shutil.move(file_path, new_path)
@@ -204,10 +201,9 @@ def upload_archive():
                 'size': os.path.getsize(new_path)
             })
             
-        # Cleanup archive and empty dir
         try:
             os.remove(saved_path)
-            os.rmdir(extract_dir) # Only if empty, but we moved files
+            os.rmdir(extract_dir)
         except:
             pass
             
@@ -225,7 +221,7 @@ def get_output_formats_for_type(file_type: str) -> list:
     elif file_type == 'image':
         return sorted(['png', 'jpg', 'jpeg', 'webp', 'ico', 'ocr-pdf', 'ocr-docx', 'ocr-txt', 'ocr-md', 'ocr-html'])
     elif file_type == 'document':
-        return sorted(['docx', 'html', 'md', 'ocr-docx', 'ocr-html', 'ocr-md', 'ocr-pdf', 'ocr-txt', 'pdf', 'txt'])
+        return sorted(['docx', 'html', 'md', 'ocr-docx', 'ocr-html', 'ocr-md', 'ocr-pdf', 'ocr-txt', 'pdf', 'txt', 'images', 'csv', 'xlsx'])
     return []
 
 
@@ -282,6 +278,7 @@ def start_conversion():
         job['progress'] = progress
         emit_progress(job_id, progress)
     
+    print(f"DEBUG: Starting conversion thread for job {job_id}")
     thread = threading.Thread(target=run_conversion, args=(job, output_format, options, progress_callback))
     thread.start()
     
@@ -289,6 +286,8 @@ def start_conversion():
 
 
 def run_conversion(job, output_format, options, progress_callback):
+    print(f"DEBUG: run_conversion started for job {job['job_id']}")
+    print(f"DEBUG: Output format: {output_format}, Options: {options}")
     file_type = job['file_type']
     
     if output_format.startswith('ocr-'):
@@ -548,25 +547,302 @@ def run_compression(job, target_size_mb, progress_callback):
 def handle_file_too_large(e):
     max_size = current_app.config.get('MAX_CONTENT_LENGTH', 0) / (1024 * 1024)
     return api_response(error={'type': 'FileTooLargeError', 'message': f'File exceeds maximum size of {max_size:.0f}MB'}, success=False), 413
-@api_bp.route('/chat', methods=['POST'])
-def chat():
+@api_bp.route('/studio/tts', methods=['POST'])
+def studio_tts():
     data = request.get_json()
-    if not data or 'message' not in data:
-        return api_response(error={'type': 'InvalidRequestError', 'message': 'Message required'}, success=False), 400
+    text = data.get('text')
+    voice_description = data.get('voice_description')
+    
+    if not text or not voice_description:
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'text and voice_description required'}, success=False), 400
         
-    message = data.get('message')
-    response_id = data.get('response_id')
+    try:
+        service = AudioDesignService()
+        output_folder = current_app.config['OUTPUT_FOLDER']
+        filename = f"tts_{generate_file_id()}.wav"
+        output_path = os.path.join(output_folder, filename)
+        
+        service.generate_voice_design(text, voice_description, output_path)
+        
+        return api_response(data={'filename': filename, 'url': f"/api/download-archive/{filename}"})
+    except Exception as e:
+        return api_response(error={'type': 'TTSError', 'message': str(e)}, success=False), 500
+
+@api_bp.route('/studio/describe', methods=['POST'])
+def studio_describe():
+    data = request.get_json()
+    file_id = data.get('file_id')
+    
+    if not file_id:
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'file_id required'}, success=False), 400
+        
+    if file_id not in conversion_jobs:
+        return api_response(error={'type': 'NotFoundError', 'message': 'File not found'}, success=False), 404
+        
+    job = conversion_jobs[file_id]
     
     try:
-        from ..services.llm import LLMService
-        llm = LLMService()
-        
-        # Generator for streaming response
-        def generate():
-            for chunk in llm.chat_with_context(message, response_id):
-                yield chunk
-                
-        return Response(stream_with_context(generate()), mimetype='text/plain')
-        
+        service = SubtitleGenService()
+        description = service.describe_audio(job['input_path'])
+        return api_response(data={'description': description})
     except Exception as e:
-        return api_response(error={'type': 'ChatError', 'message': str(e)}, success=False), 500
+        return api_response(error={'type': 'AnalysisError', 'message': str(e)}, success=False), 500
+
+@api_bp.route('/studio/transcribe', methods=['POST'])
+def studio_transcribe():
+    data = request.get_json()
+    file_id = data.get('file_id')
+    output_format = data.get('format', 'srt')
+    
+    if not file_id:
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'file_id required'}, success=False), 400
+        
+    if file_id not in conversion_jobs:
+        return api_response(error={'type': 'NotFoundError', 'message': 'File not found'}, success=False), 404
+        
+    job = conversion_jobs[file_id]
+    
+    try:
+        service = SubtitleGenService()
+        result = service.generate_subtitle(job['input_path'], output_format)
+        
+        # Save result to file
+        output_folder = current_app.config['OUTPUT_FOLDER']
+        filename = f"{os.path.splitext(job['original_filename'])[0]}_subs.{output_format}"
+        output_path = os.path.join(output_folder, filename)
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(result)
+            
+        return api_response(data={'filename': filename, 'url': f"/api/download-archive/{filename}", 'content': result})
+    except Exception as e:
+        return api_response(error={'type': 'SubtitleError', 'message': str(e)}, success=False), 500
+
+@api_bp.route('/studio/generate', methods=['POST'])
+def studio_generate():
+    data = request.get_json()
+    prompt = data.get('prompt')
+    mode = data.get('mode', 'dialogue')
+    character_count = data.get('character_count', 2)
+    
+    if not prompt:
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'prompt required'}, success=False), 400
+        
+    def generate():
+        try:
+            from ..services.llm import LLMService
+            service = LLMService()
+            for chunk in service.generate_dialogue_stream(prompt, mode=mode, character_count=character_count):
+                 yield chunk
+        except Exception as e:
+            yield f"Error: {str(e)}"
+
+    return Response(stream_with_context(generate()), content_type='text/plain')
+
+@api_bp.route('/studio/audiobook', methods=['POST'])
+def studio_audiobook():
+    if request.content_type.startswith('multipart/form-data'):
+        file_storage = request.files.get('file')
+        text_input = request.form.get('text')
+        target_lang = request.form.get('target_language')
+    else:
+        data = request.get_json() or {}
+        file_storage = None
+        text_input = data.get('text')
+        target_lang = data.get('target_language')
+
+    saved_input_path = None
+    if file_storage:
+        ext = get_file_extension(file_storage.filename)
+        file_id = generate_file_id()
+        saved_input_path = os.path.join(current_app.config['UPLOAD_FOLDER'], f"{file_id}{ext}")
+        file_storage.save(saved_input_path)
+
+    def generate():
+        try:
+            from ..services.llm import LLMService
+
+            full_text = ""
+            if saved_input_path:
+                yield json.dumps({"status": "extracting", "message": "Extracting text..."}) + "\n"
+                try:
+                    converter = DocumentConverter()
+                    full_text = converter.extract_text(saved_input_path)
+                except Exception as e:
+                    full_text = f"Error extracting text: {str(e)}"
+            elif text_input:
+                full_text = text_input
+            
+            if not full_text:
+                yield json.dumps({"error": "No text found"}) + "\n"
+                return
+
+            paragraphs = full_text.split('\n')
+            chunks = []
+            current_chunk = ""
+            
+            for p in paragraphs:
+                if len(current_chunk) + len(p) > 1500:
+                    chunks.append(current_chunk)
+                    current_chunk = p
+                else:
+                    current_chunk += "\n" + p
+            if current_chunk: chunks.append(current_chunk)
+            
+            yield json.dumps({"status": "processing", "message": f"Processing {len(chunks)} text chunks..."}) + "\n"
+            
+            llm = LLMService()
+            audio_service = AudioDesignService()
+            audio_service._ensure_loaded() # Preload model
+            
+            audio_files = []
+            
+            for i, chunk in enumerate(chunks):
+                if not chunk.strip(): continue
+                
+                # Translation Step
+                if target_lang:
+                    yield json.dumps({"status": "translating", "progress": int((i/len(chunks))*30), "message": f"Translating chunk {i+1}/{len(chunks)} to {target_lang}..."}) + "\n"
+                    chunk = llm.translate_text(chunk, target_lang)
+
+                yield json.dumps({"status": "cleaning", "progress": 30 + int((i/len(chunks))*20), "message": f"Polishing chunk {i+1}/{len(chunks)}..."}) + "\n"
+                clean_text = llm.prep_text_for_audio(chunk)
+                
+                yield json.dumps({"status": "generating", "progress": 50 + int((i/len(chunks))*40), "message": f"Speaking chunk {i+1}/{len(chunks)}..."}) + "\n"
+                narrator_desc = "A clear, professional, warm narrator voice, neutral accent, storytelling tone."
+                
+                chunk_filename = f"chunk_{generate_file_id()}.wav"
+                chunk_path = os.path.join(current_app.config['OUTPUT_FOLDER'], chunk_filename)
+                
+                outfile = audio_service.generate_voice_design(clean_text, narrator_desc, chunk_path)
+                if outfile:
+                   audio_files.append(outfile)
+
+            yield json.dumps({"status": "merging", "message": "Merging audio files..."}) + "\n"
+            
+            output_folder = current_app.config['OUTPUT_FOLDER']
+            merged_filename = f"audiobook_{generate_file_id()}.wav"
+            merged_path = os.path.join(output_folder, merged_filename)
+            
+            if len(audio_files) == 1:
+                import shutil
+                shutil.copy(audio_files[0], merged_path)
+            elif len(audio_files) > 1:
+                import imageio_ffmpeg
+                import subprocess
+                ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+                list_path = os.path.join(output_folder, f"_concat_{generate_file_id()}.txt")
+                with open(list_path, 'w') as f:
+                    for af in audio_files:
+                        f.write(f"file '{af}'\n")
+                
+                subprocess.run([
+                    ffmpeg_exe, '-y', '-f', 'concat', '-safe', '0',
+                    '-i', list_path, '-c:a', 'pcm_s16le', merged_path
+                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                try: os.remove(list_path) 
+                except: pass
+            
+            yield json.dumps({
+                "status": "complete", 
+                "progress": 100,
+                "url": f"/api/download-archive/{merged_filename}", 
+                "filename": merged_filename
+            }) + "\n"
+
+        except Exception as e:
+            yield json.dumps({"error": str(e)}) + "\n"
+
+    return Response(stream_with_context(generate()), content_type='application/json')
+
+@api_bp.route('/studio/trim', methods=['POST'])
+def studio_trim():
+    data = request.get_json()
+    source_url = data.get('url')
+    start = data.get('start', 0)
+    end = data.get('end')
+    
+    if not source_url:
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'url required'}, success=False), 400
+    
+    filename = source_url.split('/')[-1]
+    output_folder = current_app.config['OUTPUT_FOLDER']
+    source_path = os.path.join(output_folder, filename)
+    
+    if not os.path.exists(source_path):
+        return api_response(error={'type': 'NotFoundError', 'message': 'Source file not found'}, success=False), 404
+    
+    try:
+        import imageio_ffmpeg
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        
+        out_filename = f"trimmed_{generate_file_id()}.wav"
+        out_path = os.path.join(output_folder, out_filename)
+        
+        cmd = [ffmpeg_exe, '-y', '-i', source_path, '-ss', str(start)]
+        if end:
+            cmd.extend(['-to', str(end)])
+        cmd.extend(['-c:a', 'pcm_s16le', out_path])
+        
+        import subprocess
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        return api_response(data={'filename': out_filename, 'url': f"/api/download-archive/{out_filename}"})
+    except Exception as e:
+        return api_response(error={'type': 'TrimError', 'message': str(e)}, success=False), 500
+
+@api_bp.route('/studio/merge', methods=['POST'])
+def studio_merge():
+    data = request.get_json()
+    urls = data.get('urls', [])
+    gap_ms = data.get('gap_ms', 500)
+    
+    if len(urls) < 2:
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'at least 2 urls required'}, success=False), 400
+    
+    output_folder = current_app.config['OUTPUT_FOLDER']
+    
+    try:
+        import imageio_ffmpeg
+        import subprocess
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        
+        list_path = os.path.join(output_folder, f"_concat_{generate_file_id()}.txt")
+        gap_path = None
+        
+        if gap_ms > 0:
+            gap_path = os.path.join(output_folder, f"_silence_{generate_file_id()}.wav")
+            subprocess.run([
+                ffmpeg_exe, '-y', '-f', 'lavfi', '-i',
+                f'anullsrc=r=24000:cl=mono:d={gap_ms/1000}',
+                '-c:a', 'pcm_s16le', gap_path
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        with open(list_path, 'w') as f:
+            for i, url in enumerate(urls):
+                fname = url.split('/')[-1]
+                fpath = os.path.join(output_folder, fname)
+                if not os.path.exists(fpath):
+                    continue
+                f.write(f"file '{fpath}'\n")
+                if gap_path and i < len(urls) - 1:
+                    f.write(f"file '{gap_path}'\n")
+        
+        out_filename = f"merged_{generate_file_id()}.wav"
+        out_path = os.path.join(output_folder, out_filename)
+        
+        subprocess.run([
+            ffmpeg_exe, '-y', '-f', 'concat', '-safe', '0',
+            '-i', list_path, '-c:a', 'pcm_s16le', out_path
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        try:
+            os.remove(list_path)
+            if gap_path:
+                os.remove(gap_path)
+        except:
+            pass
+        
+        return api_response(data={'filename': out_filename, 'url': f"/api/download-archive/{out_filename}"})
+    except Exception as e:
+        return api_response(error={'type': 'MergeError', 'message': str(e)}, success=False), 500

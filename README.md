@@ -20,6 +20,9 @@
 |---------|-------------|
 | 🎵 **Audio Conversion** | Convert between MP3, WAV, FLAC, OGG, M4A, AAC, AIFF, WMA and more |
 | 🎬 **Video Conversion** | MP4, AVI, MKV, MOV, WEBM conversions + GIF extraction |
+| 🎙️ **Voice Design Studio** | **NEW!** Generate speech with Qwen3-TTS using natural language descriptions |
+| 📝 **Subtitle Generator** | **NEW!** Auto-generate subtitles (SRT, VTT) with Voxtral-Mini-3B |
+| 📚 **E-book Support** | **NEW!** Convert PDF to EPUB and CBZ formats |
 | 📺 **YouTube Downloader** | Direct browser download, playlist support, quality selection & realtime progress |
 | 🖼️ **Image Conversion** | PNG, JPG, WEBP, GIF, BMP, TIFF, HEIC, ICO support |
 | 📄 **Document Conversion** | PDF to DOCX with layout preservation |
@@ -109,7 +112,7 @@ http://localhost:5000
 
 | Input | Output |
 |-------|--------|
-| PDF, DOCX, DOC, TXT, RTF, ODT, XLS, XLSX, MD | DOCX, PDF, TXT |
+| PDF, DOCX, DOC, TXT, RTF, ODT, XLS, XLSX, MD | DOCX, PDF, TXT, EPUB, CBZ |
 
 > 🔍 **OCR Engine Options:**
 > - **Qwen 3-VL:** State-of-the-art multimodal AI (high accuracy, slower).
@@ -125,12 +128,13 @@ http://localhost:5000
 | Technology | Purpose |
 |------------|---------|
 | **Flask** | Web framework |
-| **Transformers** | LightOnOCR model for advanced text recognition |
+| **Transformers** | LightOnOCR, Qwen3-TTS, Voxtral models |
 | **MoviePy** | Video processing |
 | **Pydub** | Audio processing |
 | **Pillow** | Image processing |
 | **FFmpeg** | Media encoding/decoding |
 | **python-docx** | Document handling |
+| **EbookLib** | E-book generation |
 
 ---
 

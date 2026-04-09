@@ -172,7 +172,15 @@ body {
 
 .brand-link { display: flex; align-items: center; gap: var(--space-3); text-decoration: none; }
 .brand-icon { width: 32px; height: 32px; }
-.brand-icon svg { width: 100%; height: 100%; }
+.brand-icon svg { 
+    width: 100%; 
+    height: 100%; 
+    transition: all var(--duration-fast);
+}
+.brand-link:hover .brand-icon {
+    transform: rotate(-10deg) scale(1.1);
+    color: var(--text-primary);
+}
 .brand-name { 
     font-size: var(--text-lg); 
     font-weight: 600; 

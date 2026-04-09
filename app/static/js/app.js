@@ -126,7 +126,7 @@ function initEventListeners() {
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key === 'u') {
             e.preventDefault();
-            switchTab('upload');
+            switchMainTab('upload');
             ui.fileInput.click();
         }
         if (e.ctrlKey && e.key === 'Enter') {
@@ -620,7 +620,7 @@ function init() {
     renderRecentHistory();
 }
 
-function switchTab(tab) {
+function switchMainTab(tab) {
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(btn => {
         if (btn.getAttribute('onclick').includes(tab)) btn.classList.add('active');
@@ -674,7 +674,7 @@ async function submitUrl() {
     }
 }
 
-window.switchTab = switchTab;
+window.switchMainTab = switchMainTab;
 window.submitUrl = submitUrl;
 
 if (document.readyState === 'loading') {

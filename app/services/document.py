@@ -1,5 +1,9 @@
 from typing import Optional, Dict, Any
+import os
 import html
+import shutil
+import io
+import csv
 
 from .converter import BaseConverter
 from ..utils.exceptions import (
@@ -9,370 +13,377 @@ from ..utils.exceptions import (
     InvalidPasswordError
 )
 
-
 class DocumentConverter(BaseConverter):
-    INPUT_FORMATS = {'pdf', 'md'}
-    OUTPUT_FORMATS = {'docx', 'txt', 'pdf', 'pdf_ocr', 'md', 'html'}
+    INPUT_FORMATS = {'pdf', 'md', 'epub', 'mobi', 'txt'}
+    OUTPUT_FORMATS = {'docx', 'txt', 'pdf', 'pdf_ocr', 'md', 'html', 'images', 'csv', 'xlsx', 'epub', 'cbz'}
     
-    def convert(
-        self,
-        input_path: str,
-        output_path: str,
-        output_format: str,
-        options: Optional[Dict[str, Any]] = None
-    ) -> str:
+    def convert(self, input_path: str, output_path: str, output_format: str, options: Optional[Dict[str, Any]] = None) -> str:
         options = options or {}
         output_format = output_format.lower()
         
         if output_format not in self.OUTPUT_FORMATS:
             raise UnsupportedFormatError(output_format, list(self.OUTPUT_FORMATS))
         
-        if output_format == 'docx':
-            return self._pdf_to_docx(input_path, output_path, options)
-        elif output_format == 'txt':
-            return self._pdf_to_text(input_path, output_path, options)
-        elif output_format == 'md':
-            return self._pdf_to_md(input_path, output_path, options)
-        elif output_format == 'html':
-            return self._pdf_to_html(input_path, output_path, options)
-        elif output_format == 'pdf':
+        handlers = {
+            'docx': self._pdf_to_docx,
+            'txt': self._pdf_to_text,
+            'md': self._pdf_to_md,
+            'html': self._pdf_to_html,
+            'images': self._extract_images,
+            'csv': self._pdf_to_csv,
+            'xlsx': self._pdf_to_xlsx,
+            'epub': self._pdf_to_epub,
+            'cbz': self._pdf_to_cbz,
+            'pdf_ocr': self._pdf_ocr,
+        }
+
+        if output_format == 'pdf':
             if input_path.lower().endswith('.md'):
                 return self._md_to_pdf(input_path, output_path, options)
             raise ConversionError("PDF output only supported from Markdown input")
-        elif output_format == 'pdf_ocr':
-            from .ocr import OCRService
-            ocr = OCRService(self._progress_callback)
-            return ocr.ocr_pdf_to_searchable(input_path, output_path, options)
+            
+        handler = handlers.get(output_format)
+        if handler:
+            return handler(input_path, output_path, options)
         
         raise UnsupportedFormatError(output_format)
     
     def _pdf_to_docx(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
         from pdf2docx import Converter
-        
         try:
             self.report_progress(10)
             password = options.get('password')
             cv = Converter(input_path, password=password)
             self.report_progress(30)
-            
             if self.is_cancelled:
                 cv.close()
                 return None
-            
             cv.convert(output_path, start=0, end=None)
             self.report_progress(90)
             cv.close()
             self.report_progress(100)
-            
             return output_path
-            
         except Exception as e:
-            error_msg = str(e).lower()
-            if 'password' in error_msg or 'encrypted' in error_msg:
-                if password:
-                    raise InvalidPasswordError()
-                raise PasswordRequiredError()
-            raise ConversionError(f"PDF to DOCX conversion failed: {str(e)}")
-    
+            self._handle_pdf_error(e, password)
+
     def _pdf_to_text(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
-        from pdfminer.high_level import extract_text
-        from pypdf import PdfReader
-        
+        import fitz
         try:
             self.report_progress(10)
-            password = options.get('password')
-            
-            reader = PdfReader(input_path)
-            if reader.is_encrypted:
-                if password:
-                    if not reader.decrypt(password):
-                        raise InvalidPasswordError()
-                else:
+            doc = fitz.open(input_path)
+            if doc.is_encrypted:
+                if not options.get('password'):
                     raise PasswordRequiredError()
+                doc.authenticate(options['password'])
             
-            self.report_progress(30)
-            text = extract_text(input_path, password=password)
+            text_blocks = []
+            for page in doc:
+                text_blocks.append(page.get_text())
+                if self.is_cancelled:
+                    doc.close()
+                    return None
+            
             self.report_progress(80)
-            
-            if self.is_cancelled:
-                return None
-            
             with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(text)
+                f.write('\n\n'.join(text_blocks))
             
+            doc.close()
             self.report_progress(100)
             return output_path
-            
-        except (PasswordRequiredError, InvalidPasswordError):
-            raise
         except Exception as e:
-            raise ConversionError(f"Text extraction failed: {str(e)}")
-    
+            self._handle_pdf_error(e, options.get('password'))
+
     def _pdf_to_md(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
-        from pdfminer.high_level import extract_text
-        from pypdf import PdfReader
-        
+        import fitz
         try:
             self.report_progress(10)
-            password = options.get('password')
-            
-            reader = PdfReader(input_path)
-            if reader.is_encrypted:
-                if password:
-                    if not reader.decrypt(password):
-                        raise InvalidPasswordError()
-                else:
+            doc = fitz.open(input_path)
+            if doc.is_encrypted:
+                if not options.get('password'):
                     raise PasswordRequiredError()
+                doc.authenticate(options['password'])
             
-            self.report_progress(30)
-            text = extract_text(input_path, password=password)
-            self.report_progress(70)
-            
-            if self.is_cancelled:
-                return None
-            
-            md_content = self._text_to_markdown(text)
-            
+            md_content = []
+            for page in doc:
+                blocks = page.get_text("dict")["blocks"]
+                for block in blocks:
+                    if block['type'] == 0:
+                        for line in block["lines"]:
+                            for span in line["spans"]:
+                                text = span["text"].strip()
+                                size = span["size"]
+                                if not text: continue
+                                
+                                if size > 18:
+                                    md_content.append(f"# {text}")
+                                elif size > 14:
+                                    md_content.append(f"## {text}")
+                                elif size > 12:
+                                    md_content.append(f"### {text}")
+                                else:
+                                    md_content.append(text)
+                            md_content.append("")
+                    if self.is_cancelled:
+                        doc.close()
+                        return None
+                        
+            self.report_progress(80)
             with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(md_content)
+                f.write('\n'.join(md_content))
             
+            doc.close()
             self.report_progress(100)
             return output_path
-            
-        except (PasswordRequiredError, InvalidPasswordError):
-            raise
         except Exception as e:
-            raise ConversionError(f"Markdown conversion failed: {str(e)}")
-    
+            self._handle_pdf_error(e, options.get('password'))
+
     def _pdf_to_html(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
-        from pdfminer.high_level import extract_text
-        from pypdf import PdfReader
-        
+        import fitz
         try:
             self.report_progress(10)
-            password = options.get('password')
-            
-            reader = PdfReader(input_path)
-            if reader.is_encrypted:
-                if password:
-                    if not reader.decrypt(password):
-                        raise InvalidPasswordError()
-                else:
+            doc = fitz.open(input_path)
+            if doc.is_encrypted:
+                if not options.get('password'):
                     raise PasswordRequiredError()
+                doc.authenticate(options['password'])
             
-            self.report_progress(30)
-            text = extract_text(input_path, password=password)
-            self.report_progress(70)
+            html_parts = []
+            for page in doc:
+                html_parts.append(page.get_text("html"))
+                if self.is_cancelled:
+                    doc.close()
+                    return None
             
-            if self.is_cancelled:
-                return None
-            
-            html_content = self._text_to_html(text)
-            
+            self.report_progress(80)
+            full_html = f"<html><body>{'<hr>'.join(html_parts)}</body></html>"
             with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(html_content)
+                f.write(full_html)
             
+            doc.close()
             self.report_progress(100)
             return output_path
-            
-        except (PasswordRequiredError, InvalidPasswordError):
-            raise
         except Exception as e:
-            raise ConversionError(f"HTML conversion failed: {str(e)}")
-    
-    def _text_to_markdown(self, text: str) -> str:
-        import re
-        lines = text.split('\n')
-        md_lines = []
-        prev_empty = True
-        
-        for i, line in enumerate(lines):
-            stripped = line.strip()
+            self._handle_pdf_error(e, options.get('password'))
+
+    def _extract_images(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
+        import fitz
+        try:
+            if not os.path.exists(output_path):
+                os.makedirs(output_path)
             
-            if not stripped:
-                md_lines.append('')
-                prev_empty = True
-                continue
-            
-            if re.match(r'^\d+[\.\)]\s+', stripped):
-                match = re.match(r'^(\d+)[\.\)]\s+(.+)', stripped)
-                if match:
-                    md_lines.append(f"{match.group(1)}. {match.group(2)}")
-                    prev_empty = False
-                    continue
-            
-            if re.match(r'^[\-\*\•]\s+', stripped):
-                content = re.sub(r'^[\-\*\•]\s+', '', stripped)
-                md_lines.append(f"- {content}")
-                prev_empty = False
-                continue
-            
-            if (len(stripped) < 60 and 
-                prev_empty and 
-                not stripped.endswith((',', ';', ':')) and
-                (stripped.isupper() or stripped.istitle() or stripped[0].isupper())):
+            doc = fitz.open(input_path)
+            if doc.is_encrypted:
+                if not options.get('password'):
+                    raise PasswordRequiredError()
+                doc.authenticate(options['password'])
+
+            count = 0
+            for i, page in enumerate(doc):
+                images = page.get_images()
+                for j, img in enumerate(images):
+                    xref = img[0]
+                    base_image = doc.extract_image(xref)
+                    image_bytes = base_image["image"]
+                    ext = base_image["ext"]
+                    filename = f"page{i+1}_img{j+1}.{ext}"
+                    with open(os.path.join(output_path, filename), "wb") as f:
+                        f.write(image_bytes)
+                    count += 1
                 
-                next_empty = (i + 1 >= len(lines) or not lines[i + 1].strip())
-                
-                if stripped.isupper() and len(stripped) < 40:
-                    md_lines.append(f"# {stripped.title()}")
-                elif next_empty or len(stripped) < 30:
-                    md_lines.append(f"## {stripped}")
-                else:
-                    md_lines.append(stripped)
-                prev_empty = False
-                continue
+                if self.is_cancelled:
+                    doc.close()
+                    shutil.rmtree(output_path)
+                    return None
             
-            md_lines.append(stripped)
-            prev_empty = False
-        
-        return '\n'.join(md_lines)
-    
-    def _text_to_html(self, text: str) -> str:
-        lines = text.split('\n')
-        paragraphs = []
-        current_para = []
-        
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                if current_para:
-                    paragraphs.append(' '.join(current_para))
-                    current_para = []
-            else:
-                current_para.append(stripped)
-        
-        if current_para:
-            paragraphs.append(' '.join(current_para))
-        
-        body_content = '\n'.join(f'<p>{html.escape(p)}</p>' for p in paragraphs if p)
-        
-        return f'''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            color: #333;
-        }}
-        p {{
-            margin-bottom: 1em;
-        }}
-    </style>
-</head>
-<body>
-{body_content}
-</body>
-</html>'''
-    
+            doc.close()
+            
+            zip_path = f"{output_path}.zip"
+            shutil.make_archive(output_path, 'zip', output_path)
+            shutil.rmtree(output_path)
+            return zip_path
+        except Exception as e:
+            self._handle_pdf_error(e, options.get('password'))
+
+    def _pdf_to_csv(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
+        import pdfplumber
+        try:
+            with pdfplumber.open(input_path, password=options.get('password')) as pdf:
+                all_tables = []
+                for page in pdf.pages:
+                    tables = page.extract_tables()
+                    for table in tables:
+                        all_tables.extend(table)
+                    if self.is_cancelled:
+                        return None
+                
+                with open(output_path, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerows(all_tables)
+            return output_path
+        except ImportError:
+            raise ConversionError("pdfplumber required for table extraction")
+        except Exception as e:
+            self._handle_pdf_error(e, options.get('password'))
+
+    def _pdf_to_xlsx(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
+        import pdfplumber
+        import openpyxl
+        try:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            
+            with pdfplumber.open(input_path, password=options.get('password')) as pdf:
+                row_idx = 1
+                for page in pdf.pages:
+                    tables = page.extract_tables()
+                    for table in tables:
+                        for row in table:
+                            for col_idx, cell in enumerate(row, 1):
+                                ws.cell(row=row_idx, column=col_idx, value=cell)
+                            row_idx += 1
+                        row_idx += 2
+                    if self.is_cancelled:
+                        return None
+            
+            wb.save(output_path)
+            return output_path
+        except ImportError:
+            raise ConversionError("pdfplumber and openpyxl required for xlsx extraction")
+        except Exception as e:
+            self._handle_pdf_error(e, options.get('password'))
+
+    def _pdf_to_epub(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
+        try:
+            import fitz
+            from ebooklib import epub
+            
+            book = epub.EpubBook()
+            
+            doc = fitz.open(input_path)
+            if doc.is_encrypted and options.get('password'):
+                doc.authenticate(options['password'])
+
+            meta = doc.metadata
+            title = meta.get('title') or "Untitled"
+            author = meta.get('author') or "Unknown"
+            
+            book.set_identifier(f'id_{os.path.basename(input_path)}')
+            book.set_title(title)
+            book.set_language('en')
+            book.add_author(author)
+            
+            chapters = []
+            toc_links = []
+            
+            for i, page in enumerate(doc):
+                if self.is_cancelled:
+                    return None
+                    
+                page_html = page.get_text("html")
+                
+                c = epub.EpubHtml(title=f'Page {i+1}', file_name=f'page_{i+1}.xhtml', lang='en')
+                c.content = page_html
+                book.add_item(c)
+                chapters.append(c)
+                toc_links.append(epub.Link(f'page_{i+1}.xhtml', f'Page {i+1}', f'page_{i+1}'))
+                
+                self.report_progress(int((i / len(doc)) * 90))
+
+            book.toc = tuple(toc_links)
+            
+            book.add_item(epub.EpubNcx())
+            book.add_item(epub.EpubNav())
+            
+            style = 'body { font-family: Times, serif; }'
+            nav_css = epub.EpubItem(uid="style_nav", file_name="style/nav.css", media_type="text/css", content=style)
+            book.add_item(nav_css)
+            
+            book.spine = ['nav'] + chapters
+            
+            epub.write_epub(output_path, book, {})
+            
+            doc.close()
+            return output_path
+            
+        except Exception as e:
+            self._handle_pdf_error(e, options.get('password'))
+
+    def _pdf_to_cbz(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
+        try:
+            import fitz
+            import zipfile
+            
+            doc = fitz.open(input_path)
+            if doc.is_encrypted and options.get('password'):
+                doc.authenticate(options['password'])
+                
+            with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for i, page in enumerate(doc):
+                    if self.is_cancelled:
+                        return None
+                        
+                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                    img_data = pix.tobytes("jpg")
+                    zf.writestr(f"{i:04d}.jpg", img_data)
+                    
+                    self.report_progress(int((i / len(doc)) * 90))
+            
+            doc.close()
+            return output_path
+            
+        except Exception as e:
+            self._handle_pdf_error(e, options.get('password'))
+
+    def _pdf_ocr(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
+        from .ocr import OCRService
+        ocr = OCRService(self._progress_callback)
+        return ocr.ocr_pdf_to_searchable(input_path, output_path, options)
+
     def _md_to_pdf(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
         import markdown
         from weasyprint import HTML
-        
         try:
-            self.report_progress(10)
-            
             with open(input_path, 'r', encoding='utf-8') as f:
                 md_content = f.read()
-            
-            self.report_progress(30)
-            
-            if self.is_cancelled:
-                return None
-            
-            html_content = markdown.markdown(
-                md_content,
-                extensions=['tables', 'fenced_code', 'codehilite', 'toc']
-            )
-            
-            self.report_progress(50)
-            
-            full_html = f'''
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            color: #333;
-        }}
-        h1, h2, h3, h4, h5, h6 {{
-            margin-top: 1.5em;
-            margin-bottom: 0.5em;
-            color: #1a1a1a;
-        }}
-        code {{
-            background: #f4f4f4;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-family: 'Consolas', 'Monaco', monospace;
-        }}
-        pre {{
-            background: #f4f4f4;
-            padding: 15px;
-            border-radius: 5px;
-            overflow-x: auto;
-        }}
-        pre code {{
-            background: none;
-            padding: 0;
-        }}
-        blockquote {{
-            border-left: 4px solid #ddd;
-            margin: 0;
-            padding-left: 20px;
-            color: #666;
-        }}
-        table {{
-            border-collapse: collapse;
-            width: 100%;
-        }}
-        th, td {{
-            border: 1px solid #ddd;
-            padding: 8px 12px;
-            text-align: left;
-        }}
-        th {{
-            background: #f4f4f4;
-        }}
-        a {{
-            color: #0066cc;
-        }}
-    </style>
-</head>
-<body>
-{html_content}
-</body>
-</html>
-'''
-            
-            self.report_progress(70)
-            
+            html_content = markdown.markdown(md_content, extensions=['tables', 'fenced_code', 'codehilite', 'toc'])
+            full_html = f"<html><body>{html_content}</body></html>"
             HTML(string=full_html).write_pdf(output_path)
-            
-            self.report_progress(100)
             return output_path
-            
         except Exception as e:
             raise ConversionError(f"Markdown to PDF conversion failed: {str(e)}")
-    
+
+    def _handle_pdf_error(self, e: Exception, password: str = None):
+        error_msg = str(e).lower()
+        if 'password' in error_msg or 'encrypted' in error_msg:
+            if password:
+                raise InvalidPasswordError()
+            raise PasswordRequiredError()
+        raise ConversionError(str(e))
+
     @staticmethod
     def get_supported_input_formats() -> set:
         return DocumentConverter.INPUT_FORMATS
-    
+
     @staticmethod
     def get_supported_output_formats() -> set:
         return DocumentConverter.OUTPUT_FORMATS
+
+    def extract_text(self, input_path: str) -> str:
+        try:
+            import fitz
+            doc = fitz.open(input_path)
+            full_text = []
+            for page in doc:
+                text = page.get_text()
+                if text:
+                    full_text.append(text)
+            doc.close()
+            return "\n\n".join(full_text)
+        except Exception as e:
+            print(f"Fitz extraction failed: {e}. Trying text read.")
+            try:
+                with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    return f.read()
+            except Exception as read_error:
+                raise ConversionError(f"Could not extract text: {str(e)} | Txt read: {str(read_error)}")
 

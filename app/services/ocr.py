@@ -17,7 +17,7 @@ class OCRService(BaseConverter):
         options = options or {}
         try:
             if engine in ['lighton', 'lighton_mistral']:
-                text = self._extract_text_local(image_path)
+                text = self._extract_text_local(image_path, output_format)
                 
                 if engine == 'lighton_mistral':
                     self.report_progress(50)
@@ -91,18 +91,18 @@ class OCRService(BaseConverter):
         except Exception as e:
             raise OCRError(str(e))
 
-    def _extract_text_local(self, image_path: str) -> str:
+    def _extract_text_local(self, image_path: str, output_format: str = 'txt') -> str:
         try:
             import torch
             from transformers import LightOnOcrForConditionalGeneration, LightOnOcrProcessor
-
+            
             if not hasattr(self, '_lighton_model'):
                 device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
                 dtype = torch.float32 if device == "mps" else torch.bfloat16
                 
                 if device == 'cpu':
                     dtype = torch.float32
-
+                
                 self._lighton_device = device
                 self._lighton_dtype = dtype
                 self._lighton_model = LightOnOcrForConditionalGeneration.from_pretrained(
@@ -110,7 +110,7 @@ class OCRService(BaseConverter):
                     torch_dtype=dtype
                 ).to(device)
                 self._lighton_processor = LightOnOcrProcessor.from_pretrained("lightonai/LightOnOCR-2-1B-base")
-
+            
             import base64
             import mimetypes
             
@@ -123,8 +123,23 @@ class OCRService(BaseConverter):
             
             image_url = f"data:{mime_type};base64,{encoded_string}"
             
-            conversation = [{"role": "user", "content": [{"type": "image", "url": image_url}]}]
+            if output_format == 'html':
+                text_prompt = "Transcribe this image into clean, semantic HTML5 code. Output ONLY HTML."
+            elif output_format == 'md':
+                text_prompt = "Transcribe this image into Markdown format. Output ONLY Markdown."
+            else:
+                text_prompt = "Transcribe the text from this image."
 
+            conversation = [
+                {
+                    "role": "user", 
+                    "content": [
+                        {"type": "text", "text": text_prompt},
+                        {"type": "image", "url": image_url}
+                    ]
+                }
+            ]
+            
             inputs = self._lighton_processor.apply_chat_template(
                 conversation,
                 add_generation_prompt=True,
@@ -139,7 +154,6 @@ class OCRService(BaseConverter):
                 for k, v in inputs.items()
             }
 
-            output_ids = self._lighton_model.generate(**inputs, max_new_tokens=1024)
             generated_ids = output_ids[0, inputs["input_ids"].shape[1]:]
             output_text = self._lighton_processor.decode(generated_ids, skip_special_tokens=True)
             

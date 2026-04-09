@@ -68,3 +68,8 @@ def dashboard():
     from ..services.stats import stats_service
     stats = stats_service.get_stats()
     return render_template('dashboard.html', stats=stats)
+
+
+@views_bp.route('/studio')
+def studio():
+    return render_template('studio.html')

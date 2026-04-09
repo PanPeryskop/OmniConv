@@ -5,6 +5,10 @@ from .document import DocumentConverter
 from .ocr import OCRService
 from .compressor import VideoCompressor, AudioCompressor, ImageCompressor
 
+from .audio_design import AudioDesignService
+from .subtitle_gen import SubtitleGenService
+from .llm import LLMService
+
 __all__ = [
     'AudioConverter',
     'VideoConverter', 
@@ -13,5 +17,8 @@ __all__ = [
     'OCRService',
     'VideoCompressor',
     'AudioCompressor',
-    'ImageCompressor'
+    'ImageCompressor',
+    'AudioDesignService',
+    'SubtitleGenService',
+    'LLMService'
 ]

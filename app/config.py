@@ -7,7 +7,7 @@ class Config:
     UPLOAD_FOLDER = BASE_DIR / 'uploads'
     OUTPUT_FOLDER = BASE_DIR / 'outputs'
     
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'omniconv-secret-key-change-in-production')
+    SECRET_KEY = os.environ.get('SECRET_KEY')
     MAX_CONTENT_LENGTH = None
     
     AUDIO_INPUT = {'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'ac3', 'alac', 

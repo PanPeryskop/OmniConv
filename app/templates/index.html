@@ -8,6 +8,12 @@
     </div>
     <h1 class="hero-heading">Convert <span class="hero-heading-accent">Anything</span></h1>
     <p class="hero-description">Transform audio, video, images, and documents with powerful AI technology. Fast, secure, and completely local.</p>
+    <!-- <div style="margin-top: var(--space-6); display: flex; gap: var(--space-4); justify-content: center;">
+        <a href="/studio" class="btn btn-primary" style="padding: 0.75rem 1.5rem; font-size: 1.1rem;">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px;margin-right:8px;"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            Open Voice Studio
+        </a>
+    </div> -->
 </section>
 
 <section class="converter-area">
@@ -138,7 +144,6 @@
     </div>
     
     <div class="video-options hidden" id="aiOptions">
-        <!-- AI options removed as Qwen3-VL handles this natively -->
     </div>
 
 <style>
@@ -288,6 +293,18 @@
         </div>
         <h3 class="feature-title">Documents</h3>
         <p class="feature-description">PDF to DOCX, Powered by Qwen3-VL</p>
+    </div>
+    <div class="panel feature-item" onclick="window.location.href='/studio'" style="cursor: pointer; border-color: var(--accent-primary);">
+        <div class="feature-icon-box" style="color: var(--accent-primary); background: rgba(var(--accent-primary-rgb), 0.1);">
+            <svg viewBox="0 0 24 24">
+               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+               <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+               <line x1="12" y1="19" x2="12" y2="23"/>
+               <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+        </div>
+        <h3 class="feature-title">Voice Studio</h3>
+        <p class="feature-description">AI Voice Design, Speech Generation & Auto-Subtitles</p>
     </div>
 </section>
 
