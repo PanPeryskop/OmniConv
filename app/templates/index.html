@@ -27,20 +27,20 @@
             </div>
             <h2 class="drop-heading" data-i18n="drop_heading">Drop your file here</h2>
             <p class="drop-subtext" data-i18n="drop_subtext">or click to browse files</p>
-            <p class="drop-formats">Audio • Video • Images • PDF</p>
+            <p class="drop-formats" data-i18n="convert_formats">Audio • Video • Images • PDF</p>
             <input type="file" id="fileInput" class="file-picker" />
         </div>
         <div class="upload-status" id="uploadProgress">
             <div class="progress-track large">
                 <div class="progress-bar" id="progressFill"></div>
             </div>
-            <p class="progress-label" id="progressText">Uploading...</p>
+            <p class="progress-label"><span id="progressText" data-i18n="uploading">Uploading...</span> <span id="progressPercent">0%</span></p>
         </div>
     </div>
 
     <div class="panel hidden tab-content" id="urlZone" style="padding: var(--space-8); text-align: center;">
         <h2 class="drop-heading" data-i18n="paste_link">Paste Link</h2>
-        <input type="url" id="urlInput" class="compress-url-input" placeholder="https://example.com/video.mp4">
+        <input type="url" id="urlInput" class="compress-url-input" placeholder="https://example.com/video.mp4" aria-label="URL" data-i18n-aria="paste_link">
         <button class="btn btn-primary" onclick="submitUrl()" data-i18n="fetch_file">Fetch File</button>
     </div>
 
@@ -55,10 +55,10 @@
             </div>
             <div class="file-details">
                 <p class="file-title" id="fileName">document.pdf</p>
-                <p class="file-category" id="fileType">Document</p>
+                <p class="file-category" id="fileType"></p>
             </div>
         </div>
-        <button class="btn btn-ghost" id="removeFile">
+        <button class="btn btn-ghost" id="removeFile" aria-label="Remove file" title="Remove file" data-i18n-aria="remove_file" data-i18n-title="remove_file">
             <svg viewBox="0 0 24 24">
                 <line x1="18" y1="6" x2="6" y2="18"/>
                 <line x1="6" y1="6" x2="18" y2="18"/>
@@ -67,75 +67,62 @@
     </div>
 
     <div class="format-picker hidden" id="formatSelection">
-        <h3 class="section-label">Choose Output Format</h3>
+        <h3 class="section-label" data-i18n="choose_format">Choose Output Format</h3>
         <div class="format-options" id="formatGrid"></div>
     </div>
 
     <div class="video-options hidden" id="videoOptions">
-        <h3 class="section-label">Encoding Speed</h3>
+        <h3 class="section-label" data-i18n="video_speed">Encoding speed</h3>
         <div class="preset-selector">
-            <select id="presetSelect" class="preset-dropdown">
-                <option value="ultrafast">Ultrafast (largest file)</option>
-                <option value="veryfast">Very Fast</option>
-                <option value="fast" selected>Fast (recommended)</option>
-                <option value="medium">Medium (balanced)</option>
-                <option value="slow">Slow (better quality)</option>
+            <select id="presetSelect" class="preset-dropdown" aria-label="Encoding speed" data-i18n-aria="video_speed">
+                <option value="ultrafast" data-i18n="video_preset_ultrafast">Fastest (largest file)</option>
+                <option value="veryfast" data-i18n="video_preset_veryfast">Very fast</option>
+                <option value="fast" selected data-i18n="video_preset_fast">Fast (recommended)</option>
+                <option value="medium" data-i18n="video_preset_medium">Medium</option>
+                <option value="slow" data-i18n="video_preset_slow">Slow (smaller file)</option>
             </select>
-            <p class="preset-hint">Faster = larger file, Slower = better compression</p>
+            <p class="preset-hint" data-i18n="video_preset_hint">Faster means a bigger file, slower means better compression.</p>
             <button class="btn btn-primary" id="startVideoConversion" style="margin-top: var(--space-4);">
                 <svg viewBox="0 0 24 24" style="width: 18px; height: 18px; margin-right: 8px;">
                     <polygon points="5 3 19 12 5 21 5 3"/>
                 </svg>
-                Convert Video
+                <span data-i18n="convert_video">Convert video</span>
             </button>
         </div>
     </div>
 
     <div class="video-options hidden" id="ocrOptions">
-        <h3 class="section-label">OCR Engine</h3>
+        <h3 class="section-label" data-i18n="ocr_engine">OCR engine</h3>
         <div class="preset-selector">
-            <select id="ocrSelect" class="preset-dropdown">
-                <option value="rapid" selected>RapidOCR (Fast, Local)</option>
-                <option value="qwen">Qwen 3-VL (Best Quality, LM Studio)</option>
-            </select>
-            
+            <select id="ocrSelect" class="preset-dropdown" aria-label="OCR engine" data-i18n-aria="ocr_engine"></select>
+            <p class="preset-hint" id="ocrEngineHint"></p>
+            <label class="check-row"><input type="checkbox" id="useLLM"><span data-i18n="ocr_ai_correction">Fix the text with AI</span></label>
+            <p class="preset-hint" id="ocrCorrectHint"></p>
+
             <div id="ocrThemeContainer" class="hidden" style="margin-top: var(--space-2);">
-                 <select id="ocrThemeSelect" class="preset-dropdown">
-                    <option value="light" selected>Light Theme (Standard)</option>
-                    <option value="dark">Dark Theme (Night Mode)</option>
+                <select id="ocrThemeSelect" class="preset-dropdown" aria-label="Theme" data-i18n-aria="ocr_theme">
+                    <option value="light" selected data-i18n="ocr_theme_light">Light</option>
+                    <option value="dark" data-i18n="ocr_theme_dark">Dark</option>
                 </select>
             </div>
-            
-            <div id="ocrCssContainer" class="hidden" style="margin-top: var(--space-4); border-top: 1px solid var(--border-subtle); padding-top: var(--space-2);">
-                <div class="checkbox-wrapper" style="margin-bottom: var(--space-2);">
-                    <input type="checkbox" id="ocrLimitCss" class="custom-checkbox">
-                    <label for="ocrLimitCss">Limit CSS Length</label>
-                </div>
-                
-                <div id="ocrCssSliderContainer" class="hidden" style="padding-left: var(--space-4);">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                        <span class="text-xs text-muted">Concise</span>
-                        <span class="text-xs text-muted">Detailed</span>
-                    </div>
-                    <input type="range" id="ocrCssLength" min="200" max="2000" step="100" value="1000" style="width: 100%;">
-                    <div class="text-xs text-right text-muted" id="ocrCssValueDisplay">Max ~1000 chars</div>
+
+            <div id="ocrCssContainer" class="hidden" style="margin-top: var(--space-2);">
+                <label class="check-row"><input type="checkbox" id="ocrLimitCss"><span data-i18n="ocr_css_limit">Limit CSS length</span></label>
+                <div id="ocrCssSliderContainer" class="hidden" style="padding-left: var(--space-4); margin-top: var(--space-2);">
+                    <input type="range" id="ocrCssLength" min="200" max="2000" step="100" value="1000" style="width: 100%;" aria-label="CSS" data-i18n-aria="ocr_css_limit">
+                    <div class="preset-hint" id="ocrCssValueDisplay"></div>
                 </div>
             </div>
-            <p class="preset-hint">Choose your preferred text extraction engine</p>
             <button class="btn btn-primary" id="startOCRConversion" style="margin-top: var(--space-4);">
                 <svg viewBox="0 0 24 24" style="width: 18px; height: 18px; margin-right: 8px;">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                     <polyline points="14 2 14 8 20 8"></polyline>
                     <line x1="16" y1="13" x2="8" y2="13"></line>
                     <line x1="16" y1="17" x2="8" y2="17"></line>
-                    <polyline points="10 9 9 9 8 9"></polyline>
                 </svg>
-                Convert Document
+                <span data-i18n="ocr_start">Recognize text</span>
             </button>
         </div>
-    </div>
-    
-    <div class="video-options hidden" id="aiOptions">
     </div>
 
 <style>
@@ -179,17 +166,40 @@
     color: var(--text-muted);
     text-align: center;
 }
+.preset-hint:empty {
+    display: none;
+}
+.check-row {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.check-row input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent-primary);
+}
+.check-row input:disabled + span {
+    opacity: 0.45;
+}
+.preset-dropdown option:disabled {
+    color: var(--text-muted);
+}
 </style>
 
     <div class="panel conversion-status hidden" id="conversionProgress">
         <div class="status-header">
-            <h3 class="status-title">Converting</h3>
+            <h3 class="status-title" data-i18n="converting">Converting</h3>
             <span class="status-percent" id="conversionPercentage">0%</span>
         </div>
         <div class="progress-track large">
             <div class="progress-bar" id="conversionFill"></div>
         </div>
-        <p class="status-message" id="conversionStatus">Processing your file...</p>
+        <p class="status-message" id="conversionStatus" data-i18n="conv_status_preparing">Preparing file...</p>
     </div>
 
     <div class="panel result-panel hidden" id="downloadSection">
@@ -199,7 +209,7 @@
                 <path d="M28 44l11 11 21-21" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </div>
-        <h3 class="result-heading">Conversion Complete!</h3>
+        <h3 class="result-heading" data-i18n="complete">Conversion Complete!</h3>
         <p class="result-filename" id="outputFilename">output.mp4</p>
         <button class="btn btn-primary" id="downloadBtn">
             <svg viewBox="0 0 24 24">
@@ -207,9 +217,9 @@
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            Download File
+            <span data-i18n="download">Download File</span>
         </button>
-        <button class="btn btn-ghost" id="convertAnother" style="margin-top: var(--space-4);">Convert another file</button>
+        <button class="btn btn-ghost" id="convertAnother" style="margin-top: var(--space-4);" data-i18n="convert_another">Convert another file</button>
     </div>
 
     <div class="panel error-panel hidden" id="errorMessage">
@@ -220,9 +230,9 @@
                 <circle cx="44" cy="60" r="3" fill="currentColor" stroke="none"/>
             </svg>
         </div>
-        <h3 class="error-heading">Something went wrong</h3>
-        <p class="error-description" id="errorText">An error occurred during conversion</p>
-        <button class="btn btn-primary" id="tryAgain">Try Again</button>
+        <h3 class="error-heading" data-i18n="error_title">Something went wrong</h3>
+        <p class="error-description" id="errorText" data-i18n="err_conversion_failed">An error occurred during conversion</p>
+        <button class="btn btn-primary" id="tryAgain" data-i18n="try_again">Try Again</button>
     </div>
 </section>
 
@@ -232,7 +242,7 @@
         <div class="stat-label" data-i18n="home_stat_formats">Formats Supported</div>
     </div>
     <div class="stat-item">
-        <div class="stat-value">11</div>
+        <div class="stat-value">12</div>
         <div class="stat-label" data-i18n="home_stat_pdf_tools">PDF Tools</div>
     </div>
     <div class="stat-item">
@@ -250,8 +260,8 @@
                 <circle cx="18" cy="16" r="3"/>
             </svg>
         </div>
-        <h3 class="feature-title">Audio</h3>
-        <p class="feature-description">MP3, WAV, FLAC, OGG, M4A, AAC and 10+ more formats</p>
+        <h3 class="feature-title" data-i18n="feature_audio_title">Audio</h3>
+        <p class="feature-description" data-i18n="feature_audio_desc">MP3, WAV, FLAC, OGG, M4A, AAC and 10+ more formats</p>
     </div>
     <div class="panel feature-item">
         <div class="feature-icon-box type-video">
@@ -260,8 +270,8 @@
                 <rect x="1" y="5" width="15" height="14" rx="2"/>
             </svg>
         </div>
-        <h3 class="feature-title">Video</h3>
-        <p class="feature-description">MP4, WebM, AVI, MKV, GIF extraction and more</p>
+        <h3 class="feature-title" data-i18n="feature_video_title">Video</h3>
+        <p class="feature-description" data-i18n="feature_video_desc">MP4, WebM, AVI, MKV, GIF extraction and more</p>
     </div>
     <div class="panel feature-item">
         <div class="feature-icon-box type-image">
@@ -271,8 +281,8 @@
                 <polyline points="21 15 16 10 5 21"/>
             </svg>
         </div>
-        <h3 class="feature-title">Images</h3>
-        <p class="feature-description">PNG, JPG, WebP, HEIC, ICO, SVG and more</p>
+        <h3 class="feature-title" data-i18n="feature_image_title">Images</h3>
+        <p class="feature-description" data-i18n="feature_image_desc">PNG, JPG, WebP, HEIC, ICO and more</p>
     </div>
     <div class="panel feature-item">
         <div class="feature-icon-box type-document">
@@ -283,8 +293,8 @@
                 <line x1="16" y1="17" x2="8" y2="17"/>
             </svg>
         </div>
-        <h3 class="feature-title">Documents</h3>
-        <p class="feature-description">PDF to DOCX, Powered by Qwen3-VL</p>
+        <h3 class="feature-title" data-i18n="feature_document_title">Documents</h3>
+        <p class="feature-description" data-i18n="feature_document_desc">PDF to Word, Excel, text and images, with OCR</p>
     </div>
     <a class="panel feature-item" href="/compress" style="text-decoration: none; color: inherit;">
         <div class="feature-icon-box">

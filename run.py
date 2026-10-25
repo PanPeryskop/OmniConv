@@ -47,11 +47,8 @@ def create_tray_icon():
     return icon
 
 if __name__ == '__main__':
-    # threading.Timer(1.5, open_browser).start()
-    
     socketio = app.socketio
     
-    # Get local IP
     import socket
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -67,7 +64,6 @@ if __name__ == '__main__':
     print(f"Network: http://{local_ip}:5000")
     print(f"=======================================================\n")
     
-    # Share local IP with app config for templates
     app.config['LOCAL_IP'] = local_ip
     
     if TRAY_AVAILABLE:
@@ -80,4 +76,3 @@ if __name__ == '__main__':
         icon.run()
     else:
         socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)
-

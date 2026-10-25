@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import time
 from pathlib import Path
@@ -57,7 +58,7 @@ def save_uploaded_file(file, upload_folder: Path) -> Tuple[str, str, str]:
 
 def get_output_path(output_folder: Path, original_filename: str, output_format: str) -> str:
     base_name = original_filename.rsplit('.', 1)[0] if '.' in original_filename else original_filename
-    base_name = secure_filename(base_name)
+    base_name = re.sub(r'(_[0-9a-f]{8})+$', '', secure_filename(base_name)) or 'file'
     
     if output_format == 'pdf_ocr':
         output_format = 'pdf'

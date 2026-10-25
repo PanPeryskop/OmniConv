@@ -21,7 +21,7 @@
             </div>
             <h2 class="drop-heading" data-i18n="pdf_drop_heading">Drop a PDF here</h2>
             <p class="drop-subtext" data-i18n="pdf_drop_subtext">or click to choose. Drop several to merge them.</p>
-            <p class="drop-formats">PDF</p>
+            <p class="drop-formats" data-i18n="pdf_drop_hint">PDF • Ctrl+V works too</p>
             <input type="file" id="pdfInput" class="file-picker" accept=".pdf,application/pdf" multiple />
         </div>
         <div class="upload-status">
@@ -32,7 +32,17 @@
         </div>
     </div>
 
+    <div class="panel pdf-restoring hidden" id="pdfRestoring">
+        <span class="spinner"></span>
+        <span data-i18n="pdf_restoring">Restoring your files...</span>
+    </div>
+
     <div class="hidden" id="pdfWorkspace">
+        <div class="pdf-expired hidden" id="pdfExpired" role="alert">
+            <span data-i18n="pdf_expired">The files are no longer on the server. Upload the PDF again.</span>
+            <button class="btn btn-primary btn-small" id="pdfExpiredReset" data-i18n="pdf_upload_again">Upload again</button>
+        </div>
+
         <div class="panel pdf-file">
             <img class="pdf-file-thumb" id="pdfFileThumb" alt="" hidden>
             <div class="pdf-file-icon" id="pdfFileIcon">
@@ -42,15 +52,29 @@
                 <p class="pdf-file-name" id="pdfFileName"></p>
                 <p class="pdf-file-meta" id="pdfFileMeta"></p>
             </div>
-            <button class="btn btn-ghost pdf-change" id="pdfChange" data-i18n="pdf_change_file">Change file</button>
+            <div class="pdf-file-actions">
+                <a class="btn btn-ghost btn-small" id="pdfDownloadCurrent" href="#">
+                    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span data-i18n="download">Download</span>
+                </a>
+                <button class="btn btn-ghost btn-small" id="pdfChange" data-i18n="pdf_change_file">Change file</button>
+            </div>
         </div>
 
-        <div class="pdf-locked hidden" id="pdfLocked">
-            <svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
-            <span data-i18n="pdf_locked_note">This PDF is password protected. Unlock it first to use the other tools.</span>
+        <div class="version-bar hidden" id="versionBar">
+            <span class="version-label" data-i18n="pdf_versions">Versions</span>
+            <div class="version-chips" id="versionChips"></div>
+            <button class="btn btn-ghost btn-small" id="versionUndo">
+                <svg viewBox="0 0 24 24"><path d="M3 10h11a6 6 0 010 12h-3"/><path d="M7 6l-4 4 4 4"/></svg>
+                <span data-i18n="pdf_undo">Undo</span>
+            </button>
         </div>
 
-        <div class="tool-grid" id="toolGrid"></div>
+        <div class="pdf-notes" id="pdfNotes"></div>
+
+        <div class="preview-strip hidden" id="previewStrip" aria-label="Pages" data-i18n-aria="pdf_preview"></div>
+
+        <div id="toolGroups"></div>
 
         <div class="panel tool-panel hidden" id="toolPanel">
             <div class="tool-panel-header">
@@ -67,6 +91,12 @@
                     <button type="button" class="choice active" data-value="balanced"><span class="choice-title" data-i18n="pdf_mode_balanced">Balanced</span><span class="choice-desc" data-i18n="pdf_mode_balanced_desc"></span></button>
                     <button type="button" class="choice" data-value="strong"><span class="choice-title" data-i18n="pdf_mode_strong">Strong</span><span class="choice-desc" data-i18n="pdf_mode_strong_desc"></span></button>
                     <button type="button" class="choice" data-value="extreme"><span class="choice-title" data-i18n="pdf_mode_extreme">Maximum</span><span class="choice-desc" data-i18n="pdf_mode_extreme_desc"></span></button>
+                    <button type="button" class="choice" data-value="target"><span class="choice-title" data-i18n="pdf_mode_target">Target size</span><span class="choice-desc" data-i18n="pdf_mode_target_desc"></span></button>
+                </div>
+                <div class="field hidden" id="compressTargetField">
+                    <label class="field-label" for="compressTarget" data-i18n="pdf_target_mb">Target size (MB)</label>
+                    <input type="number" class="text-input narrow" id="compressTarget" min="0.01" step="0.1">
+                    <p class="option-hint" id="compressTargetHint"></p>
                 </div>
                 <div class="option-row">
                     <label class="check-row"><input type="checkbox" id="compressGray"><span data-i18n="pdf_grayscale">Convert to grayscale</span></label>
@@ -84,29 +114,54 @@
                         <svg viewBox="0 0 24 24"><path d="M21 10a9 9 0 1 0-3 6.7"/><path d="M21 4v6h-6"/></svg>
                         <span data-i18n="pdf_rotate_all_right">Rotate all right</span>
                     </button>
+                    <button type="button" class="btn btn-ghost btn-small" id="organizeBlank">
+                        <svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M12 9v6M9 12h6"/></svg>
+                        <span data-i18n="pdf_add_blank">Blank page</span>
+                    </button>
+                    <button type="button" class="btn btn-ghost btn-small" id="organizeInsert">
+                        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M12 11v6M9 14h6"/></svg>
+                        <span data-i18n="pdf_insert_pages">Pages from another PDF</span>
+                    </button>
+                    <input type="file" id="organizeInsertInput" accept=".pdf,application/pdf" multiple hidden>
+                    <button type="button" class="btn btn-ghost btn-small" id="organizeUndo" disabled>
+                        <svg viewBox="0 0 24 24"><path d="M3 10h11a6 6 0 010 12h-3"/><path d="M7 6l-4 4 4 4"/></svg>
+                        <span data-i18n="pdf_undo">Undo</span>
+                    </button>
                     <button type="button" class="btn btn-ghost btn-small" id="organizeReset" data-i18n="pdf_reset">Reset</button>
                 </div>
-                <p class="option-hint" data-i18n="pdf_organize_hint">Drag pages to reorder them. Use the buttons under a page to rotate or remove it.</p>
-                <div class="page-grid" id="organizeGrid"></div>
+                <p class="option-hint" data-i18n="pdf_organize_hint">Drag pages to reorder them. Use the buttons under a page to rotate, duplicate or remove it.</p>
+                <p class="option-hint keys-hint" data-i18n="pdf_organize_keys">Keyboard: Tab to a page, Alt+arrows move it, R rotates, D duplicates, Delete removes, Ctrl+Z undoes.</p>
+                <div class="page-grid" id="organizeGrid" role="list"></div>
                 <p class="option-hint" id="organizeSummary"></p>
             </div>
 
             <div class="tool-options" data-tool="split">
                 <div class="choice-grid" data-group="splitMode">
                     <button type="button" class="choice active" data-value="every"><span class="choice-title" data-i18n="pdf_split_every">Every page separately</span><span class="choice-desc" data-i18n="pdf_split_every_desc"></span></button>
+                    <button type="button" class="choice" data-value="every_n"><span class="choice-title" data-i18n="pdf_split_every_n">Every N pages</span><span class="choice-desc" data-i18n="pdf_split_every_n_desc"></span></button>
                     <button type="button" class="choice" data-value="ranges"><span class="choice-title" data-i18n="pdf_split_ranges">By ranges</span><span class="choice-desc" data-i18n="pdf_split_ranges_desc"></span></button>
                     <button type="button" class="choice" data-value="extract"><span class="choice-title" data-i18n="pdf_split_extract">Extract pages</span><span class="choice-desc" data-i18n="pdf_split_extract_desc"></span></button>
+                    <button type="button" class="choice" data-value="bookmarks" id="splitBookmarks"><span class="choice-title" data-i18n="pdf_split_bookmarks">By bookmarks</span><span class="choice-desc" id="splitBookmarksDesc"></span></button>
                 </div>
-                <div class="field hidden" id="splitRangesField">
+                <div class="field hidden" id="splitNField">
+                    <label class="field-label" for="splitN" data-i18n="pdf_split_n_label">Pages per part</label>
+                    <input type="number" class="text-input narrow" id="splitN" min="1" value="2">
+                </div>
+                <div class="field hidden pages-field" id="splitRangesField">
                     <label class="field-label" for="splitRanges" data-i18n="pdf_ranges_label">Pages</label>
-                    <input type="text" class="text-input" id="splitRanges" placeholder="1-3, 5, 8-10" autocomplete="off">
+                    <div class="pages-input-row">
+                        <input type="text" class="text-input" id="splitRanges" placeholder="1-3, 5, 8-10" autocomplete="off">
+                        <button type="button" class="btn btn-ghost btn-small picker-toggle" data-i18n="pdf_pick_pages">Pick on preview</button>
+                    </div>
                     <p class="option-hint" id="splitRangesHint"></p>
+                    <div class="page-picker hidden"></div>
                 </div>
             </div>
 
             <div class="tool-options" data-tool="merge">
                 <p class="option-hint" data-i18n="pdf_merge_hint">Drag files to set the order. The first file goes first.</p>
-                <div class="merge-list" id="mergeList"></div>
+                <p class="option-hint keys-hint" data-i18n="pdf_merge_keys">Keyboard: Alt+Up/Down moves a file, Delete removes it.</p>
+                <div class="merge-list" id="mergeList" role="list"></div>
                 <button type="button" class="btn btn-ghost btn-small" id="mergeAdd">
                     <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
                     <span data-i18n="pdf_merge_add">Add PDF</span>
@@ -115,30 +170,79 @@
             </div>
 
             <div class="tool-options" data-tool="convert">
+                <div class="scan-hint hidden" id="convertScanHint">
+                    <span data-i18n="pdf_convert_scan_hint">This PDF looks like a scan. To get its text, use OCR.</span>
+                    <button type="button" class="btn btn-ghost btn-small" data-open-tool="ocr" data-i18n="pdf_open_ocr">Open OCR</button>
+                </div>
                 <div class="choice-grid compact" data-group="convertFormat">
                     <button type="button" class="choice active" data-value="docx"><span class="choice-title">Word</span><span class="choice-desc">DOCX</span></button>
-                    <button type="button" class="choice" data-value="xlsx"><span class="choice-title">Excel</span><span class="choice-desc">XLSX</span></button>
+                    <button type="button" class="choice" data-value="xlsx"><span class="choice-title">Excel</span><span class="choice-desc" data-i18n="pdf_fmt_tables">Tables</span></button>
+                    <button type="button" class="choice" data-value="csv"><span class="choice-title">CSV</span><span class="choice-desc" data-i18n="pdf_fmt_tables">Tables</span></button>
                     <button type="button" class="choice" data-value="txt"><span class="choice-title" data-i18n="pdf_fmt_text">Text</span><span class="choice-desc">TXT</span></button>
                     <button type="button" class="choice" data-value="md"><span class="choice-title">Markdown</span><span class="choice-desc">MD</span></button>
                     <button type="button" class="choice" data-value="html"><span class="choice-title">HTML</span><span class="choice-desc" data-i18n="pdf_fmt_html_desc">Web page</span></button>
+                    <button type="button" class="choice" data-value="epub"><span class="choice-title">EPUB</span><span class="choice-desc" data-i18n="pdf_fmt_ebook">E-book</span></button>
+                    <button type="button" class="choice" data-value="cbz"><span class="choice-title">CBZ</span><span class="choice-desc" data-i18n="pdf_fmt_comic">Comic book</span></button>
                     <button type="button" class="choice" data-value="images"><span class="choice-title" data-i18n="pdf_fmt_images">Images</span><span class="choice-desc">PNG / JPG</span></button>
-                    <button type="button" class="choice" data-value="ocr-pdf"><span class="choice-title" data-i18n="pdf_fmt_ocr">Searchable PDF</span><span class="choice-desc">OCR</span></button>
                 </div>
-                <div class="option-row hidden" id="imageOptions">
-                    <label class="field inline">
-                        <span class="field-label" data-i18n="pdf_image_format">Format</span>
-                        <select class="select-input" id="imageFormat"><option value="png">PNG</option><option value="jpg">JPG</option></select>
+                <div class="hidden" id="imageOptions">
+                    <div class="option-row">
+                        <label class="field inline">
+                            <span class="field-label" data-i18n="pdf_image_format">Format</span>
+                            <select class="select-input" id="imageFormat"><option value="png">PNG</option><option value="jpg">JPG</option></select>
+                        </label>
+                        <label class="field inline">
+                            <span class="field-label" data-i18n="pdf_image_quality">Quality</span>
+                            <select class="select-input" id="imageDpi">
+                                <option value="96" data-i18n="pdf_dpi_96">Screen (96 DPI)</option>
+                                <option value="150" selected data-i18n="pdf_dpi_150">Standard (150 DPI)</option>
+                                <option value="300" data-i18n="pdf_dpi_300">Print (300 DPI)</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="field pages-field" id="imagePagesField">
+                        <label class="field-label" for="imagePages" data-i18n="pdf_pages_optional">Pages (empty = all)</label>
+                        <div class="pages-input-row">
+                            <input type="text" class="text-input" id="imagePages" placeholder="1-3, 5" autocomplete="off">
+                            <button type="button" class="btn btn-ghost btn-small picker-toggle" data-i18n="pdf_pick_pages">Pick on preview</button>
+                        </div>
+                        <div class="page-picker hidden"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tool-options" data-tool="ocr">
+                <div class="choice-grid compact" data-group="ocrOutput">
+                    <button type="button" class="choice active" data-value="pdf"><span class="choice-title" data-i18n="pdf_fmt_ocr">Searchable PDF</span><span class="choice-desc" data-i18n="pdf_ocr_pdf_desc">Same look, selectable text</span></button>
+                    <button type="button" class="choice" data-value="docx"><span class="choice-title">Word</span><span class="choice-desc">DOCX</span></button>
+                    <button type="button" class="choice" data-value="txt"><span class="choice-title" data-i18n="pdf_fmt_text">Text</span><span class="choice-desc">TXT</span></button>
+                    <button type="button" class="choice" data-value="md"><span class="choice-title">Markdown</span><span class="choice-desc">MD</span></button>
+                    <button type="button" class="choice" data-value="html"><span class="choice-title">HTML</span><span class="choice-desc" data-i18n="pdf_fmt_html_desc">Web page</span></button>
+                </div>
+                <div class="option-row">
+                    <label class="field inline wide">
+                        <span class="field-label" data-i18n="ocr_engine">Engine</span>
+                        <select class="select-input" id="ocrEngine"></select>
                     </label>
+                </div>
+                <p class="option-hint" id="ocrEngineHint"></p>
+                <label class="check-row"><input type="checkbox" id="ocrCorrect"><span data-i18n="ocr_ai_correction">Fix the text with AI</span></label>
+                <p class="option-hint" id="ocrCorrectHint"></p>
+                <label class="check-row" id="ocrForceRow"><input type="checkbox" id="ocrForce"><span data-i18n="ocr_force">Also OCR pages that already have text</span></label>
+                <div class="option-row hidden" id="ocrHtmlOptions">
                     <label class="field inline">
-                        <span class="field-label" data-i18n="pdf_image_quality">Quality</span>
-                        <select class="select-input" id="imageDpi">
-                            <option value="96" data-i18n="pdf_dpi_96">Screen (96 DPI)</option>
-                            <option value="150" selected data-i18n="pdf_dpi_150">Standard (150 DPI)</option>
-                            <option value="300" data-i18n="pdf_dpi_300">Print (300 DPI)</option>
+                        <span class="field-label" data-i18n="ocr_theme">Theme</span>
+                        <select class="select-input" id="ocrTheme">
+                            <option value="light" data-i18n="ocr_theme_light">Light</option>
+                            <option value="dark" data-i18n="ocr_theme_dark">Dark</option>
                         </select>
                     </label>
+                    <label class="check-row"><input type="checkbox" id="ocrCssLimit"><span data-i18n="ocr_css_limit">Limit CSS length</span></label>
+                    <label class="field inline hidden" id="ocrCssField">
+                        <span class="field-label"><span data-i18n="ocr_css_max">Max CSS</span> <span id="ocrCssValue">1000</span></span>
+                        <input type="range" id="ocrCssLength" min="200" max="2000" step="100" value="1000">
+                    </label>
                 </div>
-                <p class="option-hint hidden" id="ocrHint" data-i18n="pdf_ocr_hint">Text recognition can take a while for long documents.</p>
             </div>
 
             <div class="tool-options" data-tool="protect">
@@ -151,15 +255,23 @@
                     <input type="password" class="text-input" id="protectPassword2" autocomplete="new-password">
                 </div>
                 <label class="check-row"><input type="checkbox" class="show-password" data-targets="protectPassword,protectPassword2"><span data-i18n="pdf_show_password">Show password</span></label>
+                <label class="check-row"><input type="checkbox" id="protectRequireOpen" checked><span data-i18n="pdf_require_open">Require the password to open the file</span></label>
+                <fieldset class="perm-box">
+                    <legend class="field-label" data-i18n="pdf_permissions">Allow without the password</legend>
+                    <label class="check-row"><input type="checkbox" id="permPrint" checked><span data-i18n="pdf_perm_print">Printing</span></label>
+                    <label class="check-row"><input type="checkbox" id="permCopy" checked><span data-i18n="pdf_perm_copy">Copying text</span></label>
+                    <label class="check-row"><input type="checkbox" id="permEdit" checked><span data-i18n="pdf_perm_edit">Editing and comments</span></label>
+                </fieldset>
                 <p class="option-hint" data-i18n="pdf_protect_hint">The file is encrypted with AES-256. Without the password nobody can open it, including you.</p>
             </div>
 
             <div class="tool-options" data-tool="unlock">
-                <div class="field">
+                <div class="field" id="unlockPasswordField">
                     <label class="field-label" for="unlockPassword" data-i18n="pdf_password">Password</label>
                     <input type="password" class="text-input" id="unlockPassword" autocomplete="current-password">
+                    <label class="check-row"><input type="checkbox" class="show-password" data-targets="unlockPassword"><span data-i18n="pdf_show_password">Show password</span></label>
                 </div>
-                <label class="check-row"><input type="checkbox" class="show-password" data-targets="unlockPassword"><span data-i18n="pdf_show_password">Show password</span></label>
+                <p class="option-hint hidden" id="unlockRestrictedHint" data-i18n="pdf_unlock_restricted_hint">This file only has restrictions (printing, copying or editing). No password is needed to remove them.</p>
             </div>
 
             <div class="tool-options" data-tool="watermark">
@@ -167,21 +279,67 @@
                     <div class="watermark-preview" id="watermarkPreview">
                         <img id="watermarkPreviewImg" alt="">
                         <span class="watermark-preview-text" id="watermarkPreviewText"></span>
+                        <img class="watermark-preview-logo hidden" id="watermarkPreviewLogo" alt="">
                     </div>
                     <div class="watermark-fields">
-                        <div class="field">
+                        <div class="choice-grid compact two" data-group="watermarkKind">
+                            <button type="button" class="choice active" data-value="text"><span class="choice-title" data-i18n="pdf_wm_kind_text">Text</span></button>
+                            <button type="button" class="choice" data-value="image"><span class="choice-title" data-i18n="pdf_wm_kind_image">Image</span></button>
+                        </div>
+                        <div class="field" id="watermarkTextField">
                             <label class="field-label" for="watermarkText" data-i18n="pdf_watermark_text">Text</label>
                             <input type="text" class="text-input" id="watermarkText" maxlength="80">
                         </div>
+                        <div class="field hidden" id="watermarkImageField">
+                            <span class="field-label" data-i18n="pdf_wm_image">Image</span>
+                            <div class="option-row">
+                                <button type="button" class="btn btn-ghost btn-small" id="watermarkImageBtn" data-i18n="pdf_wm_choose_image">Choose image</button>
+                                <span class="option-hint" id="watermarkImageName"></span>
+                            </div>
+                            <input type="file" id="watermarkImageInput" accept="image/png,image/jpeg,image/webp" hidden>
+                        </div>
+                        <div class="field" id="watermarkColorField">
+                            <span class="field-label" data-i18n="pdf_wm_color">Color</span>
+                            <div class="swatches" data-group="watermarkColor">
+                                <button type="button" class="choice swatch active" data-value="gray" style="--swatch: #808080" aria-label="gray" data-i18n-aria="pdf_color_gray"></button>
+                                <button type="button" class="choice swatch" data-value="black" style="--swatch: #1a1a1a" aria-label="black" data-i18n-aria="pdf_color_black"></button>
+                                <button type="button" class="choice swatch" data-value="red" style="--swatch: #cc1a1a" aria-label="red" data-i18n-aria="pdf_color_red"></button>
+                                <button type="button" class="choice swatch" data-value="blue" style="--swatch: #1a4dcc" aria-label="blue" data-i18n-aria="pdf_color_blue"></button>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <span class="field-label" data-i18n="pdf_wm_position">Position</span>
+                            <div class="choice-grid compact three" data-group="watermarkPosition">
+                                <button type="button" class="choice" data-value="top"><span class="choice-title" data-i18n="pdf_pos_top">Top</span></button>
+                                <button type="button" class="choice active" data-value="center"><span class="choice-title" data-i18n="pdf_pos_center">Center</span></button>
+                                <button type="button" class="choice" data-value="bottom"><span class="choice-title" data-i18n="pdf_pos_bottom">Bottom</span></button>
+                            </div>
+                        </div>
+                        <label class="check-row" id="watermarkDiagonalRow"><input type="checkbox" id="watermarkDiagonal" checked><span data-i18n="pdf_watermark_diagonal">Diagonal</span></label>
                         <div class="field">
                             <label class="field-label" for="watermarkOpacity"><span data-i18n="pdf_watermark_opacity">Opacity</span> <span id="watermarkOpacityValue">20%</span></label>
                             <input type="range" id="watermarkOpacity" min="5" max="80" value="20">
                         </div>
                         <div class="field">
-                            <label class="field-label" for="watermarkSize"><span data-i18n="pdf_watermark_size">Size</span></label>
+                            <label class="field-label" for="watermarkSize" data-i18n="pdf_watermark_size">Size</label>
                             <input type="range" id="watermarkSize" min="3" max="20" value="9">
                         </div>
-                        <label class="check-row"><input type="checkbox" id="watermarkDiagonal" checked><span data-i18n="pdf_watermark_diagonal">Diagonal</span></label>
+                        <label class="check-row"><input type="checkbox" id="watermarkBehind"><span data-i18n="pdf_wm_behind">Behind the content</span></label>
+                        <p class="option-hint" data-i18n="pdf_wm_behind_hint">Behind the content is subtler, but on scanned pages it will not be visible.</p>
+                        <div class="field">
+                            <label class="field-label" for="watermarkPagesMode" data-i18n="pdf_pages_label">Pages</label>
+                            <select class="select-input" id="watermarkPagesMode">
+                                <option value="all" data-i18n="pdf_pages_all">All pages</option>
+                                <option value="custom" data-i18n="pdf_pages_custom">Selected pages</option>
+                            </select>
+                        </div>
+                        <div class="field hidden pages-field" id="watermarkPagesField">
+                            <div class="pages-input-row">
+                                <input type="text" class="text-input" id="watermarkPages" placeholder="1-3, 5" autocomplete="off" aria-label="Pages" data-i18n-aria="pdf_pages_label">
+                                <button type="button" class="btn btn-ghost btn-small picker-toggle" data-i18n="pdf_pick_pages">Pick on preview</button>
+                            </div>
+                            <div class="page-picker hidden"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -189,25 +347,40 @@
             <div class="tool-options" data-tool="page_numbers">
                 <span class="field-label" data-i18n="pdf_numbers_position">Position</span>
                 <div class="position-grid" data-group="numberPosition">
-                    <button type="button" class="choice" data-value="top-left" aria-label="top-left"></button>
-                    <button type="button" class="choice" data-value="top-center" aria-label="top-center"></button>
-                    <button type="button" class="choice" data-value="top-right" aria-label="top-right"></button>
-                    <button type="button" class="choice" data-value="bottom-left" aria-label="bottom-left"></button>
-                    <button type="button" class="choice active" data-value="bottom-center" aria-label="bottom-center"></button>
-                    <button type="button" class="choice" data-value="bottom-right" aria-label="bottom-right"></button>
+                    <button type="button" class="choice" data-value="top-left" data-i18n-aria="pdf_pos_top_left" aria-label="top left"></button>
+                    <button type="button" class="choice" data-value="top-center" data-i18n-aria="pdf_pos_top_center" aria-label="top center"></button>
+                    <button type="button" class="choice" data-value="top-right" data-i18n-aria="pdf_pos_top_right" aria-label="top right"></button>
+                    <button type="button" class="choice" data-value="bottom-left" data-i18n-aria="pdf_pos_bottom_left" aria-label="bottom left"></button>
+                    <button type="button" class="choice active" data-value="bottom-center" data-i18n-aria="pdf_pos_bottom_center" aria-label="bottom center"></button>
+                    <button type="button" class="choice" data-value="bottom-right" data-i18n-aria="pdf_pos_bottom_right" aria-label="bottom right"></button>
                 </div>
                 <div class="option-row">
                     <label class="field inline">
                         <span class="field-label" data-i18n="pdf_numbers_format">Format</span>
-                        <select class="select-input" id="numberFormat">
+                        <select class="select-input" id="numberPreset">
                             <option value="n">1, 2, 3</option>
-                            <option value="n_of_total">1 / 10</option>
+                            <option value="n_total">1 / 10</option>
                             <option value="dash">- 1 -</option>
+                            <option value="words" data-i18n="pdf_numbers_preset_words">Page 1 of 10</option>
+                            <option value="bates" data-i18n="pdf_numbers_preset_bates">Bates (ABC000001)</option>
+                            <option value="custom" data-i18n="pdf_numbers_preset_custom">Custom</option>
                         </select>
                     </label>
+                    <label class="field inline wide">
+                        <span class="field-label" data-i18n="pdf_numbers_template">Pattern</span>
+                        <input type="text" class="text-input" id="numberTemplate" value="{n}" maxlength="80">
+                    </label>
+                </div>
+                <p class="option-hint" id="numberExample"></p>
+                <p class="option-hint" data-i18n="pdf_numbers_template_hint">{n} is the page number, {total} the number of pages.</p>
+                <div class="option-row">
                     <label class="field inline">
                         <span class="field-label" data-i18n="pdf_numbers_start">Start from</span>
-                        <input type="number" class="text-input" id="numberStart" value="1" min="0" max="9999">
+                        <input type="number" class="text-input" id="numberStart" value="1" min="0" max="999999">
+                    </label>
+                    <label class="field inline hidden" id="numberDigitsField">
+                        <span class="field-label" data-i18n="pdf_numbers_digits">Digits</span>
+                        <input type="number" class="text-input" id="numberDigits" value="6" min="1" max="12">
                     </label>
                     <label class="field inline">
                         <span class="field-label" data-i18n="pdf_numbers_size">Size</span>
@@ -217,8 +390,30 @@
                             <option value="14" data-i18n="pdf_size_large">Large</option>
                         </select>
                     </label>
+                    <label class="field inline">
+                        <span class="field-label" data-i18n="pdf_numbers_margin">Margin</span>
+                        <select class="select-input" id="numberMargin">
+                            <option value="small" data-i18n="pdf_size_small">Small</option>
+                            <option value="normal" selected data-i18n="pdf_size_medium">Medium</option>
+                            <option value="large" data-i18n="pdf_size_large">Large</option>
+                        </select>
+                    </label>
                 </div>
-                <label class="check-row"><input type="checkbox" id="numberSkipFirst"><span data-i18n="pdf_numbers_skip_first">Skip the first page (cover)</span></label>
+                <div class="field">
+                    <label class="field-label" for="numberPagesMode" data-i18n="pdf_pages_label">Pages</label>
+                    <select class="select-input" id="numberPagesMode">
+                        <option value="all" data-i18n="pdf_pages_all">All pages</option>
+                        <option value="skip_first" data-i18n="pdf_numbers_skip_first">Skip the first page (cover)</option>
+                        <option value="custom" data-i18n="pdf_pages_custom">Selected pages</option>
+                    </select>
+                </div>
+                <div class="field hidden pages-field" id="numberPagesField">
+                    <div class="pages-input-row">
+                        <input type="text" class="text-input" id="numberPages" placeholder="2-10" autocomplete="off" aria-label="Pages" data-i18n-aria="pdf_pages_label">
+                        <button type="button" class="btn btn-ghost btn-small picker-toggle" data-i18n="pdf_pick_pages">Pick on preview</button>
+                    </div>
+                    <div class="page-picker hidden"></div>
+                </div>
             </div>
 
             <div class="tool-options" data-tool="metadata">
@@ -244,7 +439,10 @@
             <div class="progress-track large">
                 <div class="progress-bar" id="pdfProgressFill"></div>
             </div>
-            <p class="status-message" data-i18n="pdf_working">Working on it...</p>
+            <div class="progress-footer">
+                <p class="status-message" data-i18n="pdf_working">Working on it...</p>
+                <button class="btn btn-ghost btn-small" id="pdfCancel" data-i18n="pdf_cancel">Cancel</button>
+            </div>
         </div>
 
         <div class="panel result-panel hidden" id="pdfResult">
@@ -253,18 +451,19 @@
             </div>
             <h3 class="result-heading" data-i18n="all_done">Done!</h3>
             <p class="result-filename" id="pdfResultName"></p>
-            <p class="pdf-result-size" id="pdfResultSize"></p>
+            <div class="pdf-result-size">
+                <span id="pdfResultSize"></span>
+                <span class="saving-badge hidden" id="pdfResultSaving"></span>
+            </div>
+            <p class="option-hint result-note hidden" id="pdfResultNote"></p>
+            <div class="result-thumbs hidden" id="pdfResultThumbs"></div>
             <div class="pdf-result-actions">
                 <a class="btn btn-primary" id="pdfResultDownload" href="#">
                     <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     <span data-i18n="download">Download</span>
                 </a>
-                <button class="btn btn-ghost hidden" id="pdfResultContinue">
-                    <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-                    <span data-i18n="pdf_continue">Keep editing this file</span>
-                </button>
+                <button class="btn btn-ghost" id="pdfResultBack" data-i18n="pdf_back_to_tools">Back to tools</button>
             </div>
-            <button class="btn btn-ghost" id="pdfResultBack" style="margin-top: var(--space-2);" data-i18n="pdf_back_to_tools">Back to tools</button>
         </div>
 
         <div class="panel error-panel hidden" id="pdfError">
@@ -278,8 +477,48 @@
     </div>
 </section>
 
+<div class="viewer hidden" id="viewer" role="dialog" aria-modal="true" aria-label="Page preview" data-i18n-aria="pdf_preview">
+    <button class="viewer-close icon-btn" id="viewerClose" aria-label="Close" data-i18n-aria="close"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    <button class="viewer-nav prev icon-btn" id="viewerPrev" aria-label="Previous page" data-i18n-aria="pdf_prev_page"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <img id="viewerImg" alt="">
+    <button class="viewer-nav next icon-btn" id="viewerNext" aria-label="Next page" data-i18n-aria="pdf_next_page"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+    <span class="viewer-counter" id="viewerCounter"></span>
+</div>
+
 <style>
-.pdf-area { max-width: 860px; }
+.pdf-area { max-width: 900px; }
+
+.pdf-restoring {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-6);
+    color: var(--text-secondary);
+}
+.spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border-default);
+    border-top-color: var(--text-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.pdf-expired {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--color-error);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-sm);
+    color: var(--color-error);
+}
 
 .pdf-file {
     display: flex;
@@ -310,34 +549,85 @@
 .pdf-file-icon[hidden], .pdf-file-thumb[hidden] { display: none; }
 .pdf-file-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.5; }
 .pdf-file-details { flex: 1; min-width: 0; }
-.pdf-file-name {
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
+.pdf-file-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pdf-file-meta { font-size: var(--text-sm); color: var(--text-tertiary); margin-top: 2px; }
-.pdf-change { flex-shrink: 0; }
+.pdf-file-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
 
-.pdf-locked {
+.version-bar {
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    margin-top: var(--space-4);
+    margin-top: var(--space-3);
+    flex-wrap: wrap;
+}
+.version-label { font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.version-chips { display: flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; flex: 1; min-width: 0; }
+.version-chip {
+    padding: var(--space-1) var(--space-3);
+    font: inherit;
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    background: var(--surface-glass);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+}
+.version-chip:hover { color: var(--text-primary); border-color: var(--border-default); }
+.version-chip.active { color: var(--bg-primary); background: var(--text-primary); border-color: var(--text-primary); }
+.version-chip.ahead { opacity: 0.55; }
+.version-sep { color: var(--text-muted); font-size: var(--text-xs); }
+
+.pdf-notes { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
+.pdf-note {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
     padding: var(--space-3) var(--space-4);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-lg);
     font-size: var(--text-sm);
-    color: var(--color-warning);
+    color: var(--text-secondary);
 }
-.pdf-locked svg { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.pdf-note.warn { color: var(--color-warning); }
+.pdf-note svg { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.pdf-note span { flex: 1; min-width: 200px; }
 
-.tool-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-    gap: var(--space-3);
-    margin-top: var(--space-6);
+.preview-strip {
+    display: flex;
+    gap: var(--space-2);
+    overflow-x: auto;
+    padding: var(--space-3) 2px var(--space-2);
+    margin-top: var(--space-3);
+    scrollbar-width: thin;
 }
+.preview-thumb {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: zoom-in;
+    font: inherit;
+    color: var(--text-tertiary);
+}
+.preview-thumb img {
+    height: 96px;
+    width: auto;
+    min-width: 40px;
+    background: #fff;
+    border-radius: 3px;
+    border: 1px solid var(--border-default);
+}
+.preview-thumb:focus-visible img, .preview-thumb:hover img { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.preview-thumb span { font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.tool-group { margin-top: var(--space-6); }
+.tool-group-title { font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: var(--space-3); }
+.tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--space-3); }
 .tool-card {
     display: flex;
     flex-direction: column;
@@ -352,11 +642,7 @@
     cursor: pointer;
     transition: background var(--duration-fast), border-color var(--duration-fast), transform var(--duration-fast);
 }
-.tool-card:hover:not(:disabled) {
-    background: var(--surface-glass-hover);
-    border-color: var(--border-strong);
-    transform: translateY(-2px);
-}
+.tool-card:hover:not(:disabled) { background: var(--surface-glass-hover); border-color: var(--border-strong); transform: translateY(-2px); }
 .tool-card:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 .tool-card:disabled { opacity: 0.35; cursor: not-allowed; }
 .tool-card-icon {
@@ -373,18 +659,8 @@
 .tool-card-title { font-weight: 600; font-size: var(--text-sm); }
 .tool-card-desc { font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.45; }
 
-.tool-panel {
-    margin-top: var(--space-6);
-    padding: var(--space-6);
-    animation: slide-up var(--duration-slow) var(--ease-out);
-}
-.tool-panel-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    margin-bottom: var(--space-5);
-    flex-wrap: wrap;
-}
+.tool-panel { margin-top: var(--space-6); padding: var(--space-6); animation: slide-up var(--duration-slow) var(--ease-out); }
+.tool-panel-header { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); flex-wrap: wrap; }
 .tool-back { padding: var(--space-2) var(--space-3); }
 .tool-back svg { width: 16px; height: 16px; }
 .tool-panel-title { font-size: var(--text-lg); font-weight: 600; }
@@ -392,12 +668,10 @@
 .tool-options.active { display: flex; }
 .tool-run { width: 100%; margin-top: var(--space-6); padding: var(--space-4); }
 
-.choice-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: var(--space-3);
-}
+.choice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); }
 .choice-grid.compact { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+.choice-grid.two { grid-template-columns: repeat(2, 1fr); }
+.choice-grid.three { grid-template-columns: repeat(3, 1fr); }
 .choice {
     display: flex;
     flex-direction: column;
@@ -412,27 +686,31 @@
     cursor: pointer;
     transition: border-color var(--duration-fast), background var(--duration-fast);
 }
-.choice:hover { border-color: var(--border-default); background: var(--surface-glass-hover); }
+.choice:hover:not(:disabled) { border-color: var(--border-default); background: var(--surface-glass-hover); }
 .choice.active { border-color: var(--accent-primary); background: var(--surface-glass-active); }
+.choice:disabled { opacity: 0.4; cursor: not-allowed; }
 .choice:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 .choice-title { font-weight: 600; font-size: var(--text-sm); }
 .choice-desc { font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.4; }
 .choice-desc:empty { display: none; }
 
+.swatches { display: flex; gap: var(--space-2); }
+.choice.swatch { width: 32px; height: 32px; padding: 0; border-radius: 50%; background: var(--swatch); border: 2px solid transparent; }
+.choice.swatch.active { border-color: var(--text-primary); box-shadow: 0 0 0 2px var(--bg-primary) inset; }
+
 .option-row { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-6); align-items: flex-end; }
 .option-hint { font-size: var(--text-xs); color: var(--text-muted); line-height: 1.5; }
-.check-row {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    cursor: pointer;
-}
+.option-hint:empty { display: none; }
+.keys-hint { color: var(--text-tertiary); }
+.check-row { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer; }
 .check-row input { width: 16px; height: 16px; accent-color: var(--accent-primary); cursor: pointer; }
+.check-row input:disabled + span { opacity: 0.45; }
+.perm-box { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
+.perm-box:disabled { opacity: 0.5; }
 
 .field { display: flex; flex-direction: column; gap: var(--space-2); }
 .field.inline { min-width: 140px; }
+.field.inline.wide { min-width: 220px; flex: 1; }
 .field-label { font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.08em; }
 .text-input, .select-input {
     width: 100%;
@@ -445,19 +723,58 @@
     border-radius: var(--radius-lg);
     transition: border-color var(--duration-fast);
 }
+.text-input.narrow { max-width: 160px; }
 .text-input:focus, .select-input:focus { outline: none; border-color: var(--accent-primary); }
 .text-input:disabled { opacity: 0.4; }
+.select-input option:disabled { color: var(--text-muted); }
 .select-input option { background: var(--bg-primary); color: var(--text-primary); }
+.field.is-invalid .text-input { border-color: var(--color-error); }
+.field-error { font-size: var(--text-xs); color: var(--color-error); }
 
 .btn-small { padding: var(--space-2) var(--space-3); font-size: var(--text-xs); }
 .btn-small svg { width: 15px; height: 15px; }
 
-.organize-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.page-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
-    gap: var(--space-3);
+.pages-input-row { display: flex; gap: var(--space-2); align-items: center; }
+.pages-input-row .text-input { flex: 1; }
+.picker-toggle { flex-shrink: 0; white-space: nowrap; }
+.page-picker { margin-top: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
+.page-picker-tools { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; align-items: center; }
+.page-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: var(--space-2); max-height: 340px; overflow-y: auto; padding: 2px; }
+.picker-page {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 4px;
+    font: inherit;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    background: var(--surface-glass);
+    border: 2px solid transparent;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
 }
+.picker-page img { width: 100%; aspect-ratio: 1 / 1.3; object-fit: contain; background: #fff; border-radius: 2px; }
+.picker-page.selected { border-color: var(--accent-primary); color: var(--text-primary); }
+.picker-page.selected::after {
+    content: '✓';
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    border-radius: 50%;
+    background: var(--text-primary);
+    color: var(--bg-primary);
+}
+
+.organize-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.page-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: var(--space-3); }
 .page-thumb {
     display: flex;
     flex-direction: column;
@@ -471,6 +788,7 @@
     transition: opacity var(--duration-fast), border-color var(--duration-fast);
 }
 .page-thumb:hover { border-color: var(--border-default); }
+.page-thumb:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 .page-thumb.sortable-ghost { opacity: 0.3; }
 .page-thumb.sortable-chosen { border-color: var(--accent-primary); }
 .page-thumb.deleted .page-thumb-img { opacity: 0.25; }
@@ -483,7 +801,7 @@
     border-radius: var(--radius-sm);
     background: var(--surface-glass-active);
 }
-.page-thumb-img img {
+.page-thumb-img img, .blank-page {
     max-width: 100%;
     max-height: 100%;
     background: #fff;
@@ -491,12 +809,13 @@
     transition: transform var(--duration-base) var(--ease-out);
     pointer-events: none;
 }
+.blank-page { width: 76%; aspect-ratio: 1 / 1.41; }
 .page-thumb-bar { display: flex; align-items: center; justify-content: space-between; gap: 2px; }
-.page-thumb-num { font-size: var(--text-xs); color: var(--text-tertiary); padding-left: 2px; font-variant-numeric: tabular-nums; }
-.page-thumb-actions { display: flex; gap: 2px; }
+.page-thumb-num { font-size: var(--text-xs); color: var(--text-tertiary); padding-left: 2px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page-thumb-actions { display: flex; gap: 0; }
 .icon-btn {
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -522,15 +841,30 @@
     border-radius: var(--radius-lg);
     cursor: grab;
 }
+.merge-item:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 .merge-item.sortable-ghost { opacity: 0.3; }
 .merge-item-handle { color: var(--text-muted); display: flex; }
 .merge-item-handle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
 .merge-item-name { flex: 1; min-width: 0; font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .merge-item-meta { font-size: var(--text-xs); color: var(--text-tertiary); flex-shrink: 0; }
 
-.watermark-layout { display: grid; grid-template-columns: 180px 1fr; gap: var(--space-6); align-items: start; }
+.scan-hint {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-sm);
+    color: var(--color-warning);
+}
+
+.watermark-layout { display: grid; grid-template-columns: 200px 1fr; gap: var(--space-6); align-items: start; }
 .watermark-preview {
-    position: relative;
+    position: sticky;
+    top: 90px;
     aspect-ratio: 1 / 1.3;
     overflow: hidden;
     border-radius: var(--radius-sm);
@@ -538,18 +872,18 @@
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 .watermark-preview img { width: 100%; height: 100%; object-fit: contain; display: block; }
-.watermark-preview-text {
+.watermark-preview-text, .watermark-preview-logo {
     position: absolute;
     left: 50%;
     top: 50%;
-    white-space: nowrap;
-    font-family: Helvetica, Arial, sans-serif;
-    color: #808080;
     pointer-events: none;
-    transform: translate(-50%, -50%) rotate(-45deg);
+    transform: translate(-50%, -50%);
 }
+.watermark-preview-text { white-space: nowrap; font-family: Helvetica, Arial, sans-serif; }
+.watermark-preview .watermark-preview-logo { width: auto; height: auto; object-fit: contain; }
+.watermark-preview.behind .watermark-preview-text, .watermark-preview.behind .watermark-preview-logo { mix-blend-mode: multiply; }
 .watermark-fields { display: flex; flex-direction: column; gap: var(--space-4); }
-.watermark-fields input[type="range"] { width: 100%; accent-color: var(--accent-primary); }
+.watermark-fields input[type="range"], #ocrCssLength { width: 100%; accent-color: var(--accent-primary); }
 
 .position-grid {
     display: grid;
@@ -567,17 +901,60 @@
 .position-grid .choice::after { content: ''; width: 16px; height: 3px; border-radius: 2px; background: var(--text-muted); }
 .position-grid .choice.active::after { background: var(--text-primary); }
 
-.pdf-result-size { font-size: var(--text-sm); color: var(--text-tertiary); margin-bottom: var(--space-5); }
+.progress-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-3); }
+.progress-footer .status-message { margin: 0; }
+
+.pdf-result-size { display: flex; align-items: center; justify-content: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text-tertiary); margin-bottom: var(--space-3); }
+.saving-badge { padding: 2px 8px; border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: 700; background: var(--color-success); color: #000; }
+.saving-badge.worse { background: var(--surface-glass-active); color: var(--text-secondary); }
+.result-note { text-align: center; margin-bottom: var(--space-3); }
+.result-thumbs { display: flex; justify-content: center; gap: var(--space-2); margin-bottom: var(--space-5); flex-wrap: wrap; }
+.result-thumbs img { height: 110px; background: #fff; border-radius: 3px; border: 1px solid var(--border-default); }
 .pdf-result-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: center; }
+
+.viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.88);
+}
+.viewer.hidden { display: none; }
+.viewer img { max-width: calc(100vw - 140px); max-height: calc(100vh - 80px); background: #fff; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); }
+.viewer .icon-btn { position: absolute; width: 44px; height: 44px; color: #fff; background: rgba(255, 255, 255, 0.08); border-radius: 50%; }
+.viewer .icon-btn:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+.viewer .icon-btn svg { width: 22px; height: 22px; }
+.viewer-close { top: 20px; right: 20px; }
+.viewer-nav.prev { left: 20px; }
+.viewer-nav.next { right: 20px; }
+.viewer-counter { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); color: #ddd; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+
+body.drag-over::after {
+    content: '';
+    position: fixed;
+    inset: 12px;
+    z-index: 1500;
+    border: 2px dashed var(--accent-primary);
+    border-radius: var(--radius-2xl);
+    background: rgba(127, 127, 127, 0.08);
+    pointer-events: none;
+}
 
 @media (max-width: 640px) {
     .pdf-file { flex-wrap: wrap; }
-    .pdf-change { width: 100%; }
+    .pdf-file-actions { width: 100%; }
+    .pdf-file-actions > * { flex: 1; justify-content: center; }
     .tool-grid { grid-template-columns: 1fr 1fr; }
     .tool-panel { padding: var(--space-4); }
     .watermark-layout { grid-template-columns: 1fr; }
-    .watermark-preview { max-width: 200px; margin: 0 auto; width: 100%; }
-    .page-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+    .watermark-preview { position: relative; top: 0; max-width: 200px; margin: 0 auto; width: 100%; }
+    .page-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+    .pages-input-row { flex-wrap: wrap; }
+    .viewer img { max-width: calc(100vw - 24px); max-height: calc(100vh - 140px); }
+    .viewer-nav { top: auto; bottom: 14px; }
+    .viewer-counter { bottom: 28px; }
 }
 </style>
 
@@ -590,6 +967,7 @@ document.addEventListener('DOMContentLoaded', () => {
         split: '<path d="M6 3v18M18 3v18"/><path d="M10 12h4M12 9l-2 3 2 3M12 9l2 3-2 3"/>',
         merge: '<path d="M8 3v5a4 4 0 004 4 4 4 0 014 4v5"/><path d="M16 3v5a4 4 0 01-4 4"/><path d="M13 18l3 3 3-3"/>',
         convert: '<path d="M4 7h13l-3-3M20 17H7l3 3"/>',
+        ocr: '<path d="M4 7V5a1 1 0 011-1h2M17 4h2a1 1 0 011 1v2M20 17v2a1 1 0 01-1 1h-2M7 20H5a1 1 0 01-1-1v-2"/><path d="M8 9h8M8 12h8M8 15h5"/>',
         protect: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>',
         unlock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 017.5-2"/>',
         watermark: '<path d="M12 3s6 6.5 6 11a6 6 0 01-12 0c0-4.5 6-11 6-11z"/>',
@@ -597,7 +975,16 @@ document.addEventListener('DOMContentLoaded', () => {
         metadata: '<path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0L3 13V3h10l7.6 7.6a2 2 0 010 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
         extract_images: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>'
     };
-    const TOOLS = ['compress', 'organize', 'split', 'merge', 'convert', 'protect', 'unlock', 'watermark', 'page_numbers', 'metadata', 'extract_images'];
+    const GROUPS = [
+        { key: 'pdf_group_pages', tools: ['organize', 'split', 'merge'] },
+        { key: 'pdf_group_optimize', tools: ['compress', 'convert', 'ocr'] },
+        { key: 'pdf_group_security', tools: ['protect', 'unlock'] },
+        { key: 'pdf_group_edit', tools: ['watermark', 'page_numbers', 'metadata', 'extract_images'] }
+    ];
+    const NOTE_ICONS = {
+        warn: '<path d="M12 3l9.5 16.5H2.5z"/><path d="M12 10v4M12 17h.01"/>',
+        info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>'
+    };
     const ERROR_KEYS = {
         UnsupportedFormatError: 'pdf_err_not_pdf',
         UnsupportedError: 'pdf_err_not_pdf',
@@ -606,46 +993,58 @@ document.addEventListener('DOMContentLoaded', () => {
         NoFileError: 'err_no_file',
         UploadError: 'err_upload_failed'
     };
+    const SESSION_KEY = 'omniconv_pdf_session';
+    const KEEPALIVE_MS = 8 * 60 * 1000;
 
     const state = {
-        file: null,
-        tool: null,
+        versions: [],
+        current: -1,
         merge: [],
-        pages: [],
+        tool: null,
         jobId: null,
         poll: null,
-        resultFileId: null
+        pages: [],
+        sources: [],
+        organizeHistory: [],
+        pageKey: 0,
+        engines: null,
+        watermarkImage: null,
+        viewerIndex: 0,
+        expired: false
     };
 
     const $ = id => document.getElementById(id);
     const els = {
         drop: $('pdfDrop'), input: $('pdfInput'), uploadFill: $('pdfUploadFill'), uploadPercent: $('pdfUploadPercent'),
-        workspace: $('pdfWorkspace'), thumb: $('pdfFileThumb'), icon: $('pdfFileIcon'), name: $('pdfFileName'), meta: $('pdfFileMeta'),
-        change: $('pdfChange'), locked: $('pdfLocked'), grid: $('toolGrid'),
+        restoring: $('pdfRestoring'), workspace: $('pdfWorkspace'), expired: $('pdfExpired'),
+        thumb: $('pdfFileThumb'), icon: $('pdfFileIcon'), name: $('pdfFileName'), meta: $('pdfFileMeta'),
+        downloadCurrent: $('pdfDownloadCurrent'), change: $('pdfChange'),
+        versionBar: $('versionBar'), versionChips: $('versionChips'), versionUndo: $('versionUndo'),
+        notes: $('pdfNotes'), strip: $('previewStrip'), groups: $('toolGroups'),
         panel: $('toolPanel'), back: $('toolBack'), title: $('toolTitle'), run: $('toolRun'),
-        organizeGrid: $('organizeGrid'), organizeSummary: $('organizeSummary'),
-        splitRangesField: $('splitRangesField'), splitRanges: $('splitRanges'), splitRangesHint: $('splitRangesHint'),
+        organizeGrid: $('organizeGrid'), organizeSummary: $('organizeSummary'), organizeUndo: $('organizeUndo'),
         mergeList: $('mergeList'), mergeAdd: $('mergeAdd'), mergeInput: $('mergeInput'),
-        imageOptions: $('imageOptions'), ocrHint: $('ocrHint'),
-        wmText: $('watermarkText'), wmOpacity: $('watermarkOpacity'), wmOpacityValue: $('watermarkOpacityValue'), wmSize: $('watermarkSize'),
-        wmDiagonal: $('watermarkDiagonal'), wmPreview: $('watermarkPreview'), wmPreviewImg: $('watermarkPreviewImg'), wmPreviewText: $('watermarkPreviewText'),
-        metaStrip: $('metaStrip'),
-        progress: $('pdfProgress'), progressTitle: $('pdfProgressTitle'), progressPercent: $('pdfProgressPercent'), progressFill: $('pdfProgressFill'),
-        result: $('pdfResult'), resultName: $('pdfResultName'), resultSize: $('pdfResultSize'), resultDownload: $('pdfResultDownload'),
-        resultContinue: $('pdfResultContinue'), resultBack: $('pdfResultBack'),
-        error: $('pdfError'), errorText: $('pdfErrorText'), errorBack: $('pdfErrorBack')
+        progress: $('pdfProgress'), progressTitle: $('pdfProgressTitle'), progressPercent: $('pdfProgressPercent'), progressFill: $('pdfProgressFill'), cancel: $('pdfCancel'),
+        result: $('pdfResult'), resultName: $('pdfResultName'), resultSize: $('pdfResultSize'), resultSaving: $('pdfResultSaving'),
+        resultNote: $('pdfResultNote'), resultThumbs: $('pdfResultThumbs'), resultDownload: $('pdfResultDownload'), resultBack: $('pdfResultBack'),
+        error: $('pdfError'), errorText: $('pdfErrorText'), errorBack: $('pdfErrorBack'),
+        viewer: $('viewer'), viewerImg: $('viewerImg'), viewerCounter: $('viewerCounter')
     };
 
+    const file = () => state.versions[state.current] || null;
+
     class ToolError extends Error {
-        constructor(key, message) {
-            super(message || t(key));
+        constructor(key, message, field, vars) {
+            super(message || t(key, vars));
             this.key = key;
+            this.field = field;
+            this.vars = vars;
         }
     }
 
     function apiError(error, code, fallbackKey) {
         const key = code || error?.code || ERROR_KEYS[error?.type];
-        if (key && key in translations.en) return new ToolError(key);
+        if (key && (key in translations.en || `${key}_other` in translations.en)) return new ToolError(key);
         if (error?.message) return new ToolError(null, error.message);
         return new ToolError(fallbackKey);
     }
@@ -660,15 +1059,116 @@ document.addEventListener('DOMContentLoaded', () => {
         return `/api/pdf/page/${encodeURIComponent(fileId)}/${index}?w=${width}`;
     }
 
+    function postJson(url, body) {
+        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
+            .then(async res => ({ status: res.status, body: await res.json().catch(() => ({})) }));
+    }
+
+    function parseRanges(spec, count) {
+        const result = [];
+        const parts = String(spec || '').split(/[,;]/).map(p => p.trim()).filter(Boolean);
+        if (!parts.length) return null;
+        for (const part of parts) {
+            let match = /^(\d*)\s*-\s*(\d*)$/.exec(part);
+            let start, end;
+            if (match) {
+                start = match[1] ? Number(match[1]) : 1;
+                end = match[2] ? Number(match[2]) : count;
+            } else if (/^\d+$/.test(part)) {
+                start = end = Number(part);
+            } else {
+                return null;
+            }
+            if (start < 1 || end > count || start > end) return null;
+            for (let i = start; i <= end; i++) result.push(i - 1);
+        }
+        return result;
+    }
+
+    function toRanges(indices) {
+        const sorted = [...new Set(indices)].sort((a, b) => a - b);
+        const parts = [];
+        for (let i = 0; i < sorted.length; i++) {
+            let j = i;
+            while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+            parts.push(i === j ? `${sorted[i] + 1}` : `${sorted[i] + 1}-${sorted[j] + 1}`);
+            i = j;
+        }
+        return parts.join(', ');
+    }
+
     function show(...panels) {
-        [els.grid, els.panel, els.progress, els.result, els.error].forEach(p => p.classList.add('hidden'));
+        [els.groups, els.panel, els.progress, els.result, els.error].forEach(p => p.classList.add('hidden'));
         panels.forEach(p => p.classList.remove('hidden'));
     }
 
-    function uploadOne(file, onProgress) {
+    function clearFieldErrors(scope) {
+        (scope || els.panel).querySelectorAll('.field.is-invalid').forEach(field => field.classList.remove('is-invalid'));
+        (scope || els.panel).querySelectorAll('.field-error').forEach(el => el.remove());
+    }
+
+    function showFieldError(input, key, vars) {
+        const field = input.closest('.field') || input.parentElement;
+        field.classList.add('is-invalid');
+        field.querySelectorAll('.field-error').forEach(el => el.remove());
+        const message = document.createElement('p');
+        message.className = 'field-error';
+        message.setAttribute('role', 'alert');
+        i18n.set(message, key, vars);
+        const anchor = field.querySelector('.pages-input-row') || input;
+        anchor.insertAdjacentElement('afterend', message);
+        input.focus();
+    }
+
+    els.panel.addEventListener('input', e => {
+        const field = e.target.closest('.field.is-invalid');
+        if (field) clearFieldErrors(field);
+    });
+
+    function saveSession() {
+        try {
+            if (!state.versions.length) {
+                sessionStorage.removeItem(SESSION_KEY);
+                return;
+            }
+            sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+                versions: state.versions.map(v => ({ file_id: v.file_id, filename: v.filename, label: v.label })),
+                current: state.current,
+                merge: state.merge
+            }));
+        } catch (e) {}
+    }
+
+    function trackedIds() {
+        const ids = new Set();
+        state.versions.forEach(v => ids.add(v.file_id));
+        state.merge.forEach(m => ids.add(m.file_id));
+        state.sources.forEach(id => ids.add(id));
+        if (state.watermarkImage) ids.add(state.watermarkImage.file_id);
+        return [...ids];
+    }
+
+    async function keepAlive() {
+        if (!state.versions.length || state.expired) return;
+        const results = await Promise.all(trackedIds().map(id => postJson(`/api/files/${encodeURIComponent(id)}/touch`).catch(() => ({ status: 0 }))));
+        const currentId = file()?.file_id;
+        const ids = trackedIds();
+        if (results.some((r, i) => r.status === 404 && ids[i] === currentId)) markExpired();
+    }
+
+    function markExpired() {
+        state.expired = true;
+        els.expired.classList.remove('hidden');
+        try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+    }
+
+    setInterval(keepAlive, KEEPALIVE_MS);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAlive(); });
+
+    function uploadOne(f, onProgress) {
         return new Promise((resolve, reject) => {
             const formData = new FormData();
-            formData.append('file', file);
+            formData.append('file', f);
             const xhr = new XMLHttpRequest();
             xhr.open('POST', '/api/upload');
             xhr.upload.addEventListener('progress', e => {
@@ -687,21 +1187,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function fetchInfo(fileId) {
-        const res = await fetch('/api/pdf/info', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ file_id: fileId })
-        });
-        const body = await res.json();
-        if (!body.success) throw apiError(body.error, null, 'pdf_err_failed');
+        const { status, body } = await postJson('/api/pdf/info', { file_id: fileId });
+        if (!body.success) {
+            const err = apiError(body.error, null, 'pdf_err_failed');
+            err.status = status;
+            throw err;
+        }
         return body.data;
     }
 
-    function isPdf(file) {
-        return /\.pdf$/i.test(file.name);
-    }
+    const isPdf = f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
+    const isImage = f => /^image\/(png|jpeg|webp)$/.test(f.type);
 
-    async function handleFiles(fileList) {
+    async function openFiles(fileList) {
         const files = Array.from(fileList).filter(isPdf);
         if (!files.length) {
             Toast.error(t('pdf_err_not_pdf'));
@@ -712,26 +1210,39 @@ document.addEventListener('DOMContentLoaded', () => {
         let done = 0;
         try {
             const uploaded = [];
-            for (const file of files) {
-                const data = await uploadOne(file, ratio => updateUpload((done + file.size * ratio) / total));
-                done += file.size;
+            for (const f of files) {
+                const data = await uploadOne(f, ratio => updateUpload((done + f.size * ratio) / total));
+                done += f.size;
                 uploaded.push(data);
             }
             updateUpload(1);
             const infos = await Promise.all(uploaded.map(u => fetchInfo(u.file_id)));
-            setFile(infos[0]);
-            state.merge = infos.map(info => ({ file_id: info.file_id, filename: info.filename, pages: info.pages, size: info.size }));
-            els.drop.classList.remove('uploading');
-            els.drop.classList.add('hidden');
-            els.workspace.classList.remove('hidden');
+            startSession(infos);
             if (infos.length > 1) openTool('merge');
-            else showTools();
         } catch (err) {
-            els.drop.classList.remove('uploading');
             Toast.error(err.message);
         } finally {
+            els.drop.classList.remove('uploading');
             els.input.value = '';
         }
+    }
+
+    function startSession(infos) {
+        state.versions = [{ ...infos[0], label: 'original' }];
+        state.current = 0;
+        state.merge = infos.map(info => mergeEntry(info));
+        state.expired = false;
+        els.expired.classList.add('hidden');
+        els.drop.classList.add('hidden');
+        els.restoring.classList.add('hidden');
+        els.workspace.classList.remove('hidden');
+        renderFile();
+        showTools();
+        saveSession();
+    }
+
+    function mergeEntry(info) {
+        return { file_id: info.file_id, filename: info.filename, pages: info.pages, size: info.size };
     }
 
     function updateUpload(ratio) {
@@ -739,10 +1250,13 @@ document.addEventListener('DOMContentLoaded', () => {
         els.uploadPercent.textContent = `${Math.round(ratio * 100)}%`;
     }
 
-    function setFile(info) {
-        state.file = info;
+    function renderFile() {
+        const info = file();
+        if (!info) return;
         els.name.textContent = info.filename;
         i18n.set(els.meta, 'pdf_file_meta', { count: info.pages, size: formatSize(info.size) });
+        els.downloadCurrent.href = `/api/files/${encodeURIComponent(info.file_id)}/download`;
+        els.downloadCurrent.classList.toggle('hidden', state.current === 0);
         if (info.encrypted) {
             els.thumb.hidden = true;
             els.icon.hidden = false;
@@ -751,61 +1265,190 @@ document.addEventListener('DOMContentLoaded', () => {
             els.thumb.hidden = false;
             els.icon.hidden = true;
         }
-        els.locked.classList.toggle('hidden', !info.encrypted);
-        renderToolGrid();
+        renderVersions();
+        renderNotes();
+        renderStrip();
+        renderToolGroups();
+        document.querySelectorAll('.page-picker').forEach(p => { p.classList.add('hidden'); p.innerHTML = ''; });
     }
 
-    function renderToolGrid() {
-        const encrypted = state.file?.encrypted;
-        const order = encrypted ? ['unlock', ...TOOLS.filter(tool => tool !== 'unlock')] : TOOLS.filter(tool => tool !== 'unlock');
-        els.grid.innerHTML = order
-            .map(tool => {
-                const disabled = encrypted && tool !== 'unlock';
-                return `
-                    <button type="button" class="tool-card" data-tool="${tool}" ${disabled ? 'disabled' : ''}>
-                        <span class="tool-card-icon"><svg viewBox="0 0 24 24">${ICONS[tool]}</svg></span>
-                        <span class="tool-card-title" data-i18n="pdf_tool_${tool}">${escapeHtml(t(`pdf_tool_${tool}`))}</span>
-                        <span class="tool-card-desc" data-i18n="pdf_tool_${tool}_desc">${escapeHtml(t(`pdf_tool_${tool}_desc`))}</span>
-                    </button>
-                `;
-            }).join('');
+    function versionLabel(v) {
+        return v.label === 'original' ? t('pdf_version_original') : t(`pdf_tool_${v.label}`);
+    }
+
+    function renderVersions() {
+        const many = state.versions.length > 1;
+        els.versionBar.classList.toggle('hidden', !many);
+        if (!many) return;
+        els.versionChips.innerHTML = state.versions.map((v, i) => `
+            ${i ? '<span class="version-sep" aria-hidden="true">›</span>' : ''}
+            <button type="button" class="version-chip ${i === state.current ? 'active' : ''} ${i > state.current ? 'ahead' : ''}" data-version="${i}" aria-current="${i === state.current}" title="${escapeHtml(v.filename)}">${escapeHtml(versionLabel(v))}</button>
+        `).join('');
+        els.versionUndo.disabled = state.current === 0;
+    }
+
+    async function switchVersion(index) {
+        if (index === state.current || index < 0 || index >= state.versions.length) return;
+        try {
+            const info = await fetchInfo(state.versions[index].file_id);
+            state.versions[index] = { ...info, label: state.versions[index].label };
+            state.current = index;
+            state.merge = [mergeEntry(info), ...state.merge.slice(1)];
+            renderFile();
+            showTools();
+            saveSession();
+        } catch (err) {
+            if (err.status === 404) markExpired();
+            Toast.error(err.message);
+        }
+    }
+
+    els.versionChips.addEventListener('click', e => {
+        const chip = e.target.closest('[data-version]');
+        if (chip) switchVersion(Number(chip.dataset.version));
+    });
+    els.versionUndo.addEventListener('click', () => switchVersion(state.current - 1));
+
+    function note(kind, key, action) {
+        return `
+            <div class="pdf-note ${kind}">
+                <svg viewBox="0 0 24 24">${NOTE_ICONS[kind]}</svg>
+                <span data-i18n="${key}">${escapeHtml(t(key))}</span>
+                ${action ? `<button type="button" class="btn btn-ghost btn-small" data-open-tool="${action.tool}" data-i18n="${action.key}">${escapeHtml(t(action.key))}</button>` : ''}
+            </div>
+        `;
+    }
+
+    function renderNotes() {
+        const info = file();
+        const notes = [];
+        if (info.encrypted) notes.push(note('warn', 'pdf_locked_note'));
+        else {
+            if (info.signed) notes.push(note('warn', 'pdf_note_signed'));
+            if (info.restricted) notes.push(note('info', 'pdf_note_restricted', { tool: 'unlock', key: 'pdf_tool_unlock' }));
+            if (info.has_forms) notes.push(note('info', 'pdf_note_forms'));
+            if (info.text_ratio !== undefined && info.text_ratio < 0.5) notes.push(note('info', 'pdf_note_scanned', { tool: 'ocr', key: 'pdf_open_ocr' }));
+        }
+        els.notes.innerHTML = notes.join('');
+    }
+
+    document.addEventListener('click', e => {
+        const opener = e.target instanceof Element && e.target.closest('[data-open-tool]');
+        if (opener && state.versions.length) openTool(opener.dataset.openTool);
+    });
+
+    function renderStrip() {
+        const info = file();
+        if (info.encrypted || !info.pages) {
+            els.strip.classList.add('hidden');
+            return;
+        }
+        const count = Math.min(info.pages, 200);
+        els.strip.innerHTML = Array.from({ length: count }, (_, i) => `
+            <button type="button" class="preview-thumb" data-page="${i}" aria-label="${escapeHtml(t('pdf_page_n', { n: i + 1 }))}">
+                <img loading="lazy" src="${pageUrl(info.file_id, i, 140)}" alt="">
+                <span>${i + 1}</span>
+            </button>
+        `).join('');
+        els.strip.classList.remove('hidden');
+    }
+
+    els.strip.addEventListener('click', e => {
+        const thumb = e.target.closest('[data-page]');
+        if (thumb) openViewer(Number(thumb.dataset.page));
+    });
+
+    function openViewer(index) {
+        const info = file();
+        if (!info || info.encrypted) return;
+        state.viewerIndex = Math.max(0, Math.min(info.pages - 1, index));
+        els.viewerImg.src = pageUrl(info.file_id, state.viewerIndex, Math.min(1200, Math.round(window.innerWidth * 1.2)));
+        els.viewerCounter.textContent = `${state.viewerIndex + 1} / ${info.pages}`;
+        els.viewer.classList.remove('hidden');
+        $('viewerClose').focus();
+    }
+
+    function closeViewer() {
+        els.viewer.classList.add('hidden');
+        els.viewerImg.removeAttribute('src');
+    }
+
+    $('viewerClose').addEventListener('click', closeViewer);
+    $('viewerPrev').addEventListener('click', () => openViewer(state.viewerIndex - 1));
+    $('viewerNext').addEventListener('click', () => openViewer(state.viewerIndex + 1));
+    els.viewer.addEventListener('click', e => { if (e.target === els.viewer) closeViewer(); });
+    document.addEventListener('keydown', e => {
+        if (els.viewer.classList.contains('hidden')) return;
+        if (e.key === 'Escape') closeViewer();
+        if (e.key === 'ArrowLeft') openViewer(state.viewerIndex - 1);
+        if (e.key === 'ArrowRight') openViewer(state.viewerIndex + 1);
+    });
+
+    function renderToolGroups() {
+        const info = file();
+        const locked = info.encrypted;
+        const showUnlock = info.encrypted || info.restricted;
+        els.groups.innerHTML = GROUPS.map(group => {
+            const tools = group.tools.filter(tool => tool !== 'unlock' || showUnlock);
+            const ordered = locked ? [...tools].sort((a, b) => (b === 'unlock') - (a === 'unlock')) : tools;
+            return `
+                <div class="tool-group">
+                    <h3 class="tool-group-title" data-i18n="${group.key}">${escapeHtml(t(group.key))}</h3>
+                    <div class="tool-grid">
+                        ${ordered.map(tool => `
+                            <button type="button" class="tool-card" data-tool="${tool}" ${locked && tool !== 'unlock' ? 'disabled' : ''}>
+                                <span class="tool-card-icon"><svg viewBox="0 0 24 24">${ICONS[tool]}</svg></span>
+                                <span class="tool-card-title" data-i18n="pdf_tool_${tool}">${escapeHtml(t(`pdf_tool_${tool}`))}</span>
+                                <span class="tool-card-desc" data-i18n="pdf_tool_${tool}_desc">${escapeHtml(t(`pdf_tool_${tool}_desc`))}</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }).join('');
     }
 
     function showTools() {
         state.tool = null;
-        show(els.grid);
+        show(els.groups);
     }
 
+    els.groups.addEventListener('click', e => {
+        const card = e.target.closest('.tool-card');
+        if (card && !card.disabled) openTool(card.dataset.tool);
+    });
+
     function openTool(tool) {
+        if (!file()) return;
+        if (file().encrypted && tool !== 'unlock') return;
         state.tool = tool;
+        clearFieldErrors();
         i18n.set(els.title, `pdf_tool_${tool}`);
         i18n.set(els.run, `pdf_action_${tool}`);
         document.querySelectorAll('.tool-options').forEach(el => el.classList.toggle('active', el.dataset.tool === tool));
-        if (tool === 'organize') initOrganize();
-        if (tool === 'split') updateSplitHint();
-        if (tool === 'merge') renderMerge();
-        if (tool === 'watermark') initWatermark();
-        if (tool === 'metadata') initMetadata();
-        if (tool === 'protect') { $('protectPassword').value = ''; $('protectPassword2').value = ''; }
-        if (tool === 'unlock') $('unlockPassword').value = '';
+        const init = {
+            compress: initCompress, organize: initOrganize, split: initSplit, merge: renderMerge, convert: initConvert,
+            ocr: initOcr, protect: initProtect, unlock: initUnlock, watermark: initWatermark, page_numbers: initNumbers, metadata: initMetadata
+        }[tool];
+        if (init) init();
         show(els.panel);
         els.panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    els.grid.addEventListener('click', e => {
-        const card = e.target.closest('.tool-card');
-        if (card && !card.disabled) openTool(card.dataset.tool);
-    });
     els.back.addEventListener('click', showTools);
     els.change.addEventListener('click', resetAll);
+    $('pdfExpiredReset').addEventListener('click', resetAll);
     els.resultBack.addEventListener('click', showTools);
-    els.errorBack.addEventListener('click', showTools);
+    els.errorBack.addEventListener('click', () => state.tool ? openTool(state.tool) : showTools());
 
     document.querySelectorAll('[data-group]').forEach(group => {
         group.addEventListener('click', e => {
             const choice = e.target.closest('.choice');
-            if (!choice) return;
-            group.querySelectorAll('.choice').forEach(c => c.classList.toggle('active', c === choice));
+            if (!choice || choice.disabled) return;
+            group.querySelectorAll('.choice').forEach(c => {
+                c.classList.toggle('active', c === choice);
+                c.setAttribute('aria-pressed', c === choice ? 'true' : 'false');
+            });
             group.dispatchEvent(new CustomEvent('choice', { detail: choice.dataset.value }));
         });
     });
@@ -814,96 +1457,337 @@ document.addEventListener('DOMContentLoaded', () => {
         return document.querySelector(`[data-group="${name}"] .choice.active`)?.dataset.value;
     }
 
+    function setGroupValue(name, value) {
+        const group = document.querySelector(`[data-group="${name}"]`);
+        group.querySelectorAll('.choice').forEach(c => c.classList.toggle('active', c.dataset.value === value));
+        group.dispatchEvent(new CustomEvent('choice', { detail: value }));
+    }
+
     document.querySelectorAll('.show-password').forEach(box => {
         box.addEventListener('change', () => {
             box.dataset.targets.split(',').forEach(id => { $(id).type = box.checked ? 'text' : 'password'; });
         });
     });
 
+    function setupPicker(field) {
+        const input = field.querySelector('.pages-input-row input');
+        const toggle = field.querySelector('.picker-toggle');
+        const picker = field.querySelector('.page-picker');
+        let anchor = null;
+
+        function selection() {
+            return new Set(parseRanges(input.value, file().pages) || []);
+        }
+
+        function render() {
+            const info = file();
+            const selected = selection();
+            const count = info.pages;
+            picker.innerHTML = `
+                <div class="page-picker-tools">
+                    <button type="button" class="btn btn-ghost btn-small" data-pick="all">${escapeHtml(t('pdf_pick_all'))}</button>
+                    <button type="button" class="btn btn-ghost btn-small" data-pick="none">${escapeHtml(t('pdf_pick_none'))}</button>
+                    <span class="option-hint">${escapeHtml(t('pdf_pick_hint'))}</span>
+                </div>
+                <div class="page-picker-grid">
+                    ${Array.from({ length: count }, (_, i) => `
+                        <button type="button" class="picker-page ${selected.has(i) ? 'selected' : ''}" data-index="${i}" aria-pressed="${selected.has(i)}">
+                            <img loading="lazy" src="${pageUrl(info.file_id, i, 110)}" alt="">
+                            <span>${i + 1}</span>
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function sync() {
+            if (picker.classList.contains('hidden') || !picker.innerHTML) return;
+            const selected = selection();
+            picker.querySelectorAll('.picker-page').forEach(b => {
+                const on = selected.has(Number(b.dataset.index));
+                b.classList.toggle('selected', on);
+                b.setAttribute('aria-pressed', on);
+            });
+        }
+
+        toggle.addEventListener('click', () => {
+            const opening = picker.classList.contains('hidden');
+            picker.classList.toggle('hidden', !opening);
+            if (opening) render();
+        });
+
+        picker.addEventListener('click', e => {
+            const pick = e.target.closest('[data-pick]');
+            if (pick) {
+                input.value = pick.dataset.pick === 'all' ? toRanges([...Array(file().pages).keys()]) : '';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                return;
+            }
+            const page = e.target.closest('.picker-page');
+            if (!page) return;
+            const index = Number(page.dataset.index);
+            const selected = selection();
+            if (e.shiftKey && anchor !== null) {
+                const on = !selected.has(index);
+                for (let i = Math.min(anchor, index); i <= Math.max(anchor, index); i++) on ? selected.add(i) : selected.delete(i);
+            } else if (selected.has(index)) selected.delete(index);
+            else selected.add(index);
+            anchor = index;
+            input.value = toRanges([...selected]);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+
+        input.addEventListener('input', sync);
+    }
+
+    document.querySelectorAll('.pages-field').forEach(setupPicker);
+
+    function readRanges(input, { required = true } = {}) {
+        const value = input.value.trim();
+        if (!value) {
+            if (required) throw new ToolError('err_pdf_ranges', null, input);
+            return '';
+        }
+        if (!parseRanges(value, file().pages)) throw new ToolError('pdf_err_ranges_count', null, input, { count: file().pages });
+        return value;
+    }
+
+    function initCompress() {
+        $('compressTargetHint').textContent = t('pdf_target_current', { size: formatSize(file().size) });
+        if (!$('compressTarget').value) $('compressTarget').value = Math.max(0.1, file().size / 1048576 / 2).toFixed(1);
+    }
+
+    document.querySelector('[data-group="compressMode"]').addEventListener('choice', e => {
+        $('compressTargetField').classList.toggle('hidden', e.detail !== 'target');
+    });
+
     function initOrganize() {
-        state.pages = Array.from({ length: state.file.pages }, (_, index) => ({ index, rotate: 0, deleted: false }));
+        state.sources = [file().file_id];
+        state.sourceNames = {};
+        state.pages =Array.from({ length: file().pages }, (_, index) => ({ key: ++state.pageKey, src: 0, index, rotate: 0, deleted: false }));
+        state.organizeHistory = [];
         renderOrganize();
         if (!els.organizeGrid._sortable) {
             els.organizeGrid._sortable = Sortable.create(els.organizeGrid, {
                 animation: 160,
+                delay: 180,
+                delayOnTouchOnly: true,
+                touchStartThreshold: 5,
                 filter: '.icon-btn',
                 preventOnFilter: false,
+                onStart: () => pushOrganizeHistory(),
                 onEnd: () => {
-                    const order = Array.from(els.organizeGrid.children).map(el => Number(el.dataset.index));
-                    state.pages.sort((a, b) => order.indexOf(a.index) - order.indexOf(b.index));
-                    updateOrganizeSummary();
+                    const order = Array.from(els.organizeGrid.children).map(el => Number(el.dataset.key));
+                    state.pages.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+                    renderOrganize();
                 }
             });
         }
     }
 
-    function renderOrganize() {
-        els.organizeGrid.innerHTML = state.pages.map(page => `
-            <div class="page-thumb ${page.deleted ? 'deleted' : ''}" data-index="${page.index}">
-                <div class="page-thumb-img"><img loading="lazy" src="${pageUrl(state.file.file_id, page.index, 180)}" alt="" style="transform: rotate(${page.rotate}deg)"></div>
-                <div class="page-thumb-bar">
-                    <span class="page-thumb-num">${page.index + 1}</span>
-                    <span class="page-thumb-actions">
-                        <button type="button" class="icon-btn" data-action="left" title="${escapeHtml(t('pdf_rotate_left'))}" aria-label="${escapeHtml(t('pdf_rotate_left'))}"><svg viewBox="0 0 24 24"><path d="M3 10a9 9 0 1 1 3 6.7"/><path d="M3 4v6h6"/></svg></button>
-                        <button type="button" class="icon-btn" data-action="right" title="${escapeHtml(t('pdf_rotate_right'))}" aria-label="${escapeHtml(t('pdf_rotate_right'))}"><svg viewBox="0 0 24 24"><path d="M21 10a9 9 0 1 0-3 6.7"/><path d="M21 4v6h-6"/></svg></button>
-                        <button type="button" class="icon-btn danger" data-action="delete" title="${escapeHtml(t(page.deleted ? 'pdf_restore_page' : 'pdf_delete_page'))}" aria-label="${escapeHtml(t(page.deleted ? 'pdf_restore_page' : 'pdf_delete_page'))}">${page.deleted
-                            ? '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>'
-                            : '<svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>'}</button>
-                    </span>
-                </div>
-            </div>
-        `).join('');
-        updateOrganizeSummary();
+    function pushOrganizeHistory() {
+        state.organizeHistory.push(JSON.stringify(state.pages));
+        if (state.organizeHistory.length > 60) state.organizeHistory.shift();
+        els.organizeUndo.disabled = false;
     }
 
-    function updateOrganizeSummary() {
+    function undoOrganize() {
+        const snapshot = state.organizeHistory.pop();
+        if (!snapshot) return;
+        state.pages = JSON.parse(snapshot);
+        els.organizeUndo.disabled = !state.organizeHistory.length;
+        renderOrganize();
+    }
+
+    function pageLabel(page) {
+        if (page.blank) return t('pdf_blank_page');
+        return page.src === 0 ? `${page.index + 1}` : `${page.index + 1} · ${state.sourceNames[page.src] || ''}`;
+    }
+
+    function renderOrganize(focusKey) {
+        els.organizeGrid.innerHTML = state.pages.map((page, position) => {
+            const label = pageLabel(page);
+            const aria = t('pdf_page_position', { n: position + 1, label });
+            const img = page.blank
+                ? `<div class="blank-page" style="transform: rotate(${page.rotate}deg)"></div>`
+                : `<img loading="lazy" src="${pageUrl(state.sources[page.src], page.index, 180)}" alt="" style="transform: rotate(${page.rotate}deg)">`;
+            return `
+                <div class="page-thumb ${page.deleted ? 'deleted' : ''}" data-key="${page.key}" tabindex="0" role="listitem" aria-label="${escapeHtml(aria)}">
+                    <div class="page-thumb-img">${img}</div>
+                    <div class="page-thumb-bar">
+                        <span class="page-thumb-num" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+                        <span class="page-thumb-actions">
+                            <button type="button" class="icon-btn" data-action="left" tabindex="-1" title="${escapeHtml(t('pdf_rotate_left'))}" aria-label="${escapeHtml(t('pdf_rotate_left'))}"><svg viewBox="0 0 24 24"><path d="M3 10a9 9 0 1 1 3 6.7"/><path d="M3 4v6h6"/></svg></button>
+                            <button type="button" class="icon-btn" data-action="right" tabindex="-1" title="${escapeHtml(t('pdf_rotate_right'))}" aria-label="${escapeHtml(t('pdf_rotate_right'))}"><svg viewBox="0 0 24 24"><path d="M21 10a9 9 0 1 0-3 6.7"/><path d="M21 4v6h-6"/></svg></button>
+                            <button type="button" class="icon-btn" data-action="duplicate" tabindex="-1" title="${escapeHtml(t('pdf_duplicate_page'))}" aria-label="${escapeHtml(t('pdf_duplicate_page'))}"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/></svg></button>
+                            <button type="button" class="icon-btn danger" data-action="delete" tabindex="-1" title="${escapeHtml(t(page.deleted ? 'pdf_restore_page' : 'pdf_delete_page'))}" aria-label="${escapeHtml(t(page.deleted ? 'pdf_restore_page' : 'pdf_delete_page'))}">${page.deleted
+                                ? '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>'
+                                : '<svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>'}</button>
+                        </span>
+                    </div>
+                </div>
+            `;
+        }).join('');
         const kept = state.pages.filter(p => !p.deleted).length;
         i18n.set(els.organizeSummary, 'pdf_organize_summary', { count: kept });
+        if (focusKey !== undefined) els.organizeGrid.querySelector(`[data-key="${focusKey}"]`)?.focus();
+    }
+
+    function pageAction(key, action) {
+        const position = state.pages.findIndex(p => p.key === key);
+        if (position < 0) return;
+        const page = state.pages[position];
+        pushOrganizeHistory();
+        if (action === 'left') page.rotate = (page.rotate + 270) % 360;
+        if (action === 'right') page.rotate = (page.rotate + 90) % 360;
+        if (action === 'delete') page.deleted = !page.deleted;
+        if (action === 'duplicate') {
+            const copy = { ...page, key: ++state.pageKey, deleted: false };
+            state.pages.splice(position + 1, 0, copy);
+            renderOrganize(copy.key);
+            return;
+        }
+        if (action === 'earlier' || action === 'later') {
+            const target = position + (action === 'earlier' ? -1 : 1);
+            if (target < 0 || target >= state.pages.length) {
+                state.organizeHistory.pop();
+                return;
+            }
+            state.pages.splice(position, 1);
+            state.pages.splice(target, 0, page);
+        }
+        renderOrganize(key);
     }
 
     els.organizeGrid.addEventListener('click', e => {
         const btn = e.target.closest('.icon-btn');
         if (!btn) return;
-        const index = Number(btn.closest('.page-thumb').dataset.index);
-        const page = state.pages.find(p => p.index === index);
-        if (btn.dataset.action === 'left') page.rotate = (page.rotate + 270) % 360;
-        if (btn.dataset.action === 'right') page.rotate = (page.rotate + 90) % 360;
-        if (btn.dataset.action === 'delete') page.deleted = !page.deleted;
-        renderOrganize();
+        pageAction(Number(btn.closest('.page-thumb').dataset.key), btn.dataset.action);
     });
 
-    $('rotateAllLeft').addEventListener('click', () => { state.pages.forEach(p => { p.rotate = (p.rotate + 270) % 360; }); renderOrganize(); });
-    $('rotateAllRight').addEventListener('click', () => { state.pages.forEach(p => { p.rotate = (p.rotate + 90) % 360; }); renderOrganize(); });
-    $('organizeReset').addEventListener('click', initOrganize);
+    els.organizeGrid.addEventListener('keydown', e => {
+        const thumb = e.target.closest('.page-thumb');
+        if (!thumb) return;
+        const key = Number(thumb.dataset.key);
+        const horizontal = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
+        if (horizontal && e.altKey) {
+            e.preventDefault();
+            pageAction(key, horizontal < 0 ? 'earlier' : 'later');
+        } else if (horizontal && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+            e.preventDefault();
+            (horizontal < 0 ? thumb.previousElementSibling : thumb.nextElementSibling)?.focus();
+        } else if (e.key === 'r' || e.key === 'R') {
+            e.preventDefault();
+            pageAction(key, e.shiftKey ? 'left' : 'right');
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+            e.preventDefault();
+            pageAction(key, 'delete');
+        } else if (e.key === 'd' || e.key === 'D') {
+            e.preventDefault();
+            pageAction(key, 'duplicate');
+        } else if (e.key === 'Enter' && !state.pages.find(p => p.key === key)?.blank) {
+            const page = state.pages.find(p => p.key === key);
+            if (page.src === 0) openViewer(page.index);
+        }
+    });
 
-    document.querySelector('[data-group="splitMode"]').addEventListener('choice', updateSplitHint);
-    function updateSplitHint() {
-        const mode = groupValue('splitMode');
-        els.splitRangesField.classList.toggle('hidden', mode === 'every');
-        i18n.set(els.splitRangesHint, mode === 'extract' ? 'pdf_ranges_hint_extract' : 'pdf_ranges_hint', { count: state.file?.pages || 0 });
+    document.addEventListener('keydown', e => {
+        const typing = e.target instanceof Element && e.target.closest('input, textarea');
+        if (state.tool === 'organize' && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !typing) {
+            e.preventDefault();
+            undoOrganize();
+        }
+    });
+
+    $('rotateAllLeft').addEventListener('click', () => { pushOrganizeHistory(); state.pages.forEach(p => { p.rotate = (p.rotate + 270) % 360; }); renderOrganize(); });
+    $('rotateAllRight').addEventListener('click', () => { pushOrganizeHistory(); state.pages.forEach(p => { p.rotate = (p.rotate + 90) % 360; }); renderOrganize(); });
+    $('organizeBlank').addEventListener('click', () => {
+        pushOrganizeHistory();
+        const page = { key: ++state.pageKey, blank: true, rotate: 0, deleted: false };
+        state.pages.push(page);
+        renderOrganize(page.key);
+    });
+    els.organizeUndo.addEventListener('click', undoOrganize);
+    $('organizeReset').addEventListener('click', initOrganize);
+    $('organizeInsert').addEventListener('click', () => $('organizeInsertInput').click());
+    $('organizeInsertInput').addEventListener('change', async e => {
+        const files = Array.from(e.target.files).filter(isPdf);
+        e.target.value = '';
+        if (!files.length) return;
+        $('organizeInsert').disabled = true;
+        try {
+            for (const f of files) {
+                const info = await fetchInfo((await uploadOne(f)).file_id);
+                if (info.encrypted) {
+                    Toast.error(t('pdf_err_merge_locked', { name: info.filename }));
+                    continue;
+                }
+                pushOrganizeHistory();
+                state.sources.push(info.file_id);
+                const src = state.sources.length - 1;
+                state.sourceNames[src] = info.filename.replace(/\.pdf$/i, '');
+                for (let i = 0; i < info.pages; i++) state.pages.push({ key: ++state.pageKey, src, index: i, rotate: 0, deleted: false });
+                Toast.success(t('pdf_inserted_pages', { count: info.pages, name: info.filename }));
+            }
+            renderOrganize();
+        } catch (err) {
+            Toast.error(err.message);
+        } finally {
+            $('organizeInsert').disabled = false;
+        }
+    });
+
+    function initSplit() {
+        const bookmarks = file().bookmarks || 0;
+        $('splitBookmarks').disabled = !bookmarks;
+        i18n.set($('splitBookmarksDesc'), bookmarks ? 'pdf_split_bookmarks_desc' : 'pdf_split_bookmarks_none', { count: bookmarks });
+        if (!bookmarks && groupValue('splitMode') === 'bookmarks') setGroupValue('splitMode', 'every');
+        updateSplit();
     }
 
-    function renderMerge() {
+    document.querySelector('[data-group="splitMode"]').addEventListener('choice', updateSplit);
+    function updateSplit() {
+        const mode = groupValue('splitMode');
+        $('splitNField').classList.toggle('hidden', mode !== 'every_n');
+        $('splitRangesField').classList.toggle('hidden', mode !== 'ranges' && mode !== 'extract');
+        i18n.set($('splitRangesHint'), mode === 'extract' ? 'pdf_ranges_hint_extract' : 'pdf_ranges_hint', { count: file()?.pages || 0 });
+    }
+
+    function renderMerge(focusIndex) {
         els.mergeList.innerHTML = state.merge.map((item, i) => `
-            <div class="merge-item" data-index="${i}">
+            <div class="merge-item" data-index="${i}" tabindex="0" role="listitem" aria-label="${escapeHtml(`${i + 1}. ${item.filename}`)}">
                 <span class="merge-item-handle"><svg viewBox="0 0 24 24"><path d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01"/></svg></span>
                 <span class="merge-item-name">${escapeHtml(item.filename)}</span>
                 <span class="merge-item-meta" data-i18n="pdf_pages" data-i18n-vars="${escapeHtml(JSON.stringify({ count: item.pages }))}">${escapeHtml(t('pdf_pages', { count: item.pages }))}</span>
-                <button type="button" class="icon-btn danger" data-remove="${i}" title="${escapeHtml(t('remove_file'))}" aria-label="${escapeHtml(t('remove_file'))}"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                <button type="button" class="icon-btn danger" data-remove="${i}" tabindex="-1" title="${escapeHtml(t('remove_file'))}" aria-label="${escapeHtml(t('remove_file'))}"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
             </div>
         `).join('');
         if (!els.mergeList._sortable) {
             els.mergeList._sortable = Sortable.create(els.mergeList, {
                 animation: 160,
+                delay: 180,
+                delayOnTouchOnly: true,
+                touchStartThreshold: 5,
                 filter: '.icon-btn',
                 preventOnFilter: false,
                 onEnd: () => {
                     const order = Array.from(els.mergeList.children).map(el => Number(el.dataset.index));
                     state.merge = order.map(i => state.merge[i]);
                     renderMerge();
+                    saveSession();
                 }
             });
         }
+        if (focusIndex !== undefined) els.mergeList.querySelector(`[data-index="${focusIndex}"]`)?.focus();
+    }
+
+    function moveMerge(index, delta) {
+        const target = index + delta;
+        if (target < 0 || target >= state.merge.length) return;
+        const [item] = state.merge.splice(index, 1);
+        state.merge.splice(target, 0, item);
+        renderMerge(target);
+        saveSession();
     }
 
     els.mergeList.addEventListener('click', e => {
@@ -911,158 +1795,442 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!btn) return;
         state.merge.splice(Number(btn.dataset.remove), 1);
         renderMerge();
+        saveSession();
     });
 
-    els.mergeAdd.addEventListener('click', () => els.mergeInput.click());
-    els.mergeInput.addEventListener('change', async () => {
-        const files = Array.from(els.mergeInput.files).filter(isPdf);
-        els.mergeInput.value = '';
+    els.mergeList.addEventListener('keydown', e => {
+        const item = e.target.closest('.merge-item');
+        if (!item) return;
+        const index = Number(item.dataset.index);
+        if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+            e.preventDefault();
+            moveMerge(index, e.key === 'ArrowUp' ? -1 : 1);
+        } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            (e.key === 'ArrowUp' ? item.previousElementSibling : item.nextElementSibling)?.focus();
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+            e.preventDefault();
+            state.merge.splice(index, 1);
+            renderMerge(Math.min(index, state.merge.length - 1));
+            saveSession();
+        }
+    });
+
+    async function addToMerge(fileList) {
+        const files = Array.from(fileList).filter(isPdf);
         if (!files.length) return;
         els.mergeAdd.disabled = true;
         try {
-            for (const file of files) {
-                const data = await uploadOne(file);
-                const info = await fetchInfo(data.file_id);
+            for (const f of files) {
+                const info = await fetchInfo((await uploadOne(f)).file_id);
                 if (info.encrypted) {
                     Toast.error(t('pdf_err_merge_locked', { name: info.filename }));
                     continue;
                 }
-                state.merge.push({ file_id: info.file_id, filename: info.filename, pages: info.pages, size: info.size });
+                state.merge.push(mergeEntry(info));
             }
             renderMerge();
+            saveSession();
         } catch (err) {
             Toast.error(err.message);
         } finally {
             els.mergeAdd.disabled = false;
         }
+    }
+
+    els.mergeAdd.addEventListener('click', () => els.mergeInput.click());
+    els.mergeInput.addEventListener('change', () => {
+        addToMerge(els.mergeInput.files);
+        els.mergeInput.value = '';
     });
 
-    document.querySelector('[data-group="convertFormat"]').addEventListener('choice', e => {
-        els.imageOptions.classList.toggle('hidden', e.detail !== 'images');
-        els.ocrHint.classList.toggle('hidden', e.detail !== 'ocr-pdf');
-    });
+    function initConvert() {
+        const info = file();
+        $('convertScanHint').classList.toggle('hidden', !(info.text_ratio < 0.5));
+        updateConvert();
+    }
+
+    document.querySelector('[data-group="convertFormat"]').addEventListener('choice', updateConvert);
+    function updateConvert() {
+        $('imageOptions').classList.toggle('hidden', groupValue('convertFormat') !== 'images');
+    }
+
+    async function loadEngines(force) {
+        if (state.engines && !force) return state.engines;
+        try {
+            const res = await fetch('/api/ocr/engines');
+            const body = await res.json();
+            state.engines = body.data || {};
+        } catch (e) {
+            state.engines = { rapid: { available: true } };
+        }
+        return state.engines;
+    }
+
+    async function initOcr() {
+        const engines = await loadEngines(true);
+        const select = $('ocrEngine');
+        const previous = select.value || 'rapid';
+        select.innerHTML = ['rapid', 'qwen'].map(id => {
+            const info = engines[id] || { available: false, reason: 'llm_offline' };
+            const label = t(`ocr_engine_${id}`) + (info.available ? '' : ` (${t('ocr_unavailable')})`);
+            return `<option value="${id}" ${info.available ? '' : 'disabled'}>${escapeHtml(label)}</option>`;
+        }).join('');
+        select.value = engines[previous]?.available ? previous : 'rapid';
+        updateOcr();
+    }
+
+    function reasonText(info) {
+        if (!info || info.available) return '';
+        return t(`ocr_reason_${info.reason}`, { model: info.model || '' });
+    }
+
+    function updateOcr() {
+        const engines = state.engines || {};
+        const engine = $('ocrEngine').value;
+        const output = groupValue('ocrOutput');
+        const correction = engines.correction || { available: false, reason: 'llm_offline' };
+        const hints = [t(`ocr_engine_${engine}_desc`)];
+        const unavailable = ['rapid', 'qwen'].filter(id => engines[id] && !engines[id].available);
+        unavailable.forEach(id => hints.push(`${t(`ocr_engine_${id}`)}: ${reasonText(engines[id])}`));
+        $('ocrEngineHint').textContent = hints.join(' ');
+        $('ocrCorrect').disabled = !correction.available;
+        if (!correction.available) $('ocrCorrect').checked = false;
+        $('ocrCorrectHint').textContent = correction.available ? t('ocr_ai_correction_desc') : reasonText(correction);
+        $('ocrForceRow').classList.toggle('hidden', output !== 'pdf');
+        const llmHtml = output === 'html' && (engine === 'qwen' || $('ocrCorrect').checked);
+        $('ocrHtmlOptions').classList.toggle('hidden', output !== 'html');
+        $('ocrCssLimit').closest('.check-row').classList.toggle('hidden', !llmHtml);
+        $('ocrCssField').classList.toggle('hidden', !llmHtml || !$('ocrCssLimit').checked);
+    }
+
+    document.querySelector('[data-group="ocrOutput"]').addEventListener('choice', updateOcr);
+    $('ocrEngine').addEventListener('change', updateOcr);
+    $('ocrCorrect').addEventListener('change', updateOcr);
+    $('ocrCssLimit').addEventListener('change', updateOcr);
+    $('ocrCssLength').addEventListener('input', e => { $('ocrCssValue').textContent = e.target.value; });
+
+    function initProtect() {
+        $('protectPassword').value = '';
+        $('protectPassword2').value = '';
+        updateProtect();
+    }
+
+    function updateProtect() {
+        const required = $('protectRequireOpen').checked;
+        i18n.set(document.querySelector('.perm-box legend'), required ? 'pdf_permissions_after_open' : 'pdf_permissions');
+    }
+    $('protectRequireOpen').addEventListener('change', updateProtect);
+
+    function initUnlock() {
+        const encrypted = file().encrypted;
+        $('unlockPasswordField').classList.toggle('hidden', !encrypted);
+        $('unlockRestrictedHint').classList.toggle('hidden', encrypted);
+        $('unlockPassword').value = '';
+    }
+
+    const wm = {
+        text: $('watermarkText'), opacity: $('watermarkOpacity'), opacityValue: $('watermarkOpacityValue'), size: $('watermarkSize'),
+        diagonal: $('watermarkDiagonal'), behind: $('watermarkBehind'), preview: $('watermarkPreview'), previewImg: $('watermarkPreviewImg'),
+        previewText: $('watermarkPreviewText'), previewLogo: $('watermarkPreviewLogo'), pagesMode: $('watermarkPagesMode')
+    };
+    const WM_COLORS = { gray: '#808080', black: '#1a1a1a', red: '#cc1a1a', blue: '#1a4dcc' };
 
     function initWatermark() {
-        if (!els.wmText.value) els.wmText.value = t('pdf_watermark_default');
-        els.wmPreviewImg.src = pageUrl(state.file.file_id, 0, 360);
-        els.wmPreview.style.aspectRatio = `${state.file.page_width || 595} / ${state.file.page_height || 842}`;
-        updateWatermarkPreview();
+        if (!wm.text.value) wm.text.value = t('pdf_watermark_default');
+        wm.previewImg.src = pageUrl(file().file_id, 0, 400);
+        wm.preview.style.aspectRatio = `${file().page_width || 595} / ${file().page_height || 842}`;
+        updateWatermark();
     }
 
-    function updateWatermarkPreview() {
-        const width = els.wmPreview.clientWidth || 180;
-        const height = width * (state.file.page_height || 842) / (state.file.page_width || 595);
-        const diagonal = els.wmDiagonal.checked;
-        const opacity = Number(els.wmOpacity.value) / 100;
-        let fontSize = Math.min(width, height) * Number(els.wmSize.value) / 100;
-        els.wmPreviewText.textContent = els.wmText.value;
-        els.wmPreviewText.style.fontSize = `${fontSize}px`;
-        const maxWidth = width * 0.85 / (diagonal ? 0.75 : 1);
-        const textWidth = els.wmPreviewText.scrollWidth;
-        if (textWidth > maxWidth) {
-            fontSize *= maxWidth / textWidth;
-            els.wmPreviewText.style.fontSize = `${fontSize}px`;
+    function updateWatermark() {
+        const kind = groupValue('watermarkKind');
+        const position = groupValue('watermarkPosition');
+        $('watermarkTextField').classList.toggle('hidden', kind !== 'text');
+        $('watermarkColorField').classList.toggle('hidden', kind !== 'text');
+        $('watermarkImageField').classList.toggle('hidden', kind !== 'image');
+        $('watermarkDiagonalRow').classList.toggle('hidden', kind !== 'text' || position !== 'center');
+        $('watermarkPagesField').classList.toggle('hidden', wm.pagesMode.value !== 'custom');
+        wm.opacityValue.textContent = `${wm.opacity.value}%`;
+        wm.preview.classList.toggle('behind', wm.behind.checked);
+
+        const width = wm.preview.clientWidth || 200;
+        const pageW = file()?.page_width || 595;
+        const pageH = file()?.page_height || 842;
+        const height = width * pageH / pageW;
+        const opacity = Number(wm.opacity.value) / 100;
+        const ratio = Number(wm.size.value) / 100;
+        const top = position === 'top' ? '8%' : position === 'bottom' ? '92%' : '50%';
+
+        wm.previewText.classList.toggle('hidden', kind !== 'text');
+        wm.previewLogo.classList.toggle('hidden', kind !== 'image' || !state.watermarkImage);
+        if (kind === 'text') {
+            const diagonal = wm.diagonal.checked && position === 'center';
+            let fontSize = Math.min(width, height) * ratio;
+            wm.previewText.textContent = wm.text.value;
+            wm.previewText.style.fontSize = `${fontSize}px`;
+            const maxWidth = width * 0.85 / (diagonal ? 0.75 : 1);
+            if (wm.previewText.scrollWidth > maxWidth) {
+                fontSize *= maxWidth / wm.previewText.scrollWidth;
+                wm.previewText.style.fontSize = `${fontSize}px`;
+            }
+            wm.previewText.style.color = WM_COLORS[groupValue('watermarkColor')] || WM_COLORS.gray;
+            wm.previewText.style.opacity = opacity;
+            wm.previewText.style.top = top;
+            wm.previewText.style.transform = `translate(-50%, -50%) rotate(${diagonal ? -45 : 0}deg)`;
+        } else if (state.watermarkImage) {
+            wm.previewLogo.src = state.watermarkImage.url;
+            wm.previewLogo.style.width = `${Math.min(95, ratio * 500)}%`;
+            wm.previewLogo.style.opacity = opacity;
+            wm.previewLogo.style.top = top;
         }
-        els.wmPreviewText.style.opacity = opacity;
-        els.wmPreviewText.style.transform = `translate(-50%, -50%) rotate(${diagonal ? -45 : 0}deg)`;
-        els.wmOpacityValue.textContent = `${els.wmOpacity.value}%`;
     }
 
-    [els.wmText, els.wmOpacity, els.wmSize, els.wmDiagonal].forEach(el => el.addEventListener('input', updateWatermarkPreview));
-    els.wmDiagonal.addEventListener('change', updateWatermarkPreview);
+    ['watermarkKind', 'watermarkPosition', 'watermarkColor'].forEach(name => {
+        document.querySelector(`[data-group="${name}"]`).addEventListener('choice', updateWatermark);
+    });
+    [wm.text, wm.opacity, wm.size].forEach(el => el.addEventListener('input', updateWatermark));
+    [wm.diagonal, wm.behind, wm.pagesMode].forEach(el => el.addEventListener('change', updateWatermark));
+
+    $('watermarkImageBtn').addEventListener('click', () => $('watermarkImageInput').click());
+    $('watermarkImageInput').addEventListener('change', e => {
+        const f = e.target.files[0];
+        e.target.value = '';
+        if (f) setWatermarkImage(f);
+    });
+
+    async function setWatermarkImage(f) {
+        if (!isImage(f)) {
+            Toast.error(t('err_pdf_watermark_image'));
+            return;
+        }
+        try {
+            const data = await uploadOne(f);
+            if (state.watermarkImage?.url) URL.revokeObjectURL(state.watermarkImage.url);
+            state.watermarkImage = { file_id: data.file_id, url: URL.createObjectURL(f), name: f.name };
+            $('watermarkImageName').textContent = f.name;
+            clearFieldErrors($('watermarkImageField'));
+            updateWatermark();
+        } catch (err) {
+            Toast.error(err.message);
+        }
+    }
+
+    const NUMBER_PRESETS = { n: '{n}', n_total: '{n} / {total}', dash: '- {n} -', bates: 'ABC{n}' };
+
+    function initNumbers() {
+        updateNumbers();
+    }
+
+    function updateNumbers() {
+        const preset = $('numberPreset').value;
+        $('numberDigitsField').classList.toggle('hidden', preset !== 'bates' && preset !== 'custom');
+        $('numberPagesField').classList.toggle('hidden', $('numberPagesMode').value !== 'custom');
+        const template = $('numberTemplate').value || '{n}';
+        const digits = preset === 'bates' || preset === 'custom' ? Number($('numberDigits').value) || 0 : 0;
+        const start = Number($('numberStart').value) || 0;
+        const pad = v => digits ? String(v).padStart(digits, '0') : String(v);
+        const total = file() ? start + file().pages - 1 - ($('numberPagesMode').value === 'skip_first' ? 1 : 0) : 10;
+        const example = template.replace('{total}', pad(total)).replace('{n}', pad(start));
+        $('numberExample').textContent = t('pdf_numbers_example', { example });
+    }
+
+    $('numberPreset').addEventListener('change', () => {
+        const preset = $('numberPreset').value;
+        if (preset === 'words') $('numberTemplate').value = t('pdf_numbers_tpl_words');
+        else if (NUMBER_PRESETS[preset]) $('numberTemplate').value = NUMBER_PRESETS[preset];
+        if (preset === 'bates') $('numberDigits').value = 6;
+        if (preset === 'custom') $('numberTemplate').focus();
+        updateNumbers();
+    });
+    $('numberTemplate').addEventListener('input', () => {
+        const value = $('numberTemplate').value;
+        const match = Object.entries(NUMBER_PRESETS).find(([, v]) => v === value);
+        if (!match && value !== t('pdf_numbers_tpl_words') && $('numberPreset').value !== 'bates') $('numberPreset').value = 'custom';
+        updateNumbers();
+    });
+    ['numberStart', 'numberDigits'].forEach(id => $(id).addEventListener('input', updateNumbers));
+    $('numberPagesMode').addEventListener('change', updateNumbers);
 
     function initMetadata() {
-        const meta = state.file.metadata || {};
+        const meta = file().metadata || {};
         document.querySelectorAll('.meta-input').forEach(input => {
             input.value = meta[input.dataset.key] || '';
-            input.disabled = els.metaStrip.checked;
+            input.disabled = $('metaStrip').checked;
         });
     }
 
-    els.metaStrip.addEventListener('change', () => {
-        document.querySelectorAll('.meta-input').forEach(input => { input.disabled = els.metaStrip.checked; });
+    $('metaStrip').addEventListener('change', () => {
+        document.querySelectorAll('.meta-input').forEach(input => { input.disabled = $('metaStrip').checked; });
     });
 
-    function collectOptions(tool) {
+    function collect(tool) {
         switch (tool) {
-            case 'compress':
-                return { mode: groupValue('compressMode'), grayscale: $('compressGray').checked, strip_metadata: $('compressStrip').checked };
+            case 'compress': {
+                const mode = groupValue('compressMode');
+                const options = { mode, grayscale: $('compressGray').checked, strip_metadata: $('compressStrip').checked };
+                if (mode === 'target') {
+                    const value = Number($('compressTarget').value);
+                    if (!(value > 0)) throw new ToolError('err_pdf_target_size', null, $('compressTarget'));
+                    options.target_mb = value;
+                }
+                return { options };
+            }
             case 'organize': {
-                const pages = state.pages.filter(p => !p.deleted).map(p => ({ index: p.index, rotate: p.rotate }));
-                if (!pages.length) throw new ToolError('err_pdf_no_pages');
-                return { pages };
+                const kept = state.pages.filter(p => !p.deleted);
+                if (!kept.length) throw new ToolError('err_pdf_no_pages');
+                return {
+                    options: {
+                        pages: kept.map(p => p.blank ? { blank: true } : { src: p.src, index: p.index, rotate: p.rotate }),
+                        sources: state.sources.slice(1)
+                    }
+                };
             }
             case 'split': {
                 const mode = groupValue('splitMode');
-                const ranges = els.splitRanges.value.trim();
-                if (mode !== 'every' && !ranges) throw new ToolError('err_pdf_ranges');
-                return { mode, ranges };
+                const options = { mode };
+                if (mode === 'every_n') {
+                    const n = Number($('splitN').value);
+                    if (!(n >= 1) || !Number.isInteger(n)) throw new ToolError('err_pdf_split_n', null, $('splitN'));
+                    options.n = n;
+                }
+                if (mode === 'ranges' || mode === 'extract') options.ranges = readRanges($('splitRanges'));
+                return { options };
+            }
+            case 'merge':
+                if (state.merge.length < 2) throw new ToolError('err_pdf_merge_count');
+                return { file_ids: state.merge.map(m => m.file_id), options: {} };
+            case 'convert': {
+                const target = groupValue('convertFormat');
+                if (target === 'images') {
+                    return { tool: 'to_images', options: { format: $('imageFormat').value, dpi: Number($('imageDpi').value), pages: readRanges($('imagePages'), { required: false }) } };
+                }
+                return { convert: target };
+            }
+            case 'ocr': {
+                const output = groupValue('ocrOutput');
+                const options = { ocr_engine: $('ocrEngine').value, use_llm: $('ocrCorrect').checked };
+                if (output === 'pdf') options.ocr_force = $('ocrForce').checked;
+                if (output === 'html') {
+                    options.ocr_theme = $('ocrTheme').value;
+                    if ($('ocrCssLimit').checked) {
+                        options.css_limit_enabled = true;
+                        options.css_limit_value = Number($('ocrCssLength').value);
+                    }
+                }
+                return { convert: `ocr-${output}`, options };
             }
             case 'protect': {
                 const password = $('protectPassword').value;
-                if (password.length < 4) throw new ToolError('err_pdf_password_short');
-                if (password !== $('protectPassword2').value) throw new ToolError('pdf_err_password_mismatch');
-                return { password };
+                if (password.length < 4) throw new ToolError('err_pdf_password_short', null, $('protectPassword'));
+                if (password !== $('protectPassword2').value) throw new ToolError('pdf_err_password_mismatch', null, $('protectPassword2'));
+                const options = {
+                    password,
+                    require_open: $('protectRequireOpen').checked,
+                    allow_print: $('permPrint').checked,
+                    allow_copy: $('permCopy').checked,
+                    allow_edit: $('permEdit').checked
+                };
+                if (!options.require_open && options.allow_print && options.allow_copy && options.allow_edit) throw new ToolError('err_pdf_protect_nothing');
+                return { options };
             }
             case 'unlock':
-                return { password: $('unlockPassword').value };
-            case 'watermark':
-                if (!els.wmText.value.trim()) throw new ToolError('err_pdf_watermark_empty');
-                return { text: els.wmText.value.trim(), opacity: Number(els.wmOpacity.value) / 100, size: Number(els.wmSize.value) / 100, diagonal: els.wmDiagonal.checked };
-            case 'page_numbers':
-                return { position: groupValue('numberPosition'), format: $('numberFormat').value, start: Number($('numberStart').value) || 1, font_size: Number($('numberSize').value), skip_first: $('numberSkipFirst').checked };
+                return { options: { password: $('unlockPassword').value } };
+            case 'watermark': {
+                const kind = groupValue('watermarkKind');
+                const options = {
+                    kind,
+                    opacity: Number(wm.opacity.value) / 100,
+                    size: Number(wm.size.value) / 100,
+                    position: groupValue('watermarkPosition'),
+                    diagonal: wm.diagonal.checked,
+                    behind: wm.behind.checked,
+                    color: groupValue('watermarkColor'),
+                    pages: wm.pagesMode.value === 'custom' ? readRanges($('watermarkPages')) : ''
+                };
+                if (kind === 'text') {
+                    if (!wm.text.value.trim()) throw new ToolError('err_pdf_watermark_empty', null, wm.text);
+                    options.text = wm.text.value.trim();
+                } else {
+                    if (!state.watermarkImage) throw new ToolError('pdf_err_wm_no_image', null, $('watermarkImageBtn'));
+                    options.image_file_id = state.watermarkImage.file_id;
+                }
+                return { options };
+            }
+            case 'page_numbers': {
+                const template = $('numberTemplate').value.trim();
+                if (!template.includes('{n}')) throw new ToolError('err_pdf_numbers_template', null, $('numberTemplate'));
+                const preset = $('numberPreset').value;
+                const mode = $('numberPagesMode').value;
+                return {
+                    options: {
+                        template,
+                        digits: preset === 'bates' || preset === 'custom' ? Number($('numberDigits').value) || 0 : 0,
+                        start: Number($('numberStart').value) || 0,
+                        font_size: Number($('numberSize').value),
+                        margin: $('numberMargin').value,
+                        position: groupValue('numberPosition'),
+                        pages: mode === 'custom' ? readRanges($('numberPages')) : mode === 'skip_first' && file().pages > 1 ? '2-' : ''
+                    }
+                };
+            }
             case 'metadata': {
-                if (els.metaStrip.checked) return { strip: true };
+                if ($('metaStrip').checked) return { options: { strip: true } };
                 const options = {};
                 document.querySelectorAll('.meta-input').forEach(input => { options[input.dataset.key] = input.value; });
-                return options;
+                return { options };
             }
-            case 'convert':
-                return { target: groupValue('convertFormat'), imageFormat: $('imageFormat').value, dpi: Number($('imageDpi').value) };
             default:
-                return {};
+                return { options: {} };
         }
     }
 
     els.run.addEventListener('click', async () => {
         const tool = state.tool;
-        let options;
+        let spec;
+        clearFieldErrors();
         try {
-            options = collectOptions(tool);
-            if (tool === 'merge' && state.merge.length < 2) throw new ToolError('err_pdf_merge_count');
+            spec = collect(tool);
         } catch (err) {
-            Toast.error(err.message);
+            if (err.field) showFieldError(err.field, err.key, err.vars);
+            else Toast.error(err.message);
             return;
         }
 
         let url = '/api/pdf/process';
-        let payload = { tool, file_id: state.file.file_id, options };
+        let payload = { tool: spec.tool || tool, file_id: file().file_id, options: spec.options || {} };
         let stat = { kind: 'pdf', from: 'pdf', to: tool };
-        if (tool === 'merge') payload.file_ids = state.merge.map(m => m.file_id);
-        if (tool === 'convert') {
-            if (options.target === 'images') {
-                payload = { tool: 'to_images', file_id: state.file.file_id, options: { format: options.imageFormat, dpi: options.dpi } };
-                stat = { kind: 'conversion', from: 'pdf', to: options.imageFormat };
-            } else {
-                url = '/api/convert';
-                payload = { file_id: state.file.file_id, output_format: options.target };
-                stat = { kind: 'conversion', from: 'pdf', to: options.target.replace('ocr-', '') };
-            }
+        if (spec.file_ids) payload.file_ids = spec.file_ids;
+        if (spec.convert) {
+            url = '/api/convert';
+            payload = { file_id: file().file_id, output_format: spec.convert, options: spec.options || {} };
+            stat = tool === 'ocr' ? { kind: 'pdf', from: 'pdf', to: 'ocr' } : { kind: 'conversion', from: 'pdf', to: spec.convert };
+        } else if (spec.tool === 'to_images') {
+            stat = { kind: 'conversion', from: 'pdf', to: spec.options.format };
         }
 
         i18n.set(els.progressTitle, `pdf_tool_${tool}`);
         setProgress(0);
+        els.cancel.disabled = false;
         show(els.progress);
 
         try {
-            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            const body = await res.json();
-            if (!body.success) throw apiError(body.error, null, 'pdf_err_failed');
+            const { status, body } = await postJson(url, payload);
+            if (!body.success) {
+                if (status === 404) markExpired();
+                throw apiError(body.error, null, 'pdf_err_failed');
+            }
             state.jobId = body.data.job_id;
-            poll(stat);
+            poll(tool, stat);
         } catch (err) {
             showError(err);
         }
+    });
+
+    els.cancel.addEventListener('click', async () => {
+        if (!state.jobId) return;
+        els.cancel.disabled = true;
+        await postJson(`/api/cancel/${state.jobId}`).catch(() => {});
     });
 
     function setProgress(value) {
@@ -1070,7 +2238,7 @@ document.addEventListener('DOMContentLoaded', () => {
         els.progressFill.style.width = `${value}%`;
     }
 
-    function poll(stat) {
+    function poll(tool, stat) {
         clearInterval(state.poll);
         state.poll = setInterval(async () => {
             try {
@@ -1082,7 +2250,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.status === 'completed') {
                     clearInterval(state.poll);
                     OmniStats.record({ jobId: state.jobId, ...stat, inputSize: data.input_size, outputSize: data.output_size });
-                    showResult(data);
+                    await showResult(tool, data);
+                } else if (data.status === 'cancelled') {
+                    clearInterval(state.poll);
+                    Toast.info(t('err_cancelled'));
+                    openTool(tool);
                 } else if (data.status === 'failed') {
                     clearInterval(state.poll);
                     showError(apiError({ message: data.error }, data.error_code, 'pdf_err_failed'));
@@ -1091,37 +2263,62 @@ document.addEventListener('DOMContentLoaded', () => {
                 clearInterval(state.poll);
                 showError(err instanceof ToolError ? err : new ToolError('err_connection'));
             }
-        }, 800);
+        }, 700);
     }
 
-    function showResult(data) {
+    async function showResult(tool, data) {
         els.resultName.textContent = data.filename;
+        els.resultDownload.href = `/api/download/${state.jobId}`;
+        els.resultSaving.classList.add('hidden');
         if (data.input_size && data.output_size) {
             i18n.set(els.resultSize, 'pdf_result_size', { before: formatSize(data.input_size), after: formatSize(data.output_size) });
+            if (['compress', 'ocr', 'organize', 'metadata'].includes(tool) || data.output_size < data.input_size) {
+                const change = Math.round((data.output_size / data.input_size - 1) * 100);
+                els.resultSaving.textContent = `${change > 0 ? '+' : ''}${change}%`;
+                els.resultSaving.classList.toggle('worse', change >= 0);
+                els.resultSaving.classList.remove('hidden');
+            }
         } else {
             els.resultSize.textContent = '';
         }
-        els.resultDownload.href = `/api/download/${state.jobId}`;
-        state.resultFileId = data.result_file_id || null;
-        els.resultContinue.classList.toggle('hidden', !state.resultFileId);
+
+        let noteKey = null;
+        let noteVars = null;
+        if (data.compression_info?.kept_original) noteKey = 'note_kept_original';
+        else if (data.compression_info?.target_reached === false) noteKey = 'note_target_missed';
+        else if (data.ocr_info?.pages_ocr !== undefined) {
+            noteKey = data.ocr_info.pages_skipped ? 'pdf_ocr_result_skipped' : 'pdf_ocr_result';
+            noteVars = { count: data.ocr_info.pages_ocr, skipped: data.ocr_info.pages_skipped };
+        }
+        if (noteKey) i18n.set(els.resultNote, noteKey, noteVars);
+        els.resultNote.classList.toggle('hidden', !noteKey);
+
+        els.resultThumbs.classList.add('hidden');
+        if (data.result_file_id) {
+            try {
+                const info = await fetchInfo(data.result_file_id);
+                state.versions = state.versions.slice(0, state.current + 1);
+                state.versions.push({ ...info, label: tool });
+                state.current = state.versions.length - 1;
+                state.merge = [mergeEntry(info), ...(tool === 'merge' ? [] : state.merge.slice(1))];
+                renderFile();
+                saveSession();
+                if (!info.encrypted) {
+                    els.resultThumbs.innerHTML = Array.from({ length: Math.min(4, info.pages) }, (_, i) => `<img loading="lazy" src="${pageUrl(info.file_id, i, 160)}" alt="">`).join('');
+                    els.resultThumbs.classList.remove('hidden');
+                }
+                if (!noteKey) {
+                    i18n.set(els.resultNote, 'pdf_saved_as_version');
+                    els.resultNote.classList.remove('hidden');
+                }
+            } catch (err) {}
+        }
         show(els.result);
         Toast.success(t('all_done'));
     }
 
-    els.resultContinue.addEventListener('click', async () => {
-        if (!state.resultFileId) return;
-        try {
-            const info = await fetchInfo(state.resultFileId);
-            setFile(info);
-            state.merge = [{ file_id: info.file_id, filename: info.filename, pages: info.pages, size: info.size }];
-            showTools();
-        } catch (err) {
-            showError(err);
-        }
-    });
-
     function showError(err) {
-        if (err.key) i18n.set(els.errorText, err.key);
+        if (err.key) i18n.set(els.errorText, err.key, err.vars);
         else {
             delete els.errorText.dataset.i18n;
             delete els.errorText.dataset.i18nVars;
@@ -1133,24 +2330,98 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function resetAll() {
         clearInterval(state.poll);
-        state.file = null;
+        state.versions = [];
+        state.current = -1;
         state.merge = [];
         state.tool = null;
+        state.expired = false;
+        try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+        els.expired.classList.add('hidden');
         els.workspace.classList.add('hidden');
         els.drop.classList.remove('hidden', 'uploading');
         updateUpload(0);
     }
 
-    ['dragenter', 'dragover'].forEach(name => els.drop.addEventListener(name, e => { e.preventDefault(); els.drop.classList.add('dragging'); }));
-    ['dragleave', 'drop'].forEach(name => els.drop.addEventListener(name, e => { e.preventDefault(); els.drop.classList.remove('dragging'); }));
-    els.drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
-    els.input.addEventListener('change', () => { if (els.input.files.length) handleFiles(els.input.files); });
+    function handleIncoming(files) {
+        const list = Array.from(files);
+        const pdfs = list.filter(isPdf);
+        const images = list.filter(isImage);
+        if (state.versions.length && state.tool === 'watermark' && images.length && !pdfs.length) {
+            setGroupValue('watermarkKind', 'image');
+            setWatermarkImage(images[0]);
+            return;
+        }
+        if (!pdfs.length) {
+            Toast.error(t('pdf_err_not_pdf'));
+            return;
+        }
+        if (state.versions.length && !state.expired) {
+            if (state.tool !== 'merge') openTool('merge');
+            addToMerge(pdfs);
+            Toast.info(t('pdf_added_to_merge', { count: pdfs.length }));
+            return;
+        }
+        openFiles(pdfs);
+    }
+
+    let dragDepth = 0;
+    const hasFiles = e => Array.from(e.dataTransfer?.types || []).includes('Files');
+    document.addEventListener('dragenter', e => { if (hasFiles(e)) { dragDepth++; document.body.classList.add('drag-over'); } });
+    document.addEventListener('dragleave', e => { if (hasFiles(e) && --dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('drag-over'); } });
+    document.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+    document.addEventListener('drop', e => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragDepth = 0;
+        document.body.classList.remove('drag-over');
+        if (e.dataTransfer.files.length) handleIncoming(e.dataTransfer.files);
+    });
+    document.addEventListener('paste', e => {
+        const files = Array.from(e.clipboardData?.files || []);
+        if (!files.length) return;
+        if (e.target instanceof Element && e.target.closest('input[type="text"], input[type="password"], textarea') && !files.some(isPdf)) return;
+        e.preventDefault();
+        handleIncoming(files);
+    });
+    els.input.addEventListener('change', () => { if (els.input.files.length) openFiles(els.input.files); });
 
     document.addEventListener('languagechange', () => {
-        if (state.file) renderToolGrid();
+        if (!file()) return;
+        renderVersions();
+        renderNotes();
+        renderToolGroups();
         if (state.tool === 'organize') renderOrganize();
         if (state.tool === 'merge') renderMerge();
+        if (state.tool === 'ocr') initOcr();
+        if (state.tool === 'page_numbers') updateNumbers();
+        document.querySelectorAll('.page-picker:not(.hidden)').forEach(p => p.closest('.pages-field').querySelector('.picker-toggle').click());
     });
+
+    async function restoreSession() {
+        let saved = null;
+        try { saved = JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch (e) {}
+        if (!saved?.versions?.length) return;
+        els.drop.classList.add('hidden');
+        els.restoring.classList.remove('hidden');
+        try {
+            const current = Math.max(0, Math.min(saved.current, saved.versions.length - 1));
+            const info = await fetchInfo(saved.versions[current].file_id);
+            state.versions = saved.versions.map((v, i) => i === current ? { ...info, label: v.label } : { ...v, pages: 0, size: 0 });
+            state.current = current;
+            state.merge = (saved.merge || []).length ? saved.merge : [mergeEntry(info)];
+            els.restoring.classList.add('hidden');
+            els.workspace.classList.remove('hidden');
+            renderFile();
+            showTools();
+        } catch (err) {
+            try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+            els.restoring.classList.add('hidden');
+            els.drop.classList.remove('hidden');
+            Toast.info(t('pdf_session_expired'));
+        }
+    }
+
+    restoreSession();
 });
 </script>
 {% endblock %}

@@ -86,3 +86,6 @@ build.bat
 installer.iss
 
 build.bat
+
+# Cloudflare Tunnel
+cloudflared-config.yml

@@ -338,6 +338,14 @@ def cancel_job(job_id):
 def ocr_engines():
     return api_response(data=OCRService.engine_status())
 
+@convert_bp.route('/files/<file_id>/download', methods=['GET'])
+def download_uploaded_file(file_id):
+    job = conversion_jobs.get(file_id)
+    if not job or not os.path.exists(job.get('input_path', '')):
+        return api_response(error={'type': 'NotFoundError', 'message': 'File not found'}, success=False), 404
+    touch_file(file_id)
+    return send_file(job['input_path'], as_attachment=True, download_name=job['original_filename'])
+
 @convert_bp.route('/files/<file_id>/touch', methods=['POST'])
 def touch_uploaded_file(file_id):
     if file_id not in conversion_jobs or not os.path.exists(conversion_jobs[file_id].get('input_path', '')):
