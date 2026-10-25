@@ -1,76 +1,123 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - OmniConv{% endblock %}
+{% block title %}Stats - OmniConv{% endblock %}
+{% block title_i18n %} data-i18n="stats_page_title"{% endblock %}
 
 {% block content %}
 <section class="hero-section" style="padding-bottom: var(--space-8);">
-    <h1 class="hero-heading" data-i18n="stats_btn">Dashboard</h1>
-    <p class="hero-description">Your conversion statistics and recent activity</p>
+    <h1 class="hero-heading" data-i18n="stats_btn">Stats</h1>
+    <p class="hero-description" data-i18n="stats_hero_desc">Your conversion statistics and recent activity</p>
 </section>
 
 <section class="converter-area">
     <div class="dashboard-grid">
         <div class="stats-bar panel dashboard-panel">
             <div class="stat-item">
-                <div class="stat-value">{{ stats.total_conversions }}</div>
-                <div class="stat-label">Total Conversions</div>
+                <div class="stat-value" id="statTotal">0</div>
+                <div class="stat-label" data-i18n="total_conversions">Total Conversions</div>
             </div>
             <div class="stat-item">
-                <div class="stat-value">{{ "%.1f"|format(stats.total_size_saved_mb) }} MB</div>
-                <div class="stat-label">Space Saved</div>
+                <div class="stat-value" id="statSaved">0 MB</div>
+                <div class="stat-label" data-i18n="space_saved">Space Saved</div>
             </div>
         </div>
 
         <div class="panel dashboard-panel">
-            <h3 class="section-label">Recent Activity</h3>
-            {% if stats.recent_activity %}
-            <div style="display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4);">
-                {% for activity in stats.recent_activity[:10] %}
-                <div class="activity-item">
-                    <div class="activity-left">
-                        <span class="activity-dot"></span>
-                        <div>
-                            <div class="activity-type">{{ activity.type }}</div>
-                            <div class="activity-details">{{ activity.details }}</div>
-                        </div>
-                    </div>
-                    <span class="activity-date">{{ activity.timestamp[:10] }}</span>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <p class="empty-state">No recent activity yet. Start converting!</p>
-            {% endif %}
+            <h3 class="section-label" data-i18n="recent_activity">Recent Activity</h3>
+            <div id="activityList" style="display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4);"></div>
+            <p class="empty-state hidden" id="activityEmpty" data-i18n="stats_no_activity">No recent activity yet. Start converting!</p>
         </div>
 
         <div class="panel dashboard-panel">
-            <h3 class="section-label">Popular Formats</h3>
-            {% if stats.formats %}
-            <div style="display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-4);">
-                {% for format, count in stats.formats.items()|sort(attribute=1, reverse=True) %}
-                {% set pct = (count / stats.total_conversions * 100) if stats.total_conversions > 0 else 0 %}
-                <div class="format-bar-row">
-                    <span class="format-bar-label">{{ format|upper }}</span>
-                    <div class="format-bar-track">
-                        <div class="format-bar-fill" style="width: {{ pct }}%;"></div>
-                    </div>
-                    <span class="format-bar-count">{{ count }}</span>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <p class="empty-state">No format data available yet.</p>
-            {% endif %}
+            <h3 class="section-label" data-i18n="popular_formats">Popular Formats</h3>
+            <div id="formatList" style="display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-4);"></div>
+            <p class="empty-state hidden" id="formatEmpty" data-i18n="stats_no_formats">No format data available yet.</p>
         </div>
     </div>
+
+    <p class="stats-note" data-i18n="stats_browser_note">Stats are stored only in this browser.</p>
 
     <div style="text-align: center; margin-top: var(--space-8);">
         <a href="/" class="btn btn-primary">
             <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;">
                 <path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
             </svg>
-            Start Converting
+            <span data-i18n="start_converting">Start Converting</span>
         </a>
     </div>
 </section>
+
+<style>
+.stats-note {
+    margin-top: var(--space-4);
+    text-align: center;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const els = {
+        total: document.getElementById('statTotal'),
+        saved: document.getElementById('statSaved'),
+        activity: document.getElementById('activityList'),
+        activityEmpty: document.getElementById('activityEmpty'),
+        formats: document.getElementById('formatList'),
+        formatsEmpty: document.getElementById('formatEmpty')
+    };
+
+    function formatBytes(bytes) {
+        if (bytes < 1048576) return (bytes / 1024).toFixed(0) + ' KB';
+        if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+        return (bytes / 1073741824).toFixed(2) + ' GB';
+    }
+
+    function describe(item) {
+        const from = (item.from || '?').toUpperCase();
+        if (item.kind === 'pdf') return `PDF · ${t(`pdf_tool_${item.to}`)}`;
+        if (item.kind === 'compression') return `${from} · ${t('activity_compression')}`;
+        return `${from} → ${(item.to || '?').toUpperCase()}`;
+    }
+
+    function render() {
+        const data = OmniStats.get();
+        const locale = i18n.currentLang;
+
+        els.total.textContent = data.total.toLocaleString(locale);
+        els.saved.textContent = formatBytes(data.savedBytes);
+
+        const recent = data.recent.slice(0, 10);
+        els.activity.innerHTML = recent.map(item => `
+            <div class="activity-item">
+                <div class="activity-left">
+                    <span class="activity-dot"></span>
+                    <div>
+                        <div class="activity-type">${escapeHtml(t(`activity_${item.kind}`))}</div>
+                        <div class="activity-details">${escapeHtml(describe(item))}</div>
+                    </div>
+                </div>
+                <span class="activity-date">${escapeHtml(new Date(item.ts).toLocaleDateString(locale))}</span>
+            </div>
+        `).join('');
+        els.activityEmpty.classList.toggle('hidden', recent.length > 0);
+
+        const formats = Object.entries(data.formats).sort((a, b) => b[1] - a[1]).slice(0, 12);
+        const max = formats.length ? formats[0][1] : 1;
+        els.formats.innerHTML = formats.map(([key, count]) => `
+            <div class="format-bar-row">
+                <span class="format-bar-label">${escapeHtml(key.startsWith('pdf:') ? `PDF · ${t(`pdf_tool_${key.slice(4)}`)}` : key.replace('->', ' → ').toUpperCase())}</span>
+                <div class="format-bar-track">
+                    <div class="format-bar-fill" style="width: ${(count / max * 100).toFixed(1)}%;"></div>
+                </div>
+                <span class="format-bar-count">${count}</span>
+            </div>
+        `).join('');
+        els.formatsEmpty.classList.toggle('hidden', formats.length > 0);
+    }
+
+    render();
+    document.addEventListener('languagechange', render);
+});
+</script>
 {% endblock %}

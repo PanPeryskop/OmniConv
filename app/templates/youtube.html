@@ -1,47 +1,57 @@
 {% extends "base.html" %}
 
 {% block title %}Web Video Downloader - OmniConv{% endblock %}
+{% block title_i18n %} data-i18n="yt_page_title"{% endblock %}
 
 {% block content %}
 <section class="hero-section" style="padding-bottom: var(--space-8);">
-    <h1 class="hero-heading"><span class="hero-heading-accent" data-i18n="youtube_btn">Web Video</span> Downloader</h1>
-    <p class="hero-description">Download videos from YouTube and other platforms</p>
+    <h1 class="hero-heading" data-i18n="yt_hero_title"><span class="hero-heading-accent">Web Video</span> Downloader</h1>
+    <p class="hero-description" data-i18n="yt_hero_desc">Download videos from YouTube, Instagram, TikTok, Twitter and 1000+ more</p>
 </section>
 
 <section class="converter-area">
     <div class="panel" id="inputSection" style="padding: var(--space-8); text-align: center;">
-        <h3 class="drop-heading">Paste Video URL</h3>
-        <p class="drop-subtext">YouTube, Vimeo, Twitter and 1000+ more</p>
-        <input type="text" id="urlInput" class="yt-url-input" placeholder="https://youtube.com/watch?v=...">
-        <button class="btn btn-primary" onclick="fetchInfo()" id="fetchBtn">
-            <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;">
-                <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
-            </svg>
-            Get Info
-        </button>
+        <h3 class="drop-heading" data-i18n="yt_paste_url">Paste Video URL</h3>
+        <p class="drop-subtext" data-i18n="yt_platforms">YouTube, Instagram, TikTok, Twitter/X, Vimeo, Reddit and more</p>
+        <input type="text" id="urlInput" class="yt-url-input" placeholder="https://youtube.com/watch?v=... or https://instagram.com/reel/..." data-i18n="yt_url_placeholder" aria-label="Video URL" data-i18n-aria="yt_paste_url">
+        <div style="display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: center; margin-top: var(--space-4);">
+            <button class="btn btn-primary" onclick="fetchInfo()" id="fetchBtn">
+                <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;">
+                    <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+                </svg>
+                <span data-i18n="yt_get_info">Get Info</span>
+            </button>
+            <button class="btn btn-ghost" onclick="quickMp3()" id="quickMp3Btn">
+                <svg viewBox="0 0 24 24" style="width: 18px; height: 18px; margin-right: 8px;">
+                    <path d="M9 18V5l12-2v13M6 18a3 3 0 100-6 3 3 0 000 6zM18 16a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span data-i18n="yt_quick_mp3">Quick MP3</span>
+            </button>
+        </div>
     </div>
 
     <div class="panel yt-video-info hidden" id="videoInfo">
         <div style="display: flex; gap: var(--space-4); align-items: flex-start;">
-            <img id="thumbnail" src="" alt="Thumbnail" class="yt-thumbnail">
+            <img id="thumbnail" src="" alt="Thumbnail" data-i18n-alt="yt_thumbnail" class="yt-thumbnail">
             <div style="flex: 1; min-width: 0;">
                 <h3 id="videoTitle" style="margin-bottom: var(--space-2);"></h3>
                 <p id="videoUploader" style="color: var(--text-tertiary); font-size: var(--text-sm);"></p>
                 <p id="videoDuration" style="color: var(--text-muted); font-size: var(--text-xs); margin-top: var(--space-1);"></p>
+                <span id="platformBadge" class="yt-platform-badge" style="display:none;"></span>
             </div>
         </div>
 
         <div id="playlistInfo" class="yt-playlist-box hidden">
-            <span class="yt-playlist-title">Playlist detected</span>
+            <span class="yt-playlist-title" data-i18n="yt_playlist_detected">Playlist detected</span>
             <span class="yt-playlist-count" id="playlistCount"></span>
             <label class="yt-playlist-label">
                 <input type="checkbox" id="playlistCheckbox" checked>
-                <span>Download entire playlist</span>
+                <span data-i18n="yt_download_playlist">Download entire playlist</span>
             </label>
         </div>
 
         <div class="format-picker" style="margin-top: var(--space-6);">
-            <h3 class="section-label">Choose Quality</h3>
+            <h3 class="section-label" data-i18n="yt_choose_quality">Choose Quality</h3>
             <div class="format-options" id="formatOptions"></div>
         </div>
 
@@ -50,7 +60,7 @@
                 <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;">
                     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
                 </svg>
-                Download
+                <span data-i18n="yt_download">Download</span>
             </button>
         </div>
     </div>
@@ -65,23 +75,30 @@
             </svg>
             <span class="progress-percentage" id="progressPercent">0%</span>
         </div>
-        <p class="status-text" id="statusText">Fetching video...</p>
+        <p class="status-text" id="statusText" data-i18n="yt_status_starting">Starting download...</p>
+        <p class="status-text" id="speedText" style="font-size: var(--text-xs); color: var(--text-muted); margin-top: var(--space-1);"></p>
     </div>
 
     <div class="panel hidden animate-scale" id="resultSection" style="text-align: center; padding: var(--space-8);">
         <svg viewBox="0 0 24 24" style="width: 48px; height: 48px; margin-bottom: var(--space-4); color: var(--color-success);">
             <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
         </svg>
-        <h3 id="resultTitle">Download Complete!</h3>
+        <h3 id="resultTitle" data-i18n="yt_complete">Download Complete!</h3>
         <p id="resultFilename" style="color: var(--text-tertiary); margin-top: var(--space-2);"></p>
         <div class="yt-result-actions">
             <a id="resultDownloadBtn" class="btn btn-primary" href="#" download>
                 <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;">
                     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
                 </svg>
-                Save File
+                <span data-i18n="yt_save_file">Save File</span>
             </a>
-            <button class="btn btn-ghost" onclick="resetYouTube()">Download Another</button>
+            <button id="smartRenameBtn" class="btn btn-primary" style="background: var(--color-accent); color: white; border: none; display: none;" onclick="smartRename()">
+                <svg viewBox="0 0 24 24" style="width: 18px; height: 18px; margin-right: 6px;">
+                    <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span data-i18n="yt_ai_rename">AI Rename</span>
+            </button>
+            <button class="btn btn-ghost" onclick="resetYouTube()" data-i18n="yt_download_another">Download Another</button>
         </div>
     </div>
 
@@ -91,211 +108,24 @@
             <line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" stroke-width="2"/>
             <line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" stroke-width="2"/>
         </svg>
-        <h3>Download Failed</h3>
+        <h3 data-i18n="yt_failed">Download Failed</h3>
         <p id="errorText" style="color: var(--text-tertiary); margin-top: var(--space-2);"></p>
-        <button class="btn btn-primary" onclick="resetYouTube()" style="margin-top: var(--space-6);">Try Again</button>
+        <p id="errorHint" style="color: var(--text-muted); font-size: var(--text-xs); margin-top: var(--space-2); display: none;"></p>
+        <div style="margin-top: var(--space-6); display: flex; gap: var(--space-3); justify-content: center;">
+            <button class="btn btn-primary" onclick="retryDownload()" id="retryBtn" style="display: none;">
+                <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;">
+                    <path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span data-i18n="yt_retry">Retry</span>
+            </button>
+            <button class="btn btn-ghost" onclick="resetYouTube()" data-i18n="yt_try_other">Try Different URL</button>
+        </div>
     </div>
+    <div id="recentHistoryContainer"></div>
 </section>
 
-<style>
-.format-options {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    margin-top: var(--space-3);
-}
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/youtube.css') }}">
+<script src="{{ url_for('static', filename='js/youtube.js') }}"></script>
 
-<script>
-let selectedFormat = null;
-let videoData = null;
-
-document.getElementById('urlInput').addEventListener('paste', () => {
-    setTimeout(() => {
-        const val = document.getElementById('urlInput').value.trim();
-        if (val && (val.includes('youtube.com') || val.includes('youtu.be') || val.includes('vimeo.com'))) {
-            fetchInfo();
-        }
-    }, 100);
-});
-
-document.getElementById('urlInput').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') fetchInfo();
-});
-
-async function fetchInfo() {
-    const url = document.getElementById('urlInput').value.trim();
-    if (!url) return;
-
-    const fetchBtn = document.getElementById('fetchBtn');
-    fetchBtn.disabled = true;
-    fetchBtn.textContent = 'Loading...';
-
-    try {
-        const response = await fetch('/api/youtube/info', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url })
-        });
-
-        const data = await response.json();
-        if (!data.success) throw new Error(data.error || 'Failed to fetch video info');
-
-        videoData = data;
-
-        document.getElementById('thumbnail').src = data.thumbnail || '';
-        document.getElementById('videoTitle').textContent = data.title || 'Unknown';
-        document.getElementById('videoUploader').textContent = data.uploader || '';
-        document.getElementById('videoDuration').textContent = data.duration ? formatDuration(data.duration) : '';
-
-        if (data.is_playlist) {
-            document.getElementById('playlistInfo').classList.remove('hidden');
-            document.getElementById('playlistCount').textContent = `(${data.playlist_count || '?'} videos)`;
-            selectedFormat = 'best';
-            document.getElementById('downloadBtn').disabled = false;
-        } else {
-            document.getElementById('playlistInfo').classList.add('hidden');
-            renderFormats(data.formats);
-        }
-
-        document.getElementById('inputSection').classList.add('hidden');
-        document.getElementById('videoInfo').classList.remove('hidden');
-        Toast.info('Video info loaded');
-
-    } catch (error) {
-        Toast.error(error.message);
-    } finally {
-        fetchBtn.disabled = false;
-        fetchBtn.innerHTML = `
-            <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;">
-                <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
-            </svg>
-            Get Info
-        `;
-    }
-}
-
-function formatDuration(seconds) {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-function renderFormats(formats) {
-    const container = document.getElementById('formatOptions');
-    container.innerHTML = '';
-
-    if (!formats || formats.length === 0) {
-        selectedFormat = 'best';
-        document.getElementById('downloadBtn').disabled = false;
-        container.innerHTML = '<div class="format-option active">Best Quality</div>';
-        return;
-    }
-
-    const seen = new Set();
-    formats.forEach(f => {
-        const label = f.format_note || f.resolution || f.ext || 'unknown';
-        if (seen.has(label)) return;
-        seen.add(label);
-
-        const btn = document.createElement('button');
-        btn.className = 'format-option';
-        btn.textContent = label;
-        if (f.filesize) {
-            const sizeMB = (f.filesize / 1048576).toFixed(1);
-            btn.textContent += ` (${sizeMB} MB)`;
-        }
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('#formatOptions .format-option').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            selectedFormat = f.format_id || 'best';
-            document.getElementById('downloadBtn').disabled = false;
-        });
-        container.appendChild(btn);
-    });
-}
-
-async function startDownload() {
-    if (!selectedFormat) return;
-
-    document.getElementById('videoInfo').classList.add('hidden');
-    document.getElementById('statusArea').classList.remove('hidden');
-
-    const isPlaylist = document.getElementById('playlistCheckbox')?.checked && videoData?.is_playlist;
-
-    try {
-        const response = await fetch('/api/youtube/download', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                url: document.getElementById('urlInput').value.trim(),
-                format_id: selectedFormat,
-                playlist: isPlaylist
-            })
-        });
-
-        const data = await response.json();
-        if (!data.success) throw new Error(data.error || 'Download failed');
-
-        const jobId = data.job_id;
-
-        const poll = setInterval(async () => {
-            try {
-                const status = await fetch(`/api/youtube/status/${jobId}`);
-                const sData = await status.json();
-
-                if (sData.progress !== undefined) {
-                    const pct = Math.round(sData.progress);
-                    document.getElementById('progressPercent').textContent = `${pct}%`;
-                    const circle = document.getElementById('progressCircle');
-                    circle.style.strokeDashoffset = 339.292 * (1 - pct / 100);
-                    document.getElementById('statusText').textContent = sData.status || 'Downloading...';
-                }
-
-                if (sData.state === 'complete' || sData.progress >= 100) {
-                    clearInterval(poll);
-                    document.getElementById('statusArea').classList.add('hidden');
-                    document.getElementById('resultSection').classList.remove('hidden');
-                    document.getElementById('resultFilename').textContent = sData.filename || '';
-                    document.getElementById('resultDownloadBtn').href = `/api/youtube/download-file/${jobId}`;
-                    Toast.success('Download complete!');
-                } else if (sData.state === 'error') {
-                    clearInterval(poll);
-                    throw new Error(sData.error || 'Download failed');
-                }
-            } catch (e) {
-                clearInterval(poll);
-                showYouTubeError(e.message);
-            }
-        }, 1000);
-
-    } catch (error) {
-        showYouTubeError(error.message);
-    }
-}
-
-function showYouTubeError(message) {
-    document.getElementById('statusArea').classList.add('hidden');
-    document.getElementById('videoInfo').classList.add('hidden');
-    document.getElementById('errorSection').classList.remove('hidden');
-    document.getElementById('errorText').textContent = message;
-    Toast.error(message);
-}
-
-function resetYouTube() {
-    selectedFormat = null;
-    videoData = null;
-    document.getElementById('urlInput').value = '';
-    document.getElementById('inputSection').classList.remove('hidden');
-    document.getElementById('videoInfo').classList.add('hidden');
-    document.getElementById('statusArea').classList.add('hidden');
-    document.getElementById('resultSection').classList.add('hidden');
-    document.getElementById('errorSection').classList.add('hidden');
-    document.getElementById('downloadBtn').disabled = true;
-    document.getElementById('progressPercent').textContent = '0%';
-    document.getElementById('progressCircle').style.strokeDashoffset = '339.292';
-}
-</script>
 {% endblock %}

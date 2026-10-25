@@ -20,14 +20,13 @@
 |---------|-------------|
 | 🎵 **Audio Conversion** | Convert between MP3, WAV, FLAC, OGG, M4A, AAC, AIFF, WMA and more |
 | 🎬 **Video Conversion** | MP4, AVI, MKV, MOV, WEBM conversions + GIF extraction |
-| 🎙️ **Voice Design Studio** | **NEW!** Generate speech with Qwen3-TTS using natural language descriptions |
-| 📝 **Subtitle Generator** | **NEW!** Auto-generate subtitles (SRT, VTT) with Voxtral-Mini-3B |
 | 📚 **E-book Support** | **NEW!** Convert PDF to EPUB and CBZ formats |
 | 📺 **YouTube Downloader** | Direct browser download, playlist support, quality selection & realtime progress |
 | 🖼️ **Image Conversion** | PNG, JPG, WEBP, GIF, BMP, TIFF, HEIC, ICO support |
 | 📄 **Document Conversion** | PDF to DOCX with layout preservation |
-| 🔍 **OCR (AI-Powered)** | LightOnOCR (2-1B) — state-of-the-art vision-language model |
-| 📦 **Smart Compression** | Reduce file sizes with minimal quality loss using target size |
+| 🔍 **OCR** | RapidOCR (fast, local, default) or Qwen 3-VL via LM Studio; searchable PDF output with auto page orientation |
+| 🧰 **PDF Tools** | Compress, organize pages (reorder/rotate/delete), split, merge, convert, password protect/unlock, watermark, page numbers, metadata, extract images |
+| 📦 **Smart Compression** | Video, audio, images and PDF. PDF: lossless / balanced / strong / max / target size, hybrid Ghostscript + MuPDF engine |
 | 📁 **Batch Processing** | Convert multiple files at once with drag & drop |
 | ⚡ **Optimized Performance** | Smart caching for invalid files & multi-core processing support |
 | ⚙️ **System Integration** | Auto-start capability & persistent user settings |
@@ -44,6 +43,7 @@
 
 - Python
 - FFmpeg (for audio/video processing)
+- Ghostscript (optional, strongest PDF compression; without it PDFs are compressed with MuPDF only)
 
 ### Installation
 
@@ -116,8 +116,8 @@ http://localhost:5000
 
 > 🔍 **OCR Engine Options:**
 > - **Qwen 3-VL:** State-of-the-art multimodal AI (high accuracy, slower).
-> - **LightOn (PaddleOCR):** Fast, local OCR engine for raw text extraction.
-> - **LightOn + Mistral:** Combines fast PaddleOCR extraction with Mistral 3-3B for smart text correction.
+> - **RapidOCR:** Fast, local OCR (default). Works without any extra setup.
+> - **AI correction:** Optional post-correction of OCR text with Ministral 3 8B in LM Studio.
 
 </details>
 
@@ -128,7 +128,7 @@ http://localhost:5000
 | Technology | Purpose |
 |------------|---------|
 | **Flask** | Web framework |
-| **Transformers** | LightOnOCR, Qwen3-TTS, Voxtral models |
+| **RapidOCR** | Local OCR engine (ONNX Runtime) |
 | **MoviePy** | Video processing |
 | **Pydub** | Audio processing |
 | **Pillow** | Image processing |

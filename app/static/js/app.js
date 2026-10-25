@@ -78,7 +78,6 @@ const ui = {
 };
 
 function initEventListeners() {
-    if (ui.themeToggle) ui.themeToggle.addEventListener('click', toggleTheme);
     if (ui.removeFile) ui.removeFile.addEventListener('click', resetApp);
     if (ui.convertAnother) ui.convertAnother.addEventListener('click', resetApp);
     if (ui.tryAgain) ui.tryAgain.addEventListener('click', resetApp);
@@ -94,7 +93,7 @@ function initEventListeners() {
 
             if (container) {
                 const cssContainer = document.getElementById('ocrCssContainer');
-                if ((val === 'qwen' || val === 'lighton_mistral') && isHtmlFormat) {
+                if (val === 'qwen' && isHtmlFormat) {
                     container.classList.remove('hidden');
                     if (cssContainer) cssContainer.classList.remove('hidden');
                 } else {
@@ -502,6 +501,7 @@ function showDownloadSection(filename) {
     ui.downloadBtn.onclick = () => { window.location.href = api.getDownloadUrl(appState.currentJobId); };
 
     saveToHistory(filename);
+    OmniStats.recordJob(appState.currentJobId, 'conversion', OmniStats.extOf(appState.fileName), appState.selectedFormat || OmniStats.extOf(filename));
 }
 
 function saveToHistory(outputFilename) {
@@ -615,6 +615,8 @@ function renderRecentHistory() {
 
 function init() {
     initTheme();
+    if (ui.themeToggle) ui.themeToggle.addEventListener('click', toggleTheme);
+    if (!ui.formatSelection) return;
     initUploadZone();
     initEventListeners();
     renderRecentHistory();

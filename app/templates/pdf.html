@@ -1,0 +1,1156 @@
+{% extends "base.html" %}
+
+{% block title %}PDF Tools - OmniConv{% endblock %}
+{% block title_i18n %} data-i18n="pdf_page_title"{% endblock %}
+
+{% block content %}
+<section class="hero-section" style="padding-bottom: var(--space-8);">
+    <h1 class="hero-heading" data-i18n="pdf_hero_title">PDF <span class="hero-heading-accent">Tools</span></h1>
+    <p class="hero-description" data-i18n="pdf_hero_desc">Upload a PDF and pick what to do with it.</p>
+</section>
+
+<section class="converter-area pdf-area">
+    <div class="panel drop-area" id="pdfDrop">
+        <div class="drop-content">
+            <div class="drop-icon">
+                <svg viewBox="0 0 80 80" stroke="currentColor">
+                    <path d="M48 12H24a6 6 0 00-6 6v44a6 6 0 006 6h32a6 6 0 006-6V26z" stroke-width="1.5" fill="none"/>
+                    <path d="M48 12v14h14" stroke-width="1.5" fill="none"/>
+                    <path d="M40 54V36M32 43l8-8 8 8" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <h2 class="drop-heading" data-i18n="pdf_drop_heading">Drop a PDF here</h2>
+            <p class="drop-subtext" data-i18n="pdf_drop_subtext">or click to choose. Drop several to merge them.</p>
+            <p class="drop-formats">PDF</p>
+            <input type="file" id="pdfInput" class="file-picker" accept=".pdf,application/pdf" multiple />
+        </div>
+        <div class="upload-status">
+            <div class="progress-track large">
+                <div class="progress-bar" id="pdfUploadFill"></div>
+            </div>
+            <p class="progress-label"><span data-i18n="uploading">Uploading...</span> <span id="pdfUploadPercent">0%</span></p>
+        </div>
+    </div>
+
+    <div class="hidden" id="pdfWorkspace">
+        <div class="panel pdf-file">
+            <img class="pdf-file-thumb" id="pdfFileThumb" alt="" hidden>
+            <div class="pdf-file-icon" id="pdfFileIcon">
+                <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+            </div>
+            <div class="pdf-file-details">
+                <p class="pdf-file-name" id="pdfFileName"></p>
+                <p class="pdf-file-meta" id="pdfFileMeta"></p>
+            </div>
+            <button class="btn btn-ghost pdf-change" id="pdfChange" data-i18n="pdf_change_file">Change file</button>
+        </div>
+
+        <div class="pdf-locked hidden" id="pdfLocked">
+            <svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
+            <span data-i18n="pdf_locked_note">This PDF is password protected. Unlock it first to use the other tools.</span>
+        </div>
+
+        <div class="tool-grid" id="toolGrid"></div>
+
+        <div class="panel tool-panel hidden" id="toolPanel">
+            <div class="tool-panel-header">
+                <button class="btn btn-ghost tool-back" id="toolBack">
+                    <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+                    <span data-i18n="pdf_all_tools">All tools</span>
+                </button>
+                <h2 class="tool-panel-title" id="toolTitle"></h2>
+            </div>
+
+            <div class="tool-options" data-tool="compress">
+                <div class="choice-grid" data-group="compressMode">
+                    <button type="button" class="choice" data-value="lossless"><span class="choice-title" data-i18n="pdf_mode_lossless">Lossless</span><span class="choice-desc" data-i18n="pdf_mode_lossless_desc"></span></button>
+                    <button type="button" class="choice active" data-value="balanced"><span class="choice-title" data-i18n="pdf_mode_balanced">Balanced</span><span class="choice-desc" data-i18n="pdf_mode_balanced_desc"></span></button>
+                    <button type="button" class="choice" data-value="strong"><span class="choice-title" data-i18n="pdf_mode_strong">Strong</span><span class="choice-desc" data-i18n="pdf_mode_strong_desc"></span></button>
+                    <button type="button" class="choice" data-value="extreme"><span class="choice-title" data-i18n="pdf_mode_extreme">Maximum</span><span class="choice-desc" data-i18n="pdf_mode_extreme_desc"></span></button>
+                </div>
+                <div class="option-row">
+                    <label class="check-row"><input type="checkbox" id="compressGray"><span data-i18n="pdf_grayscale">Convert to grayscale</span></label>
+                    <label class="check-row"><input type="checkbox" id="compressStrip"><span data-i18n="pdf_strip_metadata">Remove metadata</span></label>
+                </div>
+            </div>
+
+            <div class="tool-options" data-tool="organize">
+                <div class="organize-toolbar">
+                    <button type="button" class="btn btn-ghost btn-small" id="rotateAllLeft">
+                        <svg viewBox="0 0 24 24"><path d="M3 10a9 9 0 1 1 3 6.7"/><path d="M3 4v6h6"/></svg>
+                        <span data-i18n="pdf_rotate_all_left">Rotate all left</span>
+                    </button>
+                    <button type="button" class="btn btn-ghost btn-small" id="rotateAllRight">
+                        <svg viewBox="0 0 24 24"><path d="M21 10a9 9 0 1 0-3 6.7"/><path d="M21 4v6h-6"/></svg>
+                        <span data-i18n="pdf_rotate_all_right">Rotate all right</span>
+                    </button>
+                    <button type="button" class="btn btn-ghost btn-small" id="organizeReset" data-i18n="pdf_reset">Reset</button>
+                </div>
+                <p class="option-hint" data-i18n="pdf_organize_hint">Drag pages to reorder them. Use the buttons under a page to rotate or remove it.</p>
+                <div class="page-grid" id="organizeGrid"></div>
+                <p class="option-hint" id="organizeSummary"></p>
+            </div>
+
+            <div class="tool-options" data-tool="split">
+                <div class="choice-grid" data-group="splitMode">
+                    <button type="button" class="choice active" data-value="every"><span class="choice-title" data-i18n="pdf_split_every">Every page separately</span><span class="choice-desc" data-i18n="pdf_split_every_desc"></span></button>
+                    <button type="button" class="choice" data-value="ranges"><span class="choice-title" data-i18n="pdf_split_ranges">By ranges</span><span class="choice-desc" data-i18n="pdf_split_ranges_desc"></span></button>
+                    <button type="button" class="choice" data-value="extract"><span class="choice-title" data-i18n="pdf_split_extract">Extract pages</span><span class="choice-desc" data-i18n="pdf_split_extract_desc"></span></button>
+                </div>
+                <div class="field hidden" id="splitRangesField">
+                    <label class="field-label" for="splitRanges" data-i18n="pdf_ranges_label">Pages</label>
+                    <input type="text" class="text-input" id="splitRanges" placeholder="1-3, 5, 8-10" autocomplete="off">
+                    <p class="option-hint" id="splitRangesHint"></p>
+                </div>
+            </div>
+
+            <div class="tool-options" data-tool="merge">
+                <p class="option-hint" data-i18n="pdf_merge_hint">Drag files to set the order. The first file goes first.</p>
+                <div class="merge-list" id="mergeList"></div>
+                <button type="button" class="btn btn-ghost btn-small" id="mergeAdd">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                    <span data-i18n="pdf_merge_add">Add PDF</span>
+                </button>
+                <input type="file" id="mergeInput" accept=".pdf,application/pdf" multiple hidden>
+            </div>
+
+            <div class="tool-options" data-tool="convert">
+                <div class="choice-grid compact" data-group="convertFormat">
+                    <button type="button" class="choice active" data-value="docx"><span class="choice-title">Word</span><span class="choice-desc">DOCX</span></button>
+                    <button type="button" class="choice" data-value="xlsx"><span class="choice-title">Excel</span><span class="choice-desc">XLSX</span></button>
+                    <button type="button" class="choice" data-value="txt"><span class="choice-title" data-i18n="pdf_fmt_text">Text</span><span class="choice-desc">TXT</span></button>
+                    <button type="button" class="choice" data-value="md"><span class="choice-title">Markdown</span><span class="choice-desc">MD</span></button>
+                    <button type="button" class="choice" data-value="html"><span class="choice-title">HTML</span><span class="choice-desc" data-i18n="pdf_fmt_html_desc">Web page</span></button>
+                    <button type="button" class="choice" data-value="images"><span class="choice-title" data-i18n="pdf_fmt_images">Images</span><span class="choice-desc">PNG / JPG</span></button>
+                    <button type="button" class="choice" data-value="ocr-pdf"><span class="choice-title" data-i18n="pdf_fmt_ocr">Searchable PDF</span><span class="choice-desc">OCR</span></button>
+                </div>
+                <div class="option-row hidden" id="imageOptions">
+                    <label class="field inline">
+                        <span class="field-label" data-i18n="pdf_image_format">Format</span>
+                        <select class="select-input" id="imageFormat"><option value="png">PNG</option><option value="jpg">JPG</option></select>
+                    </label>
+                    <label class="field inline">
+                        <span class="field-label" data-i18n="pdf_image_quality">Quality</span>
+                        <select class="select-input" id="imageDpi">
+                            <option value="96" data-i18n="pdf_dpi_96">Screen (96 DPI)</option>
+                            <option value="150" selected data-i18n="pdf_dpi_150">Standard (150 DPI)</option>
+                            <option value="300" data-i18n="pdf_dpi_300">Print (300 DPI)</option>
+                        </select>
+                    </label>
+                </div>
+                <p class="option-hint hidden" id="ocrHint" data-i18n="pdf_ocr_hint">Text recognition can take a while for long documents.</p>
+            </div>
+
+            <div class="tool-options" data-tool="protect">
+                <div class="field">
+                    <label class="field-label" for="protectPassword" data-i18n="pdf_password">Password</label>
+                    <input type="password" class="text-input" id="protectPassword" autocomplete="new-password">
+                </div>
+                <div class="field">
+                    <label class="field-label" for="protectPassword2" data-i18n="pdf_password_repeat">Repeat password</label>
+                    <input type="password" class="text-input" id="protectPassword2" autocomplete="new-password">
+                </div>
+                <label class="check-row"><input type="checkbox" class="show-password" data-targets="protectPassword,protectPassword2"><span data-i18n="pdf_show_password">Show password</span></label>
+                <p class="option-hint" data-i18n="pdf_protect_hint">The file is encrypted with AES-256. Without the password nobody can open it, including you.</p>
+            </div>
+
+            <div class="tool-options" data-tool="unlock">
+                <div class="field">
+                    <label class="field-label" for="unlockPassword" data-i18n="pdf_password">Password</label>
+                    <input type="password" class="text-input" id="unlockPassword" autocomplete="current-password">
+                </div>
+                <label class="check-row"><input type="checkbox" class="show-password" data-targets="unlockPassword"><span data-i18n="pdf_show_password">Show password</span></label>
+            </div>
+
+            <div class="tool-options" data-tool="watermark">
+                <div class="watermark-layout">
+                    <div class="watermark-preview" id="watermarkPreview">
+                        <img id="watermarkPreviewImg" alt="">
+                        <span class="watermark-preview-text" id="watermarkPreviewText"></span>
+                    </div>
+                    <div class="watermark-fields">
+                        <div class="field">
+                            <label class="field-label" for="watermarkText" data-i18n="pdf_watermark_text">Text</label>
+                            <input type="text" class="text-input" id="watermarkText" maxlength="80">
+                        </div>
+                        <div class="field">
+                            <label class="field-label" for="watermarkOpacity"><span data-i18n="pdf_watermark_opacity">Opacity</span> <span id="watermarkOpacityValue">20%</span></label>
+                            <input type="range" id="watermarkOpacity" min="5" max="80" value="20">
+                        </div>
+                        <div class="field">
+                            <label class="field-label" for="watermarkSize"><span data-i18n="pdf_watermark_size">Size</span></label>
+                            <input type="range" id="watermarkSize" min="3" max="20" value="9">
+                        </div>
+                        <label class="check-row"><input type="checkbox" id="watermarkDiagonal" checked><span data-i18n="pdf_watermark_diagonal">Diagonal</span></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tool-options" data-tool="page_numbers">
+                <span class="field-label" data-i18n="pdf_numbers_position">Position</span>
+                <div class="position-grid" data-group="numberPosition">
+                    <button type="button" class="choice" data-value="top-left" aria-label="top-left"></button>
+                    <button type="button" class="choice" data-value="top-center" aria-label="top-center"></button>
+                    <button type="button" class="choice" data-value="top-right" aria-label="top-right"></button>
+                    <button type="button" class="choice" data-value="bottom-left" aria-label="bottom-left"></button>
+                    <button type="button" class="choice active" data-value="bottom-center" aria-label="bottom-center"></button>
+                    <button type="button" class="choice" data-value="bottom-right" aria-label="bottom-right"></button>
+                </div>
+                <div class="option-row">
+                    <label class="field inline">
+                        <span class="field-label" data-i18n="pdf_numbers_format">Format</span>
+                        <select class="select-input" id="numberFormat">
+                            <option value="n">1, 2, 3</option>
+                            <option value="n_of_total">1 / 10</option>
+                            <option value="dash">- 1 -</option>
+                        </select>
+                    </label>
+                    <label class="field inline">
+                        <span class="field-label" data-i18n="pdf_numbers_start">Start from</span>
+                        <input type="number" class="text-input" id="numberStart" value="1" min="0" max="9999">
+                    </label>
+                    <label class="field inline">
+                        <span class="field-label" data-i18n="pdf_numbers_size">Size</span>
+                        <select class="select-input" id="numberSize">
+                            <option value="9" data-i18n="pdf_size_small">Small</option>
+                            <option value="11" selected data-i18n="pdf_size_medium">Medium</option>
+                            <option value="14" data-i18n="pdf_size_large">Large</option>
+                        </select>
+                    </label>
+                </div>
+                <label class="check-row"><input type="checkbox" id="numberSkipFirst"><span data-i18n="pdf_numbers_skip_first">Skip the first page (cover)</span></label>
+            </div>
+
+            <div class="tool-options" data-tool="metadata">
+                <div class="field"><label class="field-label" for="metaTitle" data-i18n="pdf_meta_title">Title</label><input type="text" class="text-input meta-input" id="metaTitle" data-key="title"></div>
+                <div class="field"><label class="field-label" for="metaAuthor" data-i18n="pdf_meta_author">Author</label><input type="text" class="text-input meta-input" id="metaAuthor" data-key="author"></div>
+                <div class="field"><label class="field-label" for="metaSubject" data-i18n="pdf_meta_subject">Subject</label><input type="text" class="text-input meta-input" id="metaSubject" data-key="subject"></div>
+                <div class="field"><label class="field-label" for="metaKeywords" data-i18n="pdf_meta_keywords">Keywords</label><input type="text" class="text-input meta-input" id="metaKeywords" data-key="keywords"></div>
+                <label class="check-row"><input type="checkbox" id="metaStrip"><span data-i18n="pdf_meta_strip">Remove all metadata</span></label>
+            </div>
+
+            <div class="tool-options" data-tool="extract_images">
+                <p class="option-hint" data-i18n="pdf_extract_images_hint">All images from the PDF are saved in their original quality and packed into a ZIP file. Tiny icons are skipped.</p>
+            </div>
+
+            <button class="btn btn-primary tool-run" id="toolRun"></button>
+        </div>
+
+        <div class="panel conversion-status hidden" id="pdfProgress">
+            <div class="status-header">
+                <h3 class="status-title" id="pdfProgressTitle"></h3>
+                <span class="status-percent" id="pdfProgressPercent">0%</span>
+            </div>
+            <div class="progress-track large">
+                <div class="progress-bar" id="pdfProgressFill"></div>
+            </div>
+            <p class="status-message" data-i18n="pdf_working">Working on it...</p>
+        </div>
+
+        <div class="panel result-panel hidden" id="pdfResult">
+            <div class="result-icon">
+                <svg viewBox="0 0 88 88" stroke="currentColor"><circle cx="44" cy="44" r="38"/><path d="M28 44l11 11 21-21" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <h3 class="result-heading" data-i18n="all_done">Done!</h3>
+            <p class="result-filename" id="pdfResultName"></p>
+            <p class="pdf-result-size" id="pdfResultSize"></p>
+            <div class="pdf-result-actions">
+                <a class="btn btn-primary" id="pdfResultDownload" href="#">
+                    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span data-i18n="download">Download</span>
+                </a>
+                <button class="btn btn-ghost hidden" id="pdfResultContinue">
+                    <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                    <span data-i18n="pdf_continue">Keep editing this file</span>
+                </button>
+            </div>
+            <button class="btn btn-ghost" id="pdfResultBack" style="margin-top: var(--space-2);" data-i18n="pdf_back_to_tools">Back to tools</button>
+        </div>
+
+        <div class="panel error-panel hidden" id="pdfError">
+            <div class="error-icon">
+                <svg viewBox="0 0 88 88" stroke="currentColor"><circle cx="44" cy="44" r="38"/><line x1="44" y1="28" x2="44" y2="50" stroke-linecap="round"/><circle cx="44" cy="60" r="3" fill="currentColor" stroke="none"/></svg>
+            </div>
+            <h3 class="error-heading" data-i18n="error_title">Something went wrong</h3>
+            <p class="error-description" id="pdfErrorText"></p>
+            <button class="btn btn-primary" id="pdfErrorBack" data-i18n="pdf_back_to_tools">Back to tools</button>
+        </div>
+    </div>
+</section>
+
+<style>
+.pdf-area { max-width: 860px; }
+
+.pdf-file {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+}
+.pdf-file-thumb {
+    width: 44px;
+    height: 58px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-default);
+    background: #fff;
+    flex-shrink: 0;
+}
+.pdf-file-icon {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-lg);
+    background: var(--surface-glass-active);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+.pdf-file-icon[hidden], .pdf-file-thumb[hidden] { display: none; }
+.pdf-file-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.pdf-file-details { flex: 1; min-width: 0; }
+.pdf-file-name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pdf-file-meta { font-size: var(--text-sm); color: var(--text-tertiary); margin-top: 2px; }
+.pdf-change { flex-shrink: 0; }
+
+.pdf-locked {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-sm);
+    color: var(--color-warning);
+}
+.pdf-locked svg { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; }
+
+.tool-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: var(--space-3);
+    margin-top: var(--space-6);
+}
+.tool-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    text-align: left;
+    font: inherit;
+    color: var(--text-primary);
+    background: var(--surface-glass);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    cursor: pointer;
+    transition: background var(--duration-fast), border-color var(--duration-fast), transform var(--duration-fast);
+}
+.tool-card:hover:not(:disabled) {
+    background: var(--surface-glass-hover);
+    border-color: var(--border-strong);
+    transform: translateY(-2px);
+}
+.tool-card:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.tool-card:disabled { opacity: 0.35; cursor: not-allowed; }
+.tool-card-icon {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-lg);
+    background: var(--surface-glass-active);
+    color: var(--text-secondary);
+}
+.tool-card-icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.tool-card-title { font-weight: 600; font-size: var(--text-sm); }
+.tool-card-desc { font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.45; }
+
+.tool-panel {
+    margin-top: var(--space-6);
+    padding: var(--space-6);
+    animation: slide-up var(--duration-slow) var(--ease-out);
+}
+.tool-panel-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+    flex-wrap: wrap;
+}
+.tool-back { padding: var(--space-2) var(--space-3); }
+.tool-back svg { width: 16px; height: 16px; }
+.tool-panel-title { font-size: var(--text-lg); font-weight: 600; }
+.tool-options { display: none; flex-direction: column; gap: var(--space-4); }
+.tool-options.active { display: flex; }
+.tool-run { width: 100%; margin-top: var(--space-6); padding: var(--space-4); }
+
+.choice-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--space-3);
+}
+.choice-grid.compact { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+.choice {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-4);
+    text-align: left;
+    font: inherit;
+    color: var(--text-primary);
+    background: var(--surface-glass);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: border-color var(--duration-fast), background var(--duration-fast);
+}
+.choice:hover { border-color: var(--border-default); background: var(--surface-glass-hover); }
+.choice.active { border-color: var(--accent-primary); background: var(--surface-glass-active); }
+.choice:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.choice-title { font-weight: 600; font-size: var(--text-sm); }
+.choice-desc { font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.4; }
+.choice-desc:empty { display: none; }
+
+.option-row { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-6); align-items: flex-end; }
+.option-hint { font-size: var(--text-xs); color: var(--text-muted); line-height: 1.5; }
+.check-row {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.check-row input { width: 16px; height: 16px; accent-color: var(--accent-primary); cursor: pointer; }
+
+.field { display: flex; flex-direction: column; gap: var(--space-2); }
+.field.inline { min-width: 140px; }
+.field-label { font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.08em; }
+.text-input, .select-input {
+    width: 100%;
+    padding: var(--space-3);
+    font: inherit;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    transition: border-color var(--duration-fast);
+}
+.text-input:focus, .select-input:focus { outline: none; border-color: var(--accent-primary); }
+.text-input:disabled { opacity: 0.4; }
+.select-input option { background: var(--bg-primary); color: var(--text-primary); }
+
+.btn-small { padding: var(--space-2) var(--space-3); font-size: var(--text-xs); }
+.btn-small svg { width: 15px; height: 15px; }
+
+.organize-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.page-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+    gap: var(--space-3);
+}
+.page-thumb {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    background: var(--surface-glass);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    cursor: grab;
+    user-select: none;
+    transition: opacity var(--duration-fast), border-color var(--duration-fast);
+}
+.page-thumb:hover { border-color: var(--border-default); }
+.page-thumb.sortable-ghost { opacity: 0.3; }
+.page-thumb.sortable-chosen { border-color: var(--accent-primary); }
+.page-thumb.deleted .page-thumb-img { opacity: 0.25; }
+.page-thumb-img {
+    aspect-ratio: 1 / 1.3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: var(--radius-sm);
+    background: var(--surface-glass-active);
+}
+.page-thumb-img img {
+    max-width: 100%;
+    max-height: 100%;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    transition: transform var(--duration-base) var(--ease-out);
+    pointer-events: none;
+}
+.page-thumb-bar { display: flex; align-items: center; justify-content: space-between; gap: 2px; }
+.page-thumb-num { font-size: var(--text-xs); color: var(--text-tertiary); padding-left: 2px; font-variant-numeric: tabular-nums; }
+.page-thumb-actions { display: flex; gap: 2px; }
+.icon-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    color: var(--text-tertiary);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+.icon-btn:hover { color: var(--text-primary); background: var(--surface-glass-hover); }
+.icon-btn.danger:hover { color: var(--color-error); }
+.icon-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.merge-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.merge-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface-glass);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    cursor: grab;
+}
+.merge-item.sortable-ghost { opacity: 0.3; }
+.merge-item-handle { color: var(--text-muted); display: flex; }
+.merge-item-handle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
+.merge-item-name { flex: 1; min-width: 0; font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.merge-item-meta { font-size: var(--text-xs); color: var(--text-tertiary); flex-shrink: 0; }
+
+.watermark-layout { display: grid; grid-template-columns: 180px 1fr; gap: var(--space-6); align-items: start; }
+.watermark-preview {
+    position: relative;
+    aspect-ratio: 1 / 1.3;
+    overflow: hidden;
+    border-radius: var(--radius-sm);
+    background: #fff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.watermark-preview img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.watermark-preview-text {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    white-space: nowrap;
+    font-family: Helvetica, Arial, sans-serif;
+    color: #808080;
+    pointer-events: none;
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+.watermark-fields { display: flex; flex-direction: column; gap: var(--space-4); }
+.watermark-fields input[type="range"] { width: 100%; accent-color: var(--accent-primary); }
+
+.position-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 44px);
+    grid-template-rows: repeat(2, 30px);
+    row-gap: 46px;
+    column-gap: var(--space-2);
+    width: max-content;
+    padding: var(--space-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    background: var(--surface-glass);
+}
+.position-grid .choice { padding: 0; align-items: center; justify-content: center; }
+.position-grid .choice::after { content: ''; width: 16px; height: 3px; border-radius: 2px; background: var(--text-muted); }
+.position-grid .choice.active::after { background: var(--text-primary); }
+
+.pdf-result-size { font-size: var(--text-sm); color: var(--text-tertiary); margin-bottom: var(--space-5); }
+.pdf-result-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: center; }
+
+@media (max-width: 640px) {
+    .pdf-file { flex-wrap: wrap; }
+    .pdf-change { width: 100%; }
+    .tool-grid { grid-template-columns: 1fr 1fr; }
+    .tool-panel { padding: var(--space-4); }
+    .watermark-layout { grid-template-columns: 1fr; }
+    .watermark-preview { max-width: 200px; margin: 0 auto; width: 100%; }
+    .page-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+}
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const ICONS = {
+        compress: '<polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/>',
+        organize: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="9" rx="1"/><path d="M6.5 16v5M17.5 16v5M4 18.5l2.5 2.5L9 18.5M15 18.5l2.5 2.5 2.5-2.5"/>',
+        split: '<path d="M6 3v18M18 3v18"/><path d="M10 12h4M12 9l-2 3 2 3M12 9l2 3-2 3"/>',
+        merge: '<path d="M8 3v5a4 4 0 004 4 4 4 0 014 4v5"/><path d="M16 3v5a4 4 0 01-4 4"/><path d="M13 18l3 3 3-3"/>',
+        convert: '<path d="M4 7h13l-3-3M20 17H7l3 3"/>',
+        protect: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>',
+        unlock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 017.5-2"/>',
+        watermark: '<path d="M12 3s6 6.5 6 11a6 6 0 01-12 0c0-4.5 6-11 6-11z"/>',
+        page_numbers: '<path d="M4 6h16M4 12h10M4 18h6"/><path d="M17 15h2v6M17 21h4"/>',
+        metadata: '<path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0L3 13V3h10l7.6 7.6a2 2 0 010 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+        extract_images: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>'
+    };
+    const TOOLS = ['compress', 'organize', 'split', 'merge', 'convert', 'protect', 'unlock', 'watermark', 'page_numbers', 'metadata', 'extract_images'];
+    const ERROR_KEYS = {
+        UnsupportedFormatError: 'pdf_err_not_pdf',
+        UnsupportedError: 'pdf_err_not_pdf',
+        NotFoundError: 'err_file_missing',
+        FileTooLargeError: 'err_too_large',
+        NoFileError: 'err_no_file',
+        UploadError: 'err_upload_failed'
+    };
+
+    const state = {
+        file: null,
+        tool: null,
+        merge: [],
+        pages: [],
+        jobId: null,
+        poll: null,
+        resultFileId: null
+    };
+
+    const $ = id => document.getElementById(id);
+    const els = {
+        drop: $('pdfDrop'), input: $('pdfInput'), uploadFill: $('pdfUploadFill'), uploadPercent: $('pdfUploadPercent'),
+        workspace: $('pdfWorkspace'), thumb: $('pdfFileThumb'), icon: $('pdfFileIcon'), name: $('pdfFileName'), meta: $('pdfFileMeta'),
+        change: $('pdfChange'), locked: $('pdfLocked'), grid: $('toolGrid'),
+        panel: $('toolPanel'), back: $('toolBack'), title: $('toolTitle'), run: $('toolRun'),
+        organizeGrid: $('organizeGrid'), organizeSummary: $('organizeSummary'),
+        splitRangesField: $('splitRangesField'), splitRanges: $('splitRanges'), splitRangesHint: $('splitRangesHint'),
+        mergeList: $('mergeList'), mergeAdd: $('mergeAdd'), mergeInput: $('mergeInput'),
+        imageOptions: $('imageOptions'), ocrHint: $('ocrHint'),
+        wmText: $('watermarkText'), wmOpacity: $('watermarkOpacity'), wmOpacityValue: $('watermarkOpacityValue'), wmSize: $('watermarkSize'),
+        wmDiagonal: $('watermarkDiagonal'), wmPreview: $('watermarkPreview'), wmPreviewImg: $('watermarkPreviewImg'), wmPreviewText: $('watermarkPreviewText'),
+        metaStrip: $('metaStrip'),
+        progress: $('pdfProgress'), progressTitle: $('pdfProgressTitle'), progressPercent: $('pdfProgressPercent'), progressFill: $('pdfProgressFill'),
+        result: $('pdfResult'), resultName: $('pdfResultName'), resultSize: $('pdfResultSize'), resultDownload: $('pdfResultDownload'),
+        resultContinue: $('pdfResultContinue'), resultBack: $('pdfResultBack'),
+        error: $('pdfError'), errorText: $('pdfErrorText'), errorBack: $('pdfErrorBack')
+    };
+
+    class ToolError extends Error {
+        constructor(key, message) {
+            super(message || t(key));
+            this.key = key;
+        }
+    }
+
+    function apiError(error, code, fallbackKey) {
+        const key = code || error?.code || ERROR_KEYS[error?.type];
+        if (key && key in translations.en) return new ToolError(key);
+        if (error?.message) return new ToolError(null, error.message);
+        return new ToolError(fallbackKey);
+    }
+
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(2) + ' MB';
+    }
+
+    function pageUrl(fileId, index, width) {
+        return `/api/pdf/page/${encodeURIComponent(fileId)}/${index}?w=${width}`;
+    }
+
+    function show(...panels) {
+        [els.grid, els.panel, els.progress, els.result, els.error].forEach(p => p.classList.add('hidden'));
+        panels.forEach(p => p.classList.remove('hidden'));
+    }
+
+    function uploadOne(file, onProgress) {
+        return new Promise((resolve, reject) => {
+            const formData = new FormData();
+            formData.append('file', file);
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/upload');
+            xhr.upload.addEventListener('progress', e => {
+                if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+            });
+            xhr.addEventListener('load', () => {
+                let body;
+                try { body = JSON.parse(xhr.responseText); }
+                catch { return reject(new ToolError(xhr.status === 413 ? 'err_too_large' : 'err_upload_failed')); }
+                if (!body.success) return reject(apiError(body.error, null, 'err_upload_failed'));
+                resolve(body.data);
+            });
+            xhr.addEventListener('error', () => reject(new ToolError('err_upload_failed')));
+            xhr.send(formData);
+        });
+    }
+
+    async function fetchInfo(fileId) {
+        const res = await fetch('/api/pdf/info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_id: fileId })
+        });
+        const body = await res.json();
+        if (!body.success) throw apiError(body.error, null, 'pdf_err_failed');
+        return body.data;
+    }
+
+    function isPdf(file) {
+        return /\.pdf$/i.test(file.name);
+    }
+
+    async function handleFiles(fileList) {
+        const files = Array.from(fileList).filter(isPdf);
+        if (!files.length) {
+            Toast.error(t('pdf_err_not_pdf'));
+            return;
+        }
+        els.drop.classList.add('uploading');
+        const total = files.reduce((sum, f) => sum + f.size, 0) || 1;
+        let done = 0;
+        try {
+            const uploaded = [];
+            for (const file of files) {
+                const data = await uploadOne(file, ratio => updateUpload((done + file.size * ratio) / total));
+                done += file.size;
+                uploaded.push(data);
+            }
+            updateUpload(1);
+            const infos = await Promise.all(uploaded.map(u => fetchInfo(u.file_id)));
+            setFile(infos[0]);
+            state.merge = infos.map(info => ({ file_id: info.file_id, filename: info.filename, pages: info.pages, size: info.size }));
+            els.drop.classList.remove('uploading');
+            els.drop.classList.add('hidden');
+            els.workspace.classList.remove('hidden');
+            if (infos.length > 1) openTool('merge');
+            else showTools();
+        } catch (err) {
+            els.drop.classList.remove('uploading');
+            Toast.error(err.message);
+        } finally {
+            els.input.value = '';
+        }
+    }
+
+    function updateUpload(ratio) {
+        els.uploadFill.style.width = `${Math.round(ratio * 100)}%`;
+        els.uploadPercent.textContent = `${Math.round(ratio * 100)}%`;
+    }
+
+    function setFile(info) {
+        state.file = info;
+        els.name.textContent = info.filename;
+        i18n.set(els.meta, 'pdf_file_meta', { count: info.pages, size: formatSize(info.size) });
+        if (info.encrypted) {
+            els.thumb.hidden = true;
+            els.icon.hidden = false;
+        } else {
+            els.thumb.src = pageUrl(info.file_id, 0, 120);
+            els.thumb.hidden = false;
+            els.icon.hidden = true;
+        }
+        els.locked.classList.toggle('hidden', !info.encrypted);
+        renderToolGrid();
+    }
+
+    function renderToolGrid() {
+        const encrypted = state.file?.encrypted;
+        const order = encrypted ? ['unlock', ...TOOLS.filter(tool => tool !== 'unlock')] : TOOLS.filter(tool => tool !== 'unlock');
+        els.grid.innerHTML = order
+            .map(tool => {
+                const disabled = encrypted && tool !== 'unlock';
+                return `
+                    <button type="button" class="tool-card" data-tool="${tool}" ${disabled ? 'disabled' : ''}>
+                        <span class="tool-card-icon"><svg viewBox="0 0 24 24">${ICONS[tool]}</svg></span>
+                        <span class="tool-card-title" data-i18n="pdf_tool_${tool}">${escapeHtml(t(`pdf_tool_${tool}`))}</span>
+                        <span class="tool-card-desc" data-i18n="pdf_tool_${tool}_desc">${escapeHtml(t(`pdf_tool_${tool}_desc`))}</span>
+                    </button>
+                `;
+            }).join('');
+    }
+
+    function showTools() {
+        state.tool = null;
+        show(els.grid);
+    }
+
+    function openTool(tool) {
+        state.tool = tool;
+        i18n.set(els.title, `pdf_tool_${tool}`);
+        i18n.set(els.run, `pdf_action_${tool}`);
+        document.querySelectorAll('.tool-options').forEach(el => el.classList.toggle('active', el.dataset.tool === tool));
+        if (tool === 'organize') initOrganize();
+        if (tool === 'split') updateSplitHint();
+        if (tool === 'merge') renderMerge();
+        if (tool === 'watermark') initWatermark();
+        if (tool === 'metadata') initMetadata();
+        if (tool === 'protect') { $('protectPassword').value = ''; $('protectPassword2').value = ''; }
+        if (tool === 'unlock') $('unlockPassword').value = '';
+        show(els.panel);
+        els.panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    els.grid.addEventListener('click', e => {
+        const card = e.target.closest('.tool-card');
+        if (card && !card.disabled) openTool(card.dataset.tool);
+    });
+    els.back.addEventListener('click', showTools);
+    els.change.addEventListener('click', resetAll);
+    els.resultBack.addEventListener('click', showTools);
+    els.errorBack.addEventListener('click', showTools);
+
+    document.querySelectorAll('[data-group]').forEach(group => {
+        group.addEventListener('click', e => {
+            const choice = e.target.closest('.choice');
+            if (!choice) return;
+            group.querySelectorAll('.choice').forEach(c => c.classList.toggle('active', c === choice));
+            group.dispatchEvent(new CustomEvent('choice', { detail: choice.dataset.value }));
+        });
+    });
+
+    function groupValue(name) {
+        return document.querySelector(`[data-group="${name}"] .choice.active`)?.dataset.value;
+    }
+
+    document.querySelectorAll('.show-password').forEach(box => {
+        box.addEventListener('change', () => {
+            box.dataset.targets.split(',').forEach(id => { $(id).type = box.checked ? 'text' : 'password'; });
+        });
+    });
+
+    function initOrganize() {
+        state.pages = Array.from({ length: state.file.pages }, (_, index) => ({ index, rotate: 0, deleted: false }));
+        renderOrganize();
+        if (!els.organizeGrid._sortable) {
+            els.organizeGrid._sortable = Sortable.create(els.organizeGrid, {
+                animation: 160,
+                filter: '.icon-btn',
+                preventOnFilter: false,
+                onEnd: () => {
+                    const order = Array.from(els.organizeGrid.children).map(el => Number(el.dataset.index));
+                    state.pages.sort((a, b) => order.indexOf(a.index) - order.indexOf(b.index));
+                    updateOrganizeSummary();
+                }
+            });
+        }
+    }
+
+    function renderOrganize() {
+        els.organizeGrid.innerHTML = state.pages.map(page => `
+            <div class="page-thumb ${page.deleted ? 'deleted' : ''}" data-index="${page.index}">
+                <div class="page-thumb-img"><img loading="lazy" src="${pageUrl(state.file.file_id, page.index, 180)}" alt="" style="transform: rotate(${page.rotate}deg)"></div>
+                <div class="page-thumb-bar">
+                    <span class="page-thumb-num">${page.index + 1}</span>
+                    <span class="page-thumb-actions">
+                        <button type="button" class="icon-btn" data-action="left" title="${escapeHtml(t('pdf_rotate_left'))}" aria-label="${escapeHtml(t('pdf_rotate_left'))}"><svg viewBox="0 0 24 24"><path d="M3 10a9 9 0 1 1 3 6.7"/><path d="M3 4v6h6"/></svg></button>
+                        <button type="button" class="icon-btn" data-action="right" title="${escapeHtml(t('pdf_rotate_right'))}" aria-label="${escapeHtml(t('pdf_rotate_right'))}"><svg viewBox="0 0 24 24"><path d="M21 10a9 9 0 1 0-3 6.7"/><path d="M21 4v6h-6"/></svg></button>
+                        <button type="button" class="icon-btn danger" data-action="delete" title="${escapeHtml(t(page.deleted ? 'pdf_restore_page' : 'pdf_delete_page'))}" aria-label="${escapeHtml(t(page.deleted ? 'pdf_restore_page' : 'pdf_delete_page'))}">${page.deleted
+                            ? '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>'
+                            : '<svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>'}</button>
+                    </span>
+                </div>
+            </div>
+        `).join('');
+        updateOrganizeSummary();
+    }
+
+    function updateOrganizeSummary() {
+        const kept = state.pages.filter(p => !p.deleted).length;
+        i18n.set(els.organizeSummary, 'pdf_organize_summary', { count: kept });
+    }
+
+    els.organizeGrid.addEventListener('click', e => {
+        const btn = e.target.closest('.icon-btn');
+        if (!btn) return;
+        const index = Number(btn.closest('.page-thumb').dataset.index);
+        const page = state.pages.find(p => p.index === index);
+        if (btn.dataset.action === 'left') page.rotate = (page.rotate + 270) % 360;
+        if (btn.dataset.action === 'right') page.rotate = (page.rotate + 90) % 360;
+        if (btn.dataset.action === 'delete') page.deleted = !page.deleted;
+        renderOrganize();
+    });
+
+    $('rotateAllLeft').addEventListener('click', () => { state.pages.forEach(p => { p.rotate = (p.rotate + 270) % 360; }); renderOrganize(); });
+    $('rotateAllRight').addEventListener('click', () => { state.pages.forEach(p => { p.rotate = (p.rotate + 90) % 360; }); renderOrganize(); });
+    $('organizeReset').addEventListener('click', initOrganize);
+
+    document.querySelector('[data-group="splitMode"]').addEventListener('choice', updateSplitHint);
+    function updateSplitHint() {
+        const mode = groupValue('splitMode');
+        els.splitRangesField.classList.toggle('hidden', mode === 'every');
+        i18n.set(els.splitRangesHint, mode === 'extract' ? 'pdf_ranges_hint_extract' : 'pdf_ranges_hint', { count: state.file?.pages || 0 });
+    }
+
+    function renderMerge() {
+        els.mergeList.innerHTML = state.merge.map((item, i) => `
+            <div class="merge-item" data-index="${i}">
+                <span class="merge-item-handle"><svg viewBox="0 0 24 24"><path d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01"/></svg></span>
+                <span class="merge-item-name">${escapeHtml(item.filename)}</span>
+                <span class="merge-item-meta" data-i18n="pdf_pages" data-i18n-vars="${escapeHtml(JSON.stringify({ count: item.pages }))}">${escapeHtml(t('pdf_pages', { count: item.pages }))}</span>
+                <button type="button" class="icon-btn danger" data-remove="${i}" title="${escapeHtml(t('remove_file'))}" aria-label="${escapeHtml(t('remove_file'))}"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            </div>
+        `).join('');
+        if (!els.mergeList._sortable) {
+            els.mergeList._sortable = Sortable.create(els.mergeList, {
+                animation: 160,
+                filter: '.icon-btn',
+                preventOnFilter: false,
+                onEnd: () => {
+                    const order = Array.from(els.mergeList.children).map(el => Number(el.dataset.index));
+                    state.merge = order.map(i => state.merge[i]);
+                    renderMerge();
+                }
+            });
+        }
+    }
+
+    els.mergeList.addEventListener('click', e => {
+        const btn = e.target.closest('[data-remove]');
+        if (!btn) return;
+        state.merge.splice(Number(btn.dataset.remove), 1);
+        renderMerge();
+    });
+
+    els.mergeAdd.addEventListener('click', () => els.mergeInput.click());
+    els.mergeInput.addEventListener('change', async () => {
+        const files = Array.from(els.mergeInput.files).filter(isPdf);
+        els.mergeInput.value = '';
+        if (!files.length) return;
+        els.mergeAdd.disabled = true;
+        try {
+            for (const file of files) {
+                const data = await uploadOne(file);
+                const info = await fetchInfo(data.file_id);
+                if (info.encrypted) {
+                    Toast.error(t('pdf_err_merge_locked', { name: info.filename }));
+                    continue;
+                }
+                state.merge.push({ file_id: info.file_id, filename: info.filename, pages: info.pages, size: info.size });
+            }
+            renderMerge();
+        } catch (err) {
+            Toast.error(err.message);
+        } finally {
+            els.mergeAdd.disabled = false;
+        }
+    });
+
+    document.querySelector('[data-group="convertFormat"]').addEventListener('choice', e => {
+        els.imageOptions.classList.toggle('hidden', e.detail !== 'images');
+        els.ocrHint.classList.toggle('hidden', e.detail !== 'ocr-pdf');
+    });
+
+    function initWatermark() {
+        if (!els.wmText.value) els.wmText.value = t('pdf_watermark_default');
+        els.wmPreviewImg.src = pageUrl(state.file.file_id, 0, 360);
+        els.wmPreview.style.aspectRatio = `${state.file.page_width || 595} / ${state.file.page_height || 842}`;
+        updateWatermarkPreview();
+    }
+
+    function updateWatermarkPreview() {
+        const width = els.wmPreview.clientWidth || 180;
+        const height = width * (state.file.page_height || 842) / (state.file.page_width || 595);
+        const diagonal = els.wmDiagonal.checked;
+        const opacity = Number(els.wmOpacity.value) / 100;
+        let fontSize = Math.min(width, height) * Number(els.wmSize.value) / 100;
+        els.wmPreviewText.textContent = els.wmText.value;
+        els.wmPreviewText.style.fontSize = `${fontSize}px`;
+        const maxWidth = width * 0.85 / (diagonal ? 0.75 : 1);
+        const textWidth = els.wmPreviewText.scrollWidth;
+        if (textWidth > maxWidth) {
+            fontSize *= maxWidth / textWidth;
+            els.wmPreviewText.style.fontSize = `${fontSize}px`;
+        }
+        els.wmPreviewText.style.opacity = opacity;
+        els.wmPreviewText.style.transform = `translate(-50%, -50%) rotate(${diagonal ? -45 : 0}deg)`;
+        els.wmOpacityValue.textContent = `${els.wmOpacity.value}%`;
+    }
+
+    [els.wmText, els.wmOpacity, els.wmSize, els.wmDiagonal].forEach(el => el.addEventListener('input', updateWatermarkPreview));
+    els.wmDiagonal.addEventListener('change', updateWatermarkPreview);
+
+    function initMetadata() {
+        const meta = state.file.metadata || {};
+        document.querySelectorAll('.meta-input').forEach(input => {
+            input.value = meta[input.dataset.key] || '';
+            input.disabled = els.metaStrip.checked;
+        });
+    }
+
+    els.metaStrip.addEventListener('change', () => {
+        document.querySelectorAll('.meta-input').forEach(input => { input.disabled = els.metaStrip.checked; });
+    });
+
+    function collectOptions(tool) {
+        switch (tool) {
+            case 'compress':
+                return { mode: groupValue('compressMode'), grayscale: $('compressGray').checked, strip_metadata: $('compressStrip').checked };
+            case 'organize': {
+                const pages = state.pages.filter(p => !p.deleted).map(p => ({ index: p.index, rotate: p.rotate }));
+                if (!pages.length) throw new ToolError('err_pdf_no_pages');
+                return { pages };
+            }
+            case 'split': {
+                const mode = groupValue('splitMode');
+                const ranges = els.splitRanges.value.trim();
+                if (mode !== 'every' && !ranges) throw new ToolError('err_pdf_ranges');
+                return { mode, ranges };
+            }
+            case 'protect': {
+                const password = $('protectPassword').value;
+                if (password.length < 4) throw new ToolError('err_pdf_password_short');
+                if (password !== $('protectPassword2').value) throw new ToolError('pdf_err_password_mismatch');
+                return { password };
+            }
+            case 'unlock':
+                return { password: $('unlockPassword').value };
+            case 'watermark':
+                if (!els.wmText.value.trim()) throw new ToolError('err_pdf_watermark_empty');
+                return { text: els.wmText.value.trim(), opacity: Number(els.wmOpacity.value) / 100, size: Number(els.wmSize.value) / 100, diagonal: els.wmDiagonal.checked };
+            case 'page_numbers':
+                return { position: groupValue('numberPosition'), format: $('numberFormat').value, start: Number($('numberStart').value) || 1, font_size: Number($('numberSize').value), skip_first: $('numberSkipFirst').checked };
+            case 'metadata': {
+                if (els.metaStrip.checked) return { strip: true };
+                const options = {};
+                document.querySelectorAll('.meta-input').forEach(input => { options[input.dataset.key] = input.value; });
+                return options;
+            }
+            case 'convert':
+                return { target: groupValue('convertFormat'), imageFormat: $('imageFormat').value, dpi: Number($('imageDpi').value) };
+            default:
+                return {};
+        }
+    }
+
+    els.run.addEventListener('click', async () => {
+        const tool = state.tool;
+        let options;
+        try {
+            options = collectOptions(tool);
+            if (tool === 'merge' && state.merge.length < 2) throw new ToolError('err_pdf_merge_count');
+        } catch (err) {
+            Toast.error(err.message);
+            return;
+        }
+
+        let url = '/api/pdf/process';
+        let payload = { tool, file_id: state.file.file_id, options };
+        let stat = { kind: 'pdf', from: 'pdf', to: tool };
+        if (tool === 'merge') payload.file_ids = state.merge.map(m => m.file_id);
+        if (tool === 'convert') {
+            if (options.target === 'images') {
+                payload = { tool: 'to_images', file_id: state.file.file_id, options: { format: options.imageFormat, dpi: options.dpi } };
+                stat = { kind: 'conversion', from: 'pdf', to: options.imageFormat };
+            } else {
+                url = '/api/convert';
+                payload = { file_id: state.file.file_id, output_format: options.target };
+                stat = { kind: 'conversion', from: 'pdf', to: options.target.replace('ocr-', '') };
+            }
+        }
+
+        i18n.set(els.progressTitle, `pdf_tool_${tool}`);
+        setProgress(0);
+        show(els.progress);
+
+        try {
+            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const body = await res.json();
+            if (!body.success) throw apiError(body.error, null, 'pdf_err_failed');
+            state.jobId = body.data.job_id;
+            poll(stat);
+        } catch (err) {
+            showError(err);
+        }
+    });
+
+    function setProgress(value) {
+        els.progressPercent.textContent = `${Math.round(value)}%`;
+        els.progressFill.style.width = `${value}%`;
+    }
+
+    function poll(stat) {
+        clearInterval(state.poll);
+        state.poll = setInterval(async () => {
+            try {
+                const res = await fetch(`/api/status/${state.jobId}`);
+                const body = await res.json();
+                if (!body.success) throw apiError(body.error, null, 'err_file_missing');
+                const data = body.data;
+                setProgress(data.progress || 0);
+                if (data.status === 'completed') {
+                    clearInterval(state.poll);
+                    OmniStats.record({ jobId: state.jobId, ...stat, inputSize: data.input_size, outputSize: data.output_size });
+                    showResult(data);
+                } else if (data.status === 'failed') {
+                    clearInterval(state.poll);
+                    showError(apiError({ message: data.error }, data.error_code, 'pdf_err_failed'));
+                }
+            } catch (err) {
+                clearInterval(state.poll);
+                showError(err instanceof ToolError ? err : new ToolError('err_connection'));
+            }
+        }, 800);
+    }
+
+    function showResult(data) {
+        els.resultName.textContent = data.filename;
+        if (data.input_size && data.output_size) {
+            i18n.set(els.resultSize, 'pdf_result_size', { before: formatSize(data.input_size), after: formatSize(data.output_size) });
+        } else {
+            els.resultSize.textContent = '';
+        }
+        els.resultDownload.href = `/api/download/${state.jobId}`;
+        state.resultFileId = data.result_file_id || null;
+        els.resultContinue.classList.toggle('hidden', !state.resultFileId);
+        show(els.result);
+        Toast.success(t('all_done'));
+    }
+
+    els.resultContinue.addEventListener('click', async () => {
+        if (!state.resultFileId) return;
+        try {
+            const info = await fetchInfo(state.resultFileId);
+            setFile(info);
+            state.merge = [{ file_id: info.file_id, filename: info.filename, pages: info.pages, size: info.size }];
+            showTools();
+        } catch (err) {
+            showError(err);
+        }
+    });
+
+    function showError(err) {
+        if (err.key) i18n.set(els.errorText, err.key);
+        else {
+            delete els.errorText.dataset.i18n;
+            delete els.errorText.dataset.i18nVars;
+            els.errorText.textContent = err.message;
+        }
+        show(els.error);
+        Toast.error(els.errorText.textContent);
+    }
+
+    function resetAll() {
+        clearInterval(state.poll);
+        state.file = null;
+        state.merge = [];
+        state.tool = null;
+        els.workspace.classList.add('hidden');
+        els.drop.classList.remove('hidden', 'uploading');
+        updateUpload(0);
+    }
+
+    ['dragenter', 'dragover'].forEach(name => els.drop.addEventListener(name, e => { e.preventDefault(); els.drop.classList.add('dragging'); }));
+    ['dragleave', 'drop'].forEach(name => els.drop.addEventListener(name, e => { e.preventDefault(); els.drop.classList.remove('dragging'); }));
+    els.drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
+    els.input.addEventListener('change', () => { if (els.input.files.length) handleFiles(els.input.files); });
+
+    document.addEventListener('languagechange', () => {
+        if (state.file) renderToolGrid();
+        if (state.tool === 'organize') renderOrganize();
+        if (state.tool === 'merge') renderMerge();
+    });
+});
+</script>
+{% endblock %}

@@ -35,6 +35,9 @@ def create_app(config_class=Config):
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
     
+    from .services.scheduler import start_cleanup_scheduler
+    start_cleanup_scheduler(app)
+    
     from .routes.views import views_bp
     from .routes.api import api_bp
     

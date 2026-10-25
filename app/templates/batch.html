@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 
 {% block title %}Batch Convert - OmniConv{% endblock %}
+{% block title_i18n %} data-i18n="batch_page_title"{% endblock %}
 
 {% block content %}
 <section class="hero-section" style="padding-bottom: var(--space-8);">
-    <h1 class="hero-heading">Batch <span class="hero-heading-accent">Convert</span></h1>
-    <p class="hero-description">Convert multiple files at once. Drag and drop up to 20 files.</p>
+    <h1 class="hero-heading" data-i18n="batch_hero_title">Batch <span class="hero-heading-accent">Convert</span></h1>
+    <p class="hero-description" data-i18n="batch_hero_desc">Convert multiple files at once. Drag and drop up to 20 files.</p>
 </section>
 
 <section class="converter-area" style="max-width: 720px;">
@@ -19,19 +20,19 @@
                     <path d="M50 20v16M42 28l8-8 8 8" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
             </div>
-            <h2 class="drop-heading">Drop multiple files</h2>
-            <p class="drop-subtext">or click to browse • Max 20 files</p>
-            <p class="drop-formats">All supported formats</p>
+            <h2 class="drop-heading" data-i18n="batch_drop_heading">Drop multiple files</h2>
+            <p class="drop-subtext" data-i18n="batch_drop_subtext">or click to browse • Max 20 files</p>
+            <p class="drop-formats" data-i18n="batch_drop_formats">All supported formats</p>
             <input type="file" id="batchFileInput" class="file-picker" multiple />
         </div>
     </div>
 
     <div class="batch-queue hidden" id="batchQueue">
         <div class="queue-header">
-            <h3 class="section-label" style="margin: 0;">Files in Queue</h3>
+            <h3 class="section-label" style="margin: 0;" data-i18n="files_in_queue">Files in Queue</h3>
             <div class="queue-actions">
                 <span id="queueCount" class="queue-count">0 files</span>
-                <button class="btn btn-ghost btn-sm" id="clearAllBtn" title="Clear all">
+                <button class="btn btn-ghost btn-sm" id="clearAllBtn" title="Clear all" aria-label="Clear all" data-i18n-title="batch_clear_all" data-i18n-aria="batch_clear_all">
                     <svg viewBox="0 0 24 24" width="16" height="16"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" fill="currentColor"/></svg>
                 </button>
             </div>
@@ -42,13 +43,13 @@
     <div class="batch-actions hidden" id="batchActions">
         <button class="btn btn-primary" id="startBatchBtn" style="width: 100%;">
             <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            Start Batch Conversion
+            <span data-i18n="start_batch">Start Batch Conversion</span>
         </button>
     </div>
 
     <div class="batch-progress hidden" id="batchProgress">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
-            <span style="font-size: var(--text-sm); color: var(--text-tertiary);">Converting...</span>
+            <span style="font-size: var(--text-sm); color: var(--text-tertiary);" data-i18n="converting">Converting...</span>
             <span id="batchProgressCount" style="font-size: var(--text-sm);">0 / 0</span>
         </div>
         <div class="progress-track large">
@@ -65,17 +66,17 @@
                 <path d="M28 44l11 11 21-21" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </div>
-        <h3 class="result-heading">All Done!</h3>
-        <p class="result-filename" id="batchCompleteText">5 files converted successfully</p>
+        <h3 class="result-heading" data-i18n="all_done">All Done!</h3>
+        <p class="result-filename" id="batchCompleteText"></p>
         <button class="btn btn-primary" id="downloadAllBtn">
             <svg viewBox="0 0 24 24">
                 <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            Download All
+            <span data-i18n="download_all">Download All</span>
         </button>
-        <button class="btn btn-ghost" id="batchAnother" style="margin-top: var(--space-4);">Convert more files</button>
+        <button class="btn btn-ghost" id="batchAnother" style="margin-top: var(--space-4);" data-i18n="convert_more">Convert more files</button>
     </div>
 </section>
 
@@ -135,13 +136,14 @@
     cursor: pointer;
     transition: background var(--duration-fast);
     user-select: none;
-    flex-wrap: wrap;
     gap: var(--space-3);
 }
 
 .file-group-select {
     margin-left: auto;
-    margin-right: var(--space-3);
+    margin-right: 0;
+    min-width: 0;
+    max-width: 50%;
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
     background: var(--surface-glass);
@@ -439,31 +441,31 @@
 document.addEventListener('DOMContentLoaded', () => {
     const FILE_TYPE_CONFIG = {
         audio: {
-            label: 'Audio',
+            label: 'batch_group_audio',
             extensions: ['mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a', 'wma'],
             icon: `<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
             class: 'type-audio'
         },
         video: {
-            label: 'Video',
+            label: 'batch_group_video',
             extensions: ['mp4', 'webm', 'avi', 'mkv', 'mov', 'wmv', 'flv'],
             icon: `<svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><polygon points="10 8 16 12 10 16"/></svg>`,
             class: 'type-video'
         },
         document: {
-            label: 'Documents',
+            label: 'batch_group_document',
             extensions: ['pdf', 'docx', 'doc', 'txt', 'rtf', 'odt', 'xls', 'xlsx', 'md'],
             icon: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
             class: 'type-document'
         },
         image: {
-            label: 'Images',
+            label: 'batch_group_image',
             extensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'tiff'],
             icon: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
             class: 'type-image'
         },
         other: {
-            label: 'Other',
+            label: 'batch_group_other',
             extensions: [],
             icon: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`,
             class: 'type-other'
@@ -576,12 +578,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 selectorHtml = `
                     <select class="file-group-select" onclick="event.stopPropagation()" onchange="updateGroupFormat('${type}', this.value)">
                         ${outputFormats.map(fmt => 
-                            `<option value="${fmt}" ${fmt === currentFormat ? 'selected' : ''}>Convert to ${fmt.toUpperCase()}</option>`
+                            `<option value="${fmt}" ${fmt === currentFormat ? 'selected' : ''} data-i18n="batch_convert_to" data-i18n-vars="${escapeHtml(JSON.stringify({ format: fmt.toUpperCase() }))}">${escapeHtml(t('batch_convert_to', { format: fmt.toUpperCase() }))}</option>`
                         ).join('')}
                     </select>
                 `;
             } else {
-                 selectorHtml = `<span class="text-xs text-muted" style="margin-left: auto; margin-right: var(--space-3);">No conversion available</span>`;
+                 selectorHtml = `<span class="text-xs text-muted" style="margin-left: auto; margin-right: var(--space-3);" data-i18n="batch_no_conversion">${escapeHtml(t('batch_no_conversion'))}</span>`;
             }
             
             html += `
@@ -589,7 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="file-group-header" onclick="toggleGroup('${type}')">
                         <div class="file-group-info">
                             <div class="file-group-icon ${config.class}">${config.icon}</div>
-                            <span class="file-group-title">${config.label}</span>
+                            <span class="file-group-title" data-i18n="${config.label}">${escapeHtml(t(config.label))}</span>
                             <span class="file-group-count">${groups[type].length}</span>
                         </div>
                         ${selectorHtml}
@@ -602,11 +604,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="file-item" data-index="${originalIndex}" style="animation-delay: ${i * 50}ms">
                                 <div class="file-item-info">
                                     <div class="file-item-icon">${getFileTypeIcon(type)}</div>
-                                    <span class="file-item-name">${file.name}</span>
+                                    <span class="file-item-name">${escapeHtml(file.name)}</span>
                                     <span class="file-item-size">${formatBytes(file.size)}</span>
                                 </div>
                                 <div class="file-item-status" id="status-${originalIndex}"></div>
-                                <button class="file-item-remove" onclick="removeFile(${originalIndex}, event)" title="Remove file">
+                                <button class="file-item-remove" onclick="removeFile(${originalIndex}, event)" title="${escapeHtml(t('remove_file'))}" aria-label="${escapeHtml(t('remove_file'))}" data-i18n-title="remove_file" data-i18n-aria="remove_file">
                                     <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                                 </button>
                             </div>
@@ -617,7 +619,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         els.fileGroups.innerHTML = html;
-        els.queueCount.textContent = `${batchState.files.length} file${batchState.files.length !== 1 ? 's' : ''}`;
+        i18n.set(els.queueCount, 'batch_file_count', { count: batchState.files.length });
         els.queue.classList.toggle('hidden', batchState.files.length === 0);
         els.zone.classList.toggle('hidden', batchState.files.length > 0);
         
@@ -750,6 +752,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             
             updateStatus(index, 'done');
+            OmniStats.recordJob(jobId, 'conversion', getFileExtension(file.name), format);
             return true;
 
         } catch (error) {
@@ -778,7 +781,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         for (const file of newFiles) {
             if (isArchive(file.name)) {
-                const toast = Toast.info(`Extracting ${file.name}...`, 0);
+                const toast = Toast.info(t('batch_extracting', { name: file.name }), 0);
                 
                 try {
                     const formData = new FormData();
@@ -799,12 +802,12 @@ document.addEventListener('DOMContentLoaded', () => {
                              }
                         });
                         renderQueue();
-                        Toast.success(`Extracted ${data.data.files.length} files from ${file.name}`);
+                        Toast.success(t('batch_extracted', { count: data.data.files.length, name: file.name }));
                     } else {
-                        Toast.error(`Failed to extract ${file.name}: ${data.error.message}`);
+                        Toast.error(t('batch_extract_failed_reason', { name: file.name, reason: data.error.message }));
                     }
                 } catch (e) {
-                    Toast.error(`Failed to extract ${file.name}`);
+                    Toast.error(t('batch_extract_failed', { name: file.name }));
                 } finally {
                     Toast.dismiss(toast);
                 }
@@ -831,7 +834,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (batchState.converting) return;
         batchState.converting = true;
         els.startBtn.disabled = true;
-        els.startBtn.innerHTML = 'Processing...';
+        els.startBtn.innerHTML = i18n.html('batch_processing');
         
         document.querySelectorAll('.file-item-remove').forEach(b => b.style.display = 'none');
         document.querySelectorAll('select').forEach(s => s.disabled = true);
@@ -841,30 +844,39 @@ document.addEventListener('DOMContentLoaded', () => {
         
         for (let i = 0; i < batchState.files.length; i++) {
             if (currentFileEl) {
-                currentFileEl.textContent = `Converting ${i + 1} of ${batchState.files.length}: ${batchState.files[i].name}`;
+                i18n.set(currentFileEl, 'batch_converting_file', { current: i + 1, total: batchState.files.length, name: batchState.files[i].name });
             }
             const success = await processFile(batchState.files[i], i);
             if (success) completedCount++;
         }
         
-        if (currentFileEl) currentFileEl.textContent = '';
+        if (currentFileEl) {
+            delete currentFileEl.dataset.i18n;
+            delete currentFileEl.dataset.i18nVars;
+            currentFileEl.textContent = '';
+        }
         batchState.converting = false;
         
         if (completedCount > 0) {
-            Toast.success(`${completedCount} of ${batchState.files.length} files converted`);
+            Toast.success(t('batch_toast_done', { done: completedCount, count: batchState.files.length }));
         } else {
-            Toast.error('Batch conversion failed');
+            Toast.error(t('batch_failed'));
         }
         
         setTimeout(() => {
             els.queue.classList.add('hidden');
             els.actions.classList.add('hidden');
             els.complete.classList.remove('hidden');
-            els.completeText.textContent = `${completedCount} of ${batchState.files.length} files converted successfully`;
+            i18n.set(els.completeText, 'batch_complete_text', { done: completedCount, count: batchState.files.length });
             
+            const heading = els.complete.querySelector('.result-heading');
+            const icon = els.complete.querySelector('.result-icon');
             if (completedCount === 0) {
-                 els.complete.querySelector('.result-heading').textContent = 'Conversion Failed';
-                 els.complete.querySelector('.result-icon').style.color = 'var(--color-error)';
+                i18n.set(heading, 'batch_failed_heading');
+                icon.style.color = 'var(--color-error)';
+            } else {
+                i18n.set(heading, 'all_done');
+                icon.style.color = '';
             }
         }, 1000);
     });
@@ -879,7 +891,7 @@ document.addEventListener('DOMContentLoaded', () => {
         els.zone.classList.remove('hidden');
         els.input.value = '';
         els.startBtn.disabled = false;
-        els.startBtn.innerHTML = `<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start Batch Conversion`;
+        els.startBtn.innerHTML = `<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> ${i18n.html('start_batch')}`;
         renderQueue();
     });
 

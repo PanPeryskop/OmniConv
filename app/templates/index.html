@@ -4,22 +4,16 @@
 <section class="hero-section">
     <div class="hero-badge">
         <span class="hero-badge-indicator"></span>
-        AI-Powered Conversion
+        <span data-i18n="home_badge">AI-Powered Conversion</span>
     </div>
-    <h1 class="hero-heading">Convert <span class="hero-heading-accent">Anything</span></h1>
-    <p class="hero-description">Transform audio, video, images, and documents with powerful AI technology. Fast, secure, and completely local.</p>
-    <!-- <div style="margin-top: var(--space-6); display: flex; gap: var(--space-4); justify-content: center;">
-        <a href="/studio" class="btn btn-primary" style="padding: 0.75rem 1.5rem; font-size: 1.1rem;">
-            <svg viewBox="0 0 24 24" style="width:20px;height:20px;margin-right:8px;"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-            Open Voice Studio
-        </a>
-    </div> -->
+    <h1 class="hero-heading" data-i18n="hero_title">Convert <span class="hero-heading-accent">Anything</span></h1>
+    <p class="hero-description" data-i18n="hero_desc">Convert audio, video, images and documents in a few clicks.</p>
 </section>
 
 <section class="converter-area">
     <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('upload')" data-i18n="upload_tab">Upload File</button>
-        <button class="tab-btn" onclick="switchTab('url')" data-i18n="url_tab">From URL</button>
+        <button class="tab-btn active" onclick="switchMainTab('upload')" data-i18n="upload_tab">Upload File</button>
+        <button class="tab-btn" onclick="switchMainTab('url')" data-i18n="url_tab">From URL</button>
     </div>
 
     <div class="panel drop-area" id="uploadZone">
@@ -31,8 +25,8 @@
                     <path d="M15 55v10a8 8 0 008 8h34a8 8 0 008-8V55" stroke-linecap="round"/>
                 </svg>
             </div>
-            <h2 class="drop-heading">Drop your file here</h2>
-            <p class="drop-subtext">or click to browse files</p>
+            <h2 class="drop-heading" data-i18n="drop_heading">Drop your file here</h2>
+            <p class="drop-subtext" data-i18n="drop_subtext">or click to browse files</p>
             <p class="drop-formats">Audio • Video • Images • PDF</p>
             <input type="file" id="fileInput" class="file-picker" />
         </div>
@@ -101,16 +95,14 @@
         <h3 class="section-label">OCR Engine</h3>
         <div class="preset-selector">
             <select id="ocrSelect" class="preset-dropdown">
-                <option value="lighton" selected>LightOn (Fast, Raw)</option>
-                <option value="qwen">Qwen 3-VL (Best Quality, Slower)</option>
-                <option value="lighton_mistral">LightOn + Mistral (Fast + AI Correction)</option>
+                <option value="rapid" selected>RapidOCR (Fast, Local)</option>
+                <option value="qwen">Qwen 3-VL (Best Quality, LM Studio)</option>
             </select>
             
             <div id="ocrThemeContainer" class="hidden" style="margin-top: var(--space-2);">
                  <select id="ocrThemeSelect" class="preset-dropdown">
                     <option value="light" selected>Light Theme (Standard)</option>
                     <option value="dark">Dark Theme (Night Mode)</option>
-                </select>
                 </select>
             </div>
             
@@ -237,15 +229,15 @@
 <section class="stats-bar">
     <div class="stat-item">
         <div class="stat-value">50+</div>
-        <div class="stat-label">Formats Supported</div>
+        <div class="stat-label" data-i18n="home_stat_formats">Formats Supported</div>
     </div>
     <div class="stat-item">
-        <div class="stat-value">100%</div>
-        <div class="stat-label">Local Processing</div>
+        <div class="stat-value">11</div>
+        <div class="stat-label" data-i18n="home_stat_pdf_tools">PDF Tools</div>
     </div>
     <div class="stat-item">
         <div class="stat-value">AI</div>
-        <div class="stat-label">Powered OCR</div>
+        <div class="stat-label" data-i18n="home_stat_ocr">Powered OCR</div>
     </div>
 </section>
 
@@ -294,18 +286,29 @@
         <h3 class="feature-title">Documents</h3>
         <p class="feature-description">PDF to DOCX, Powered by Qwen3-VL</p>
     </div>
-    <div class="panel feature-item" onclick="window.location.href='/studio'" style="cursor: pointer; border-color: var(--accent-primary);">
-        <div class="feature-icon-box" style="color: var(--accent-primary); background: rgba(var(--accent-primary-rgb), 0.1);">
+    <a class="panel feature-item" href="/compress" style="text-decoration: none; color: inherit;">
+        <div class="feature-icon-box">
             <svg viewBox="0 0 24 24">
-               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-               <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-               <line x1="12" y1="19" x2="12" y2="23"/>
-               <line x1="8" y1="23" x2="16" y2="23"/>
+                <polyline points="4 14 10 14 10 20"/>
+                <polyline points="20 10 14 10 14 4"/>
+                <line x1="14" y1="10" x2="21" y2="3"/>
+                <line x1="3" y1="21" x2="10" y2="14"/>
             </svg>
         </div>
-        <h3 class="feature-title">Voice Studio</h3>
-        <p class="feature-description">AI Voice Design, Speech Generation & Auto-Subtitles</p>
-    </div>
+        <h3 class="feature-title" data-i18n="feature_compress_title">Compression</h3>
+        <p class="feature-description" data-i18n="feature_compress_desc">Shrink video, audio, images and PDFs</p>
+    </a>
+    <a class="panel feature-item" href="/pdf" style="text-decoration: none; color: inherit;">
+        <div class="feature-icon-box type-document">
+            <svg viewBox="0 0 24 24">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                <path d="M14 2v6h6"/>
+                <path d="M9 15h6M12 12v6"/>
+            </svg>
+        </div>
+        <h3 class="feature-title" data-i18n="feature_pdf_title">PDF Tools</h3>
+        <p class="feature-description" data-i18n="feature_pdf_desc">Merge, split, rotate, protect and more</p>
+    </a>
 </section>
 
 <section class="recent-history" id="recentHistory"></section>

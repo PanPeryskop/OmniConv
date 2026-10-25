@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 
 {% block title %}Formats - OmniConv{% endblock %}
+{% block title_i18n %} data-i18n="formats_page_title"{% endblock %}
 
 {% block content %}
 <section class="hero-section" style="padding-bottom: var(--space-8);">
-    <h1 class="hero-heading">Supported <span class="hero-heading-accent">Formats</span></h1>
-    <p class="hero-description">All file formats supported by OmniConv</p>
+    <h1 class="hero-heading" data-i18n="formats_hero_title">Supported <span class="hero-heading-accent">Formats</span></h1>
+    <p class="hero-description" data-i18n="formats_hero_desc">All file formats supported by OmniConv</p>
 </section>
 
 <section class="converter-area" style="max-width: 720px;">
@@ -28,19 +29,19 @@
                 {% endif %}
             </div>
             <div>
-                <h2 class="format-title">{{ category|title }}</h2>
+                <h2 class="format-title" data-i18n="formats_cat_{{ category }}">{{ category|upper if category == 'ocr' else category|title }}</h2>
                 <p class="format-count">
                     {% if category == 'ocr' %}
-                    Powered by LightOnOCR-2-1B
+                    <span data-i18n="formats_ocr_powered">RapidOCR or Qwen 3-VL</span>
                     {% else %}
-                    {{ data.input|length }} input • {{ data.output|length }} output formats
+                    <span data-i18n="formats_count" data-i18n-vars='{"input": {{ data.input|length }}, "output": {{ data.output|length }}}'>{{ data.input|length }} input • {{ data.output|length }} output formats</span>
                     {% endif %}
                 </p>
             </div>
         </div>
         <div class="format-lists">
             <div class="format-list">
-                <span class="format-list-label">Input</span>
+                <span class="format-list-label" data-i18n="formats_input">Input</span>
                 <div class="format-tags">
                     {% for fmt in data.input %}
                     <span class="format-tag">{{ fmt|upper }}</span>
@@ -48,7 +49,7 @@
                 </div>
             </div>
             <div class="format-list">
-                <span class="format-list-label">Output</span>
+                <span class="format-list-label" data-i18n="formats_output">Output</span>
                 <div class="format-tags">
                     {% for fmt in data.output %}
                     <span class="format-tag">{{ fmt|upper }}</span>
@@ -64,7 +65,7 @@
             <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;">
                 <path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
             </svg>
-            Start Converting
+            <span data-i18n="start_converting">Start Converting</span>
         </a>
     </div>
 </section>

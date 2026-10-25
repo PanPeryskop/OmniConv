@@ -5,10 +5,46 @@ import base64
 from pathlib import Path
 
 class LLMService:
+    _models_cache = {'at': 0.0, 'keys': None}
+
     def __init__(self, api_url="http://localhost:1234/api/v1/chat"):
         self.api_url = api_url
 
+    def available_models(self, max_age: float = 30.0):
+        import time
+        cache = LLMService._models_cache
+        if cache['keys'] is not None and time.time() - cache['at'] < max_age:
+            return cache['keys']
+        keys = None
+        try:
+            base = self.api_url.rsplit('/api/', 1)[0]
+            response = requests.get(f"{base}/api/v1/models", timeout=1.5)
+            response.raise_for_status()
+            keys = {m.get('key') for m in response.json().get('models', []) if m.get('key')}
+        except Exception:
+            keys = None
+        cache['at'], cache['keys'] = time.time(), keys
+        return keys
+
+    def resolve_model(self, model_key: str) -> str:
+        keys = self.available_models() or set()
+        if model_key in keys:
+            return model_key
+        short = model_key.split('/')[-1].lower()
+        for key in sorted(keys):
+            if key.split('/')[-1].lower() == short:
+                return key
+        return model_key
+
+    def model_status(self, model_key: str) -> str:
+        keys = self.available_models()
+        if keys is None:
+            return 'llm_offline'
+        return 'ok' if self.resolve_model(model_key) in keys else 'llm_model_missing'
+
     def _send_request(self, payload):
+        if payload.get('model'):
+            payload = dict(payload, model=self.resolve_model(payload['model']))
         try:
             response = requests.post(
                 self.api_url, 
@@ -231,22 +267,10 @@ class LLMService:
                 "You are the OmniConv Project Assistant. You are an expert software engineer working on this specific project. "
                 "You have full knowledge of the project structure and key files provided below. "
                 "Answer questions about the codebase, features, and implementation details accurately. "
-                "Note: The system now supports three OCR engines: Qwen (AI), LightOn (Local), and LightOn+Mistral (Local + AI Correction). "
+                "Note: The system supports two OCR engines: RapidOCR (fast, local, default) and Qwen 3-VL via LM Studio, with optional AI text correction. "
                 "Be helpful, concise, and professional.\n\n"
                 f"PROJECT CONTEXT:\n{context}"
             )
-
-        payload = {
-            "model": os.environ.get("LLM_TEXT_MODEL", "ministral-3-8b-instruct-2512"), 
-            "messages": [
-                {"role": "system", "content": system_msg} if system_msg else None,
-                {"role": "user", "content": message}
-            ],
-            "temperature": 0.7,
-            "stream": True
-        }
-        payload["messages"] = [m for m in payload["messages"] if m]
-        
 
         payload = {
             "model": os.environ.get("LLM_TEXT_MODEL", "ministral-3-8b-instruct-2512"), 

@@ -1,0 +1,22 @@
+.format-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+}
+.yt-platform-badge {
+    display: inline-block;
+    margin-top: var(--space-2);
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: capitalize;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+}
+
+#inputSection .btn {
+    white-space: nowrap;
+}

@@ -197,10 +197,13 @@ class DocumentConverter(BaseConverter):
             
             doc.close()
             
-            zip_path = f"{output_path}.zip"
-            shutil.make_archive(output_path, 'zip', output_path)
+            if not count:
+                shutil.rmtree(output_path)
+                raise ConversionError("No images found in this PDF")
+            archive_base = output_path[:-len('.images')] + '_images' if output_path.endswith('.images') else output_path
+            shutil.make_archive(archive_base, 'zip', output_path)
             shutil.rmtree(output_path)
-            return zip_path
+            return f"{archive_base}.zip"
         except Exception as e:
             self._handle_pdf_error(e, options.get('password'))
 
@@ -337,17 +340,35 @@ class DocumentConverter(BaseConverter):
     def _pdf_ocr(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
         from .ocr import OCRService
         ocr = OCRService(self._progress_callback)
-        return ocr.ocr_pdf_to_searchable(input_path, output_path, options)
+        return ocr.convert(input_path, output_path, 'pdf', options)
 
     def _md_to_pdf(self, input_path: str, output_path: str, options: Dict[str, Any]) -> str:
+        import fitz
         import markdown
-        from weasyprint import HTML
         try:
             with open(input_path, 'r', encoding='utf-8') as f:
                 md_content = f.read()
-            html_content = markdown.markdown(md_content, extensions=['tables', 'fenced_code', 'codehilite', 'toc'])
-            full_html = f"<html><body>{html_content}</body></html>"
-            HTML(string=full_html).write_pdf(output_path)
+            self.report_progress(20)
+            body = markdown.markdown(md_content, extensions=['tables', 'fenced_code', 'sane_lists'])
+            css = (
+                "body { font-family: sans-serif; font-size: 11pt; line-height: 1.45; }"
+                "h1 { font-size: 20pt; } h2 { font-size: 16pt; } h3 { font-size: 13pt; }"
+                "pre, code { font-family: monospace; font-size: 9.5pt; background-color: #f2f2f2; }"
+                "table { border-collapse: collapse; } th, td { border: 1px solid #999; padding: 3px 6px; }"
+                "blockquote { color: #555; margin-left: 12pt; }"
+            )
+            story = fitz.Story(html=body, user_css=css)
+            writer = fitz.DocumentWriter(output_path)
+            mediabox = fitz.paper_rect('a4')
+            where = mediabox + (54, 54, -54, -54)
+            more = True
+            while more:
+                device = writer.begin_page(mediabox)
+                more, _ = story.place(where)
+                story.draw(device)
+                writer.end_page()
+            writer.close()
+            self.report_progress(100)
             return output_path
         except Exception as e:
             raise ConversionError(f"Markdown to PDF conversion failed: {str(e)}")

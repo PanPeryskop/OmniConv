@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - OmniConv{% endblock %}
+{% block title_i18n %} data-i18n="settings_page_title"{% endblock %}
+
+{% block content %}
+<section class="hero-section" style="padding-bottom: var(--space-8);">
+    <h1 class="hero-heading" data-i18n="settings_hero_title">App <span class="hero-heading-accent">Settings</span></h1>
+    <p class="hero-description" data-i18n="settings_hero_desc">Customize your OmniConv experience</p>
+</section>
+
+<section class="settings-area" style="max-width: 600px; margin: 0 auto;">
+    <div class="panel" style="padding: var(--space-6); margin-bottom: var(--space-4);">
+        <h3 class="section-label" data-i18n="settings_appearance">Appearance</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4);">
+            <div>
+                <strong style="display: block;" data-i18n="settings_dark_mode">Dark Mode</strong>
+                <span style="color: var(--text-muted); font-size: var(--text-sm);" data-i18n="settings_dark_mode_desc">Toggle dark or light interface theme</span>
+            </div>
+            <button class="btn btn-outline" onclick="toggleTheme()" id="themeBtn" data-i18n="settings_switch_theme">Switch Theme</button>
+        </div>
+    </div>
+
+    <div class="panel" style="padding: var(--space-6); margin-bottom: var(--space-4);">
+        <h3 class="section-label" data-i18n="settings_privacy">Privacy & History</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-4);">
+            <div>
+                <strong style="display: block;" data-i18n="settings_clear_history">Clear Local History</strong>
+                <span style="color: var(--text-muted); font-size: var(--text-sm);" data-i18n="settings_clear_history_desc">Wipe recent downloads and conversions from this browser</span>
+            </div>
+            <button class="btn btn-ghost" onclick="clearHistory()" style="color: var(--color-error);" data-i18n="settings_clear_data">Clear Data</button>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+            <div>
+                <strong style="display: block;" data-i18n="settings_clear_stats">Reset stats</strong>
+                <span style="color: var(--text-muted); font-size: var(--text-sm);" data-i18n="settings_clear_stats_desc">Zero the conversion counters stored in this browser</span>
+            </div>
+            <button class="btn btn-ghost" onclick="clearStats()" style="color: var(--color-error);" data-i18n="settings_clear_data">Clear Data</button>
+        </div>
+    </div>
+</section>
+
+<script>
+    function clearHistory() {
+        if(confirm(t('settings_clear_confirm'))) {
+            localStorage.removeItem('omni_history');
+            localStorage.removeItem('omniconv_history');
+            Toast.success(t('settings_cleared'));
+        }
+    }
+
+    function clearStats() {
+        if(confirm(t('settings_clear_stats_confirm'))) {
+            OmniStats.clear();
+            Toast.success(t('settings_stats_cleared'));
+        }
+    }
+</script>
+{% endblock %}

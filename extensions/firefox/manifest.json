@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "OmniConv",
+  "version": "1.0.0",
+  "description": "Premium download assistant for OmniConv",
+  "permissions": [
+    "contextMenus",
+    "notifications",
+    "activeTab",
+    "downloads"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:5000/*",
+    "http://localhost:5000/*",
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "OmniConv"
+  },
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "icons": {
+    "16": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "omniconv@gad.local",
+      "strict_min_version": "109.0"
+    }
+  }
+}

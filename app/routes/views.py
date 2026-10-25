@@ -27,6 +27,11 @@ def compress():
     return render_template('compress.html')
 
 
+@views_bp.route('/settings')
+def settings():
+    return render_template('settings.html')
+
+
 @views_bp.route('/about')
 def about():
     from ..services import (
@@ -65,11 +70,9 @@ def about():
 
 @views_bp.route('/dashboard')
 def dashboard():
-    from ..services.stats import stats_service
-    stats = stats_service.get_stats()
-    return render_template('dashboard.html', stats=stats)
+    return render_template('dashboard.html')
 
 
-@views_bp.route('/studio')
-def studio():
-    return render_template('studio.html')
+@views_bp.route('/pdf')
+def pdf_tools():
+    return render_template('pdf.html')

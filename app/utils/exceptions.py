@@ -41,11 +41,12 @@ class InvalidPasswordError(ConversionError):
 
 
 class OCRError(ConversionError):
-    def __init__(self, detail: str = None):
+    def __init__(self, detail: str = None, code: str = 'err_ocr_failed'):
         message = "OCR processing failed"
         if detail:
             message += f": {detail}"
         super().__init__(message, 500)
+        self.code = code
 
 
 class ConversionJobNotFoundError(ConversionError):
