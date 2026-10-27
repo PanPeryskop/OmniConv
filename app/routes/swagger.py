@@ -13,7 +13,7 @@ def swagger_spec():
         "info": {
             "title": "OmniConv API",
             "version": "1.0.0",
-            "description": "Universal AI-Powered File Converter API"
+            "description": "OmniConv HTTP API"
         },
         "servers": [
             {"url": "/api", "description": "Local API Server"}

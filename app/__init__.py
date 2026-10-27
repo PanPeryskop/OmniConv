@@ -30,12 +30,18 @@ def create_app(config_class=Config):
     app.socketio = socketio
     
     cleanup_folder(app.config['UPLOAD_FOLDER'])
-    cleanup_folder(app.config['OUTPUT_FOLDER'])
-    
+
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
-    
-    from .services.scheduler import start_cleanup_scheduler
+
+    from .services.job_registry import registry
+    registry.init_app(app)
+
+    from .utils.client import init_client_id
+    init_client_id(app)
+
+    from .services.scheduler import start_cleanup_scheduler, run_cleanup
+    run_cleanup(app)
     start_cleanup_scheduler(app)
     
     from .routes.views import views_bp

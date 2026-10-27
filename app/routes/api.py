@@ -4,12 +4,14 @@ from .api_common import api_response
 from .api_convert import convert_bp
 from .api_compress import compress_bp
 from .api_pdf import pdf_bp
+from .api_jobs import jobs_bp
 
 api_bp = Blueprint('api', __name__)
 
 api_bp.register_blueprint(convert_bp)
 api_bp.register_blueprint(compress_bp)
 api_bp.register_blueprint(pdf_bp)
+api_bp.register_blueprint(jobs_bp)
 
 @api_bp.errorhandler(RequestEntityTooLarge)
 def handle_file_too_large(e):

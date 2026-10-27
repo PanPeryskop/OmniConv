@@ -145,7 +145,9 @@ async function quickMp3() {
             body: JSON.stringify({
                 url: url,
                 format_id: selectedFormat,
-                is_playlist: false
+                is_playlist: false,
+                title: videoData?.title || '',
+                label: 'mp3'
             })
         });
 
@@ -153,6 +155,7 @@ async function quickMp3() {
         if (!data.success) throw new Error(data.error || t('yt_failed'));
 
         const jobId = data.job_id;
+        OmniJobs.refresh();
         currentJobId = jobId;
         const renameBtn = document.getElementById('smartRenameBtn');
         if (renameBtn) {
@@ -390,7 +393,9 @@ async function startDownload() {
             body: JSON.stringify({
                 url: document.getElementById('urlInput').value.trim(),
                 format_id: selectedFormat,
-                is_playlist: isPlaylist
+                is_playlist: isPlaylist,
+                title: videoData?.title || '',
+                label: videoData?.formats?.find(f => f.format_id === selectedFormat)?.resolution || ''
             })
         });
 
@@ -398,6 +403,7 @@ async function startDownload() {
         if (!data.success) throw new Error(data.error || t('yt_failed'));
 
         const jobId = data.job_id;
+        OmniJobs.refresh();
         currentJobId = jobId;
         const renameBtn = document.getElementById('smartRenameBtn');
         if (renameBtn) {

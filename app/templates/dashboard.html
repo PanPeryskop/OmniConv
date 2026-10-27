@@ -11,6 +11,16 @@
 
 <section class="converter-area">
     <div class="dashboard-grid">
+        <div class="panel dashboard-panel jobs-panel" id="jobs" data-jobs-panel>
+            <div class="jobs-head">
+                <h3 class="jobs-heading" data-i18n="jobs_title">Jobs</h3>
+                <button type="button" class="btn btn-ghost jobs-clear hidden" data-jobs-clear data-i18n="jobs_clear_finished">Clear finished</button>
+            </div>
+            <div class="jobs-list" data-jobs-list></div>
+            <p class="empty-state hidden" data-jobs-empty data-i18n="jobs_empty">No jobs yet. Conversions, compressions, PDF tools and video downloads will show up here.</p>
+            <p class="jobs-note" data-jobs-note></p>
+        </div>
+
         <div class="stats-bar panel dashboard-panel">
             <div class="stat-item">
                 <div class="stat-value" id="statTotal">0</div>

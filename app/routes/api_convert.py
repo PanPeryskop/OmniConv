@@ -9,6 +9,8 @@ from ..utils.file_handler import get_file_extension, get_file_type, save_uploade
 from ..utils.exceptions import UnsupportedFormatError
 from ..services import AudioConverter, VideoConverter, ImageConverter, DocumentConverter, OCRService
 from .websocket import emit_progress, emit_complete, emit_error
+from ..services.job_registry import registry
+from ..utils.client import client_id
 
 convert_bp = Blueprint('convert', __name__)
 
@@ -232,9 +234,14 @@ def start_conversion():
         'progress': 0,
     }
     conversion_jobs[job_id] = job
+    registry.start(
+        job_id, client_id(), 'convert', source['original_filename'],
+        src=get_file_extension(source['original_filename']), dst=output_format.lower(),
+    )
 
     def progress_callback(progress):
         job['progress'] = progress
+        registry.progress(job_id, progress)
         emit_progress(job_id, progress)
 
     thread = threading.Thread(target=run_conversion, args=(job, output_format, options, progress_callback), daemon=True)
@@ -280,6 +287,7 @@ def run_conversion(job, output_format, options, progress_callback):
         if job.get('cancel_requested') or not result_path:
             job['status'] = 'cancelled'
             job['error_code'] = 'err_cancelled'
+            registry.fail(job['job_id'], error_code='err_cancelled', cancelled=True)
             emit_error(job['job_id'], 'Cancelled')
             return
 
@@ -296,6 +304,7 @@ def run_conversion(job, output_format, options, progress_callback):
             job['result_file_id'] = register_result_file(result_path)
         job['progress'] = 100
         job['status'] = 'completed'
+        registry.complete(job['job_id'], result_path, job.get('input_size'), job.get('output_size'))
 
         emit_complete(job['job_id'], os.path.basename(result_path))
 
@@ -303,6 +312,7 @@ def run_conversion(job, output_format, options, progress_callback):
         job['status'] = 'failed'
         job['error'] = f"Unsupported format: {str(e)}"
         job['error_code'] = 'err_conversion_failed'
+        registry.fail(job['job_id'], job['error'], job['error_code'])
         emit_error(job['job_id'], job['error'])
     except Exception as e:
         error_msg = str(e).lower()
@@ -317,6 +327,7 @@ def run_conversion(job, output_format, options, progress_callback):
         job['status'] = 'failed'
         job['error'] = f"[{error_type}] {str(e)}"
         job['error_code'] = getattr(e, 'code', None) or 'err_conversion_failed'
+        registry.fail(job['job_id'], job['error'], job['error_code'])
         emit_error(job['job_id'], job['error'])
     finally:
         job.pop('_worker', None)
@@ -427,6 +438,8 @@ def download_file(job_id):
 def download_archive_file(filename):
     if not re.match(r'^[\w\-. ]+$', filename):
         return api_response(error={'type': 'InvalidFilenameError', 'message': 'Invalid filename'}, success=False), 400
+    if not registry.find_by_output_name(client_id(), filename):
+        return api_response(error={'type': 'FileNotFoundError', 'message': 'File not found in archive'}, success=False), 404
     
     output_folder = current_app.config['OUTPUT_FOLDER']
     file_path = os.path.join(output_folder, filename)
@@ -443,6 +456,8 @@ def download_archive_file(filename):
 def delete_archive_file(filename):
     if not re.match(r'^[\w\-. ]+$', filename):
         return api_response(error={'type': 'InvalidFilenameError', 'message': 'Invalid filename'}, success=False), 400
+    if not registry.find_by_output_name(client_id(), filename):
+        return api_response(error={'type': 'FileNotFoundError', 'message': 'File not found in archive'}, success=False), 404
     
     output_folder = current_app.config['OUTPUT_FOLDER']
     upload_folder = current_app.config['UPLOAD_FOLDER']

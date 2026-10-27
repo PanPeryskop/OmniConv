@@ -92,3 +92,5 @@ cloudflared-config.yml
 
 .amo-upload-uuid
 web-ext-artifacts/
+
+data/

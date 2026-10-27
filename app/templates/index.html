@@ -2,10 +2,6 @@
 
 {% block content %}
 <section class="hero-section">
-    <div class="hero-badge">
-        <span class="hero-badge-indicator"></span>
-        <span data-i18n="home_badge">AI-Powered Conversion</span>
-    </div>
     <h1 class="hero-heading" data-i18n="hero_title">Convert <span class="hero-heading-accent">Anything</span></h1>
     <p class="hero-description" data-i18n="hero_desc">Convert audio, video, images and documents in a few clicks.</p>
 </section>
@@ -200,6 +196,7 @@
             <div class="progress-bar" id="conversionFill"></div>
         </div>
         <p class="status-message" id="conversionStatus" data-i18n="conv_status_preparing">Preparing file...</p>
+        <p class="job-bg-hint"><span data-i18n="jobs_bg_hint">You can close this page. The result will be waiting in</span> <a href="/dashboard#jobs" data-i18n="jobs_bg_hint_link">Jobs</a></p>
     </div>
 
     <div class="panel result-panel hidden" id="downloadSection">
@@ -233,21 +230,6 @@
         <h3 class="error-heading" data-i18n="error_title">Something went wrong</h3>
         <p class="error-description" id="errorText" data-i18n="err_conversion_failed">An error occurred during conversion</p>
         <button class="btn btn-primary" id="tryAgain" data-i18n="try_again">Try Again</button>
-    </div>
-</section>
-
-<section class="stats-bar">
-    <div class="stat-item">
-        <div class="stat-value">50+</div>
-        <div class="stat-label" data-i18n="home_stat_formats">Formats Supported</div>
-    </div>
-    <div class="stat-item">
-        <div class="stat-value">12</div>
-        <div class="stat-label" data-i18n="home_stat_pdf_tools">PDF Tools</div>
-    </div>
-    <div class="stat-item">
-        <div class="stat-value">AI</div>
-        <div class="stat-label" data-i18n="home_stat_ocr">Powered OCR</div>
     </div>
 </section>
 

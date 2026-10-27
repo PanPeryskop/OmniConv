@@ -5,10 +5,6 @@
 
 {% block content %}
 <section class="hero-section" style="padding-bottom: var(--space-8);">
-    <div class="hero-badge">
-        <span class="hero-badge-indicator"></span>
-        <span data-i18n="compress_badge">Smart Compression</span>
-    </div>
     <h1 class="hero-heading" data-i18n="compress_hero_title">Compress <span class="hero-heading-accent">Files</span></h1>
     <p class="hero-description" data-i18n="compress_hero_desc">Shrink videos, audio, images and PDFs. Pick a quality level or a target size.</p>
 </section>
@@ -149,6 +145,7 @@
             <div class="progress-bar" id="compressionFill"></div>
         </div>
         <p class="status-message" id="compressionStatus" data-i18n="status_analyzing">Analyzing file...</p>
+        <p class="job-bg-hint"><span data-i18n="jobs_bg_hint">You can close this page. The result will be waiting in</span> <a href="/dashboard#jobs" data-i18n="jobs_bg_hint_link">Jobs</a></p>
     </div>
 
     <div class="panel result-panel hidden" id="downloadSection">
@@ -817,6 +814,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!data.success) throw apiError(data.error, null, 'err_compress_failed');
 
             state.jobId = data.data.job_id;
+            OmniJobs.refresh();
             pollStatus();
 
         } catch (err) {

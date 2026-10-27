@@ -56,6 +56,7 @@
             <div class="progress-bar" id="batchProgressBar"></div>
         </div>
         <div class="batch-current-file" id="batchCurrentFile" aria-live="polite"></div>
+        <p class="job-bg-hint"><span data-i18n="jobs_bg_hint_batch">Keep this page open until every file is processed. Finished results also land in</span> <a href="/dashboard#jobs" data-i18n="jobs_bg_hint_batch_link">Jobs</a></p>
         <div class="file-list" id="progressList" style="margin-top: var(--space-6);"></div>
     </div>
 
@@ -722,6 +723,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!convertData.success) throw new Error(convertData.error.message);
             
             const jobId = convertData.data.job_id;
+            OmniJobs.refresh();
             
             await new Promise((resolve, reject) => {
                 const poll = setInterval(async () => {

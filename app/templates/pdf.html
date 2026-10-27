@@ -443,6 +443,7 @@
                 <p class="status-message" data-i18n="pdf_working">Working on it...</p>
                 <button class="btn btn-ghost btn-small" id="pdfCancel" data-i18n="pdf_cancel">Cancel</button>
             </div>
+            <p class="job-bg-hint"><span data-i18n="jobs_bg_hint">You can close this page. The result will be waiting in</span> <a href="/dashboard#jobs" data-i18n="jobs_bg_hint_link">Jobs</a></p>
         </div>
 
         <div class="panel result-panel hidden" id="pdfResult">
@@ -2221,6 +2222,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw apiError(body.error, null, 'pdf_err_failed');
             }
             state.jobId = body.data.job_id;
+            OmniJobs.refresh();
             poll(tool, stat);
         } catch (err) {
             showError(err);

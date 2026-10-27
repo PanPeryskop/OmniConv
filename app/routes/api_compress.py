@@ -7,6 +7,8 @@ from ..utils.file_handler import generate_file_id
 from ..services import VideoCompressor, AudioCompressor, ImageCompressor, PdfCompressor
 from ..services.compressor import CompressionError
 from .websocket import emit_progress, emit_complete, emit_error
+from ..services.job_registry import registry
+from ..utils.client import client_id
 
 compress_bp = Blueprint('compress', __name__)
 
@@ -110,9 +112,11 @@ def start_compression():
         'compression_kind': kind,
     }
     conversion_jobs[job_id] = job
+    registry.start(job_id, client_id(), 'compress', source['original_filename'], src=original_ext.lstrip('.').lower(), dst=kind)
 
     def progress_callback(progress):
         job['progress'] = progress
+        registry.progress(job_id, progress)
         emit_progress(job_id, progress, status='compressing')
 
     thread = threading.Thread(target=run_compression, args=(job, kind, target_size_mb, options, progress_callback), daemon=True)
@@ -140,6 +144,7 @@ def run_compression(job, kind, target_size_mb, options, progress_callback):
         if job.get('cancel_requested'):
             job['status'] = 'cancelled'
             job['error_code'] = 'err_cancelled'
+            registry.fail(job['job_id'], error_code='err_cancelled', cancelled=True)
             emit_error(job['job_id'], 'Cancelled')
             return
         if not result_path or not os.path.exists(result_path):
@@ -154,6 +159,7 @@ def run_compression(job, kind, target_size_mb, options, progress_callback):
         job['compression_info'] = getattr(compressor, 'info', {})
         job['progress'] = 100
         job['status'] = 'completed'
+        registry.complete(job['job_id'], result_path, input_size, output_size)
 
         emit_complete(job['job_id'], os.path.basename(result_path))
 
@@ -161,6 +167,7 @@ def run_compression(job, kind, target_size_mb, options, progress_callback):
         job['status'] = 'failed'
         job['error'] = str(e)
         job['error_code'] = getattr(e, 'code', 'err_compress_failed')
+        registry.fail(job['job_id'], job['error'], job['error_code'])
         emit_error(job['job_id'], str(e))
     finally:
         job.pop('_worker', None)

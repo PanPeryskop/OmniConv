@@ -446,6 +446,7 @@ async function startConversion(format) {
         const result = await api.startConversion(appState.currentFileId, format, options);
         if (!result.success) throw translateError(result.error, null, 'err_conversion_failed');
         appState.currentJobId = result.data.job_id;
+        OmniJobs.refresh();
         clearInterval(appState.pollInterval);
         appState.pollInterval = setInterval(checkStatus, 1500);
     } catch (error) {

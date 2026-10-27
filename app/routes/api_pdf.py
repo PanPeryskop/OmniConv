@@ -8,6 +8,8 @@ from .api_common import conversion_jobs, api_response, unique_output_base, touch
 from ..utils.file_handler import generate_file_id
 from ..services.pdf_tools import PdfTools, PdfToolError
 from .websocket import emit_progress, emit_complete, emit_error
+from ..services.job_registry import registry
+from ..utils.client import client_id
 
 pdf_bp = Blueprint('pdf', __name__)
 
@@ -138,9 +140,12 @@ def pdf_process():
         'progress': 0,
     }
     conversion_jobs[job_id] = job
+    title = source['original_filename'] if len(jobs) == 1 or tool != 'merge' else f"{source['original_filename']} +{len(jobs) - 1}"
+    registry.start(job_id, client_id(), 'pdf', title, src='pdf', dst=tool)
 
     def progress_callback(progress):
         job['progress'] = progress
+        registry.progress(job_id, progress)
         emit_progress(job_id, progress, status='processing')
 
     input_paths = [j['input_path'] for j in jobs]
@@ -168,12 +173,14 @@ def run_pdf_tool(job, tools, tool, input_paths, out_base, options):
 
         job['progress'] = 100
         job['status'] = 'completed'
+        registry.complete(job['job_id'], result_path, job['input_size'], job['output_size'])
         emit_complete(job['job_id'], os.path.basename(result_path))
     except Exception as e:
         code = getattr(e, 'code', 'err_pdf_failed')
         job['status'] = 'cancelled' if code == 'err_cancelled' else 'failed'
         job['error'] = str(e)
         job['error_code'] = code
+        registry.fail(job['job_id'], job['error'], code, cancelled=code == 'err_cancelled')
         emit_error(job['job_id'], str(e))
     finally:
         job.pop('_worker', None)

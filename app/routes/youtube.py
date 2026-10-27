@@ -1,5 +1,8 @@
 from flask import Blueprint, render_template, request, jsonify, current_app, send_file
 from ..services.video_downloader import VideoDownloaderService, DownloadError
+from ..services.job_registry import registry
+from ..utils.client import client_id
+from urllib.parse import urlparse
 import os
 import threading
 import uuid
@@ -31,13 +34,7 @@ def cleanup_old_jobs():
                 to_remove.append(job_id)
 
         for job_id in to_remove:
-            job = JOBS.pop(job_id, {})
-            file_path = job.get('path')
-            if file_path and os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                except Exception:
-                    pass
+            JOBS.pop(job_id, None)
 
 
 def background_download(job_id, app, url, format_id, is_playlist):
@@ -47,6 +44,7 @@ def background_download(job_id, app, url, format_id, is_playlist):
             JOBS[job_id]['status'] = 'error'
             JOBS[job_id]['error'] = 'Too many downloads in progress. Please wait and try again.'
             JOBS[job_id]['category'] = 'rate_limited'
+        registry.fail(job_id, JOBS[job_id]['error'], 'rate_limited')
         return
 
     try:
@@ -75,6 +73,7 @@ def background_download(job_id, app, url, format_id, is_playlist):
                                 JOBS[job_id]['progress'] = p
                                 JOBS[job_id]['speed'] = d.get('speed')
                                 JOBS[job_id]['eta'] = d.get('eta')
+                            registry.progress(job_id, p)
                     elif d['status'] == 'finished':
                         with JOBS_LOCK:
                             JOBS[job_id]['progress'] = 95
@@ -100,6 +99,7 @@ def background_download(job_id, app, url, format_id, is_playlist):
                     JOBS[job_id]['progress'] = 100
                     JOBS[job_id]['path'] = zip_path
                     JOBS[job_id]['filename'] = os.path.basename(zip_path)
+                complete_registry_job(job_id, zip_path)
 
             else:
                 file_path = service.download_video(url, format_id, progress_hook=progress_hook)
@@ -126,6 +126,7 @@ def background_download(job_id, app, url, format_id, is_playlist):
                     JOBS[job_id]['progress'] = 100
                     JOBS[job_id]['path'] = file_path
                     JOBS[job_id]['filename'] = os.path.basename(file_path)
+                complete_registry_job(job_id, file_path)
 
     except DownloadError as e:
         logger.error(f"Job {job_id} failed ({e.category}): {e}")
@@ -134,6 +135,7 @@ def background_download(job_id, app, url, format_id, is_playlist):
             JOBS[job_id]['error'] = str(e)
             JOBS[job_id]['category'] = e.category
             JOBS[job_id]['retry_possible'] = e.retry_possible
+        registry.fail(job_id, str(e), e.category)
 
     except Exception as e:
         msg = str(e)
@@ -147,9 +149,28 @@ def background_download(job_id, app, url, format_id, is_playlist):
             JOBS[job_id]['error'] = msg[:300] if len(msg) > 300 else msg
             JOBS[job_id]['category'] = 'unknown'
             JOBS[job_id]['retry_possible'] = True
+        registry.fail(job_id, JOBS[job_id]['error'], 'unknown')
 
     finally:
         download_semaphore.release()
+
+
+def complete_registry_job(job_id, path):
+    with JOBS_LOCK:
+        title_from_url = JOBS.get(job_id, {}).get('title_from_url')
+    title = os.path.splitext(os.path.basename(path))[0] if title_from_url else None
+    registry.complete(job_id, path, title=title)
+
+
+def format_label(format_id):
+    if not format_id or format_id in ('best', 'bestvideo+bestaudio/best'):
+        return 'best'
+    if format_id == 'bestaudio/best':
+        return 'mp3'
+    match = re.search(r'height<=(\d+)', format_id)
+    if match:
+        return f"{match.group(1)}p"
+    return format_id
 
 
 def _validate_url(url: str) -> bool:
@@ -214,6 +235,7 @@ def download():
     if not _validate_url(url):
         return jsonify({'success': False, 'error': 'Please enter a valid URL'}), 400
 
+    title = (data.get('title') or '').strip()[:300]
     job_id = str(uuid.uuid4())
     with JOBS_LOCK:
         JOBS[job_id] = {
@@ -221,7 +243,11 @@ def download():
             'progress': 0,
             'created_at': time.time(),
             'url': url,
+            'title_from_url': not title,
         }
+    host = (urlparse(url).hostname or '').removeprefix('www.')
+    label = (data.get('label') or '').strip()[:40] or format_label(format_id)
+    registry.start(job_id, client_id(), 'video', title or url, src=host, dst=('playlist:' if is_playlist else '') + label)
 
     app = current_app._get_current_object()
 
@@ -333,6 +359,7 @@ def smart_rename_youtube(job_id):
         with JOBS_LOCK:
             job['path'] = new_path
             job['filename'] = clean_name
+        registry.move_output(job_id, new_path)
             
         return jsonify({'success': True, 'new_name': clean_name})
         
