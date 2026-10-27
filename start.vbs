@@ -15,10 +15,15 @@ If Not FSO.FileExists(RunScript) Then
     WScript.Quit 1
 End If
 
+ExtraArgs = ""
+For Each Arg In WScript.Arguments
+    ExtraArgs = ExtraArgs & " " & Chr(34) & Arg & Chr(34)
+Next
+
 If FSO.FileExists(VenvPython) Then
-    WshShell.Run Chr(34) & VenvPython & Chr(34) & " " & Chr(34) & RunScript & Chr(34), 0, False
+    WshShell.Run Chr(34) & VenvPython & Chr(34) & " " & Chr(34) & RunScript & Chr(34) & ExtraArgs, 0, False
 Else
-    WshShell.Run "python " & Chr(34) & RunScript & Chr(34), 0, False
+    WshShell.Run "python " & Chr(34) & RunScript & Chr(34) & ExtraArgs, 0, False
 End If
 
 If Err.Number <> 0 Then

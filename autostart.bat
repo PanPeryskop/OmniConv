@@ -13,7 +13,7 @@ powershell -NoProfile -Command ^
   "$ws = New-Object -ComObject WScript.Shell;" ^
   "$lnk = $ws.CreateShortcut('%STARTUP_FOLDER%\%SHORTCUT_NAME%');" ^
   "$lnk.TargetPath = 'wscript.exe';" ^
-  "$lnk.Arguments = '//nologo \""%TARGET_VBS%""\"';" ^
+  "$lnk.Arguments = '//nologo \""%TARGET_VBS%""\" --autostart';" ^
   "$lnk.WorkingDirectory = '%SCRIPT_DIR%';" ^
   "$lnk.IconLocation = '%ICON_PATH%';" ^
   "$lnk.Save()"

@@ -1,121 +1,125 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <style>
-    :root {
-        --bg-color: #0f0f13;
-        --bg-panel: #18181b;
-        --accent: #8b5cf6;
-        --accent-hover: #7c3aed;
-        --text-main: #ffffff;
-        --text-muted: #a1a1aa;
-        --border: #27272a;
-    }
-    body { 
-      width: 360px; 
-      background: var(--bg-color); 
-      color: var(--text-main); 
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
-      margin: 0; 
-      padding: 16px; 
-    }
-    h2 { 
-      margin: 0 0 12px 0; 
-      font-size: 16px; 
-      display: flex; 
-      align-items: center; 
-      gap: 8px; 
-      color: #c4b5fd; 
-    }
-    .video-info { display: none; margin-bottom: 16px; background: var(--bg-panel); padding: 12px; border-radius: 8px; border: 1px solid var(--border); }
-    .video-info img { width: 100%; border-radius: 6px; margin-bottom: 8px; aspect-ratio: 16/9; object-fit: cover;}
-    .video-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .video-author { font-size: 12px; color: var(--text-muted); margin-bottom: 12px;}
-    
-    .format-options { display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto; margin-bottom: 16px;}
-    .format-options::-webkit-scrollbar { width: 6px; }
-    .format-options::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-    .format-option {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      padding: 8px 12px;
-      border-radius: 6px;
-      cursor: pointer;
-      text-align: left;
-      font-size: 13px;
-      transition: 0.2s;
-    }
-    .format-option:hover { border-color: var(--text-muted); color: var(--text-main); }
-    .format-option.active { border-color: var(--accent); color: var(--accent); background: rgba(139, 92, 246, 0.1); }
-    
-    .btn { 
-      background: var(--accent); 
-      color: #fff; 
-      border: none; 
-      border-radius: 6px; 
-      padding: 10px; 
-      width: 100%; 
-      cursor: pointer; 
-      font-weight: 600; 
-      font-size: 14px;
-      display: flex; 
-      justify-content: center; 
-      align-items: center; 
-      gap: 8px; 
-      transition: all 0.2s; 
-      margin-bottom: 8px;
-    }
-    .btn:hover:not(:disabled) { background: var(--accent-hover); }
-    .btn:disabled { opacity: 0.7; cursor: not-allowed; }
-    .btn-secondary { background: var(--bg-panel); border: 1px solid var(--border); }
-    .btn-secondary:hover:not(:disabled) { background: #27272a; }
-    
-    .status-msg { text-align: center; color: var(--text-muted); font-size: 13px; padding: 20px; }
-    
-    .loader { 
-      display: none; 
-      border: 2px solid transparent; 
-      border-top-color: white; 
-      border-radius: 50%; 
-      width: 14px; 
-      height: 14px; 
-      animation: spin 1s linear infinite; 
-    }
-    @keyframes spin { 100% { transform: rotate(360deg); } }
-  </style>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="styles.css">
 </head>
-<body>
-  <h2>
-    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-    </svg>
-    OmniConv
-  </h2>
-  
-  <div id="loadingInfo" class="status-msg">
-      Fetching media info...
-  </div>
-  
-  <div id="videoInfo" class="video-info">
-      <img id="vThumb" src="" alt="Thumbnail" />
-      <div class="video-title" id="vTitle">Title</div>
-      <div class="video-author" id="vAuthor">Author</div>
-      
-      <div class="format-options" id="formatList">
-      </div>
-  </div>
+<body class="popup">
+    <header class="top">
+        <div class="brand">
+            <span class="logo" data-icon="download" data-size="15"></span>
+            <span>OmniConv</span>
+        </div>
+        <button class="status checking" id="status" type="button" data-i18n-title="statusRecheck">
+            <span class="dot"></span>
+            <span id="statusText" data-i18n="statusChecking"></span>
+        </button>
+        <div class="spacer"></div>
+        <button class="icon-btn" id="openApp" type="button" data-i18n-title="btnOpenApp"><span data-icon="external"></span></button>
+        <button class="icon-btn" id="openSettings" type="button" data-i18n-title="btnSettings"><span data-icon="sliders"></span></button>
+    </header>
 
-  <div style="display:none;" id="actionArea">
-      <button class="btn" id="downloadBtn">
-        <div class="loader" id="loader"></div>
-        <span id="btnText">Download Media</span>
-      </button>
-  </div>
-  
-  <button class="btn btn-secondary" id="openAppBtn" style="display:none;">Open Web App</button>
-  
-  <script src="popup.js"></script>
+    <nav class="tabs" role="tablist">
+        <button class="tab" type="button" data-tab="media"><span data-icon="film" data-size="14"></span><span data-i18n="tabMedia"></span></button>
+        <button class="tab" type="button" data-tab="file" hidden><span data-icon="convert" data-size="14"></span><span data-i18n="tabFile"></span></button>
+        <button class="tab" type="button" data-tab="queue"><span data-icon="queue" data-size="14"></span><span data-i18n="tabQueue"></span><span class="count" id="queueCount" hidden></span></button>
+    </nav>
+
+    <main>
+        <section class="view" id="view-media" hidden>
+            <div class="empty" id="mediaEmpty" hidden>
+                <div class="big-icon" data-icon="globe" data-size="24"></div>
+                <h3 data-i18n="emptyNoPageTitle"></h3>
+                <p data-i18n="emptyNoPageText"></p>
+            </div>
+
+            <div class="empty offline" id="mediaOffline" hidden>
+                <div class="big-icon" data-icon="offline" data-size="24"></div>
+                <h3 data-i18n="offlineTitle"></h3>
+                <p><span data-i18n="offlineText"></span> <code id="offlineUrl"></code></p>
+                <div class="row">
+                    <button class="btn primary small" id="offlineRetry" type="button"><span data-icon="retry" data-size="14"></span><span data-i18n="btnRetry"></span></button>
+                    <button class="btn small" id="offlineSettings" type="button"><span data-icon="sliders" data-size="14"></span><span data-i18n="btnSettings"></span></button>
+                </div>
+            </div>
+
+            <div class="view" id="mediaMain" hidden>
+                <div class="segmented" id="ytSwitch" hidden>
+                    <button type="button" data-mode="video" data-i18n="segVideo"></button>
+                    <button type="button" data-mode="playlist" data-i18n="segPlaylist"></button>
+                </div>
+
+                <article class="card" id="mediaCard">
+                    <div class="thumb" id="thumb">
+                        <img id="thumbImg" alt="">
+                        <div class="no-thumb" id="noThumb" hidden><span data-icon="film" data-size="28"></span></div>
+                        <span class="platform" id="platformBadge" hidden></span>
+                        <span class="badge" id="durationBadge" hidden></span>
+                    </div>
+                    <div class="meta">
+                        <div class="title" id="mediaTitle"></div>
+                        <div class="sub" id="mediaSub"></div>
+                    </div>
+                </article>
+
+                <div class="playlist" id="playlistBox" hidden>
+                    <div class="pl-head"><span data-icon="list" data-size="14"></span><span id="plHead"></span></div>
+                    <ol id="plList"></ol>
+                </div>
+
+                <div class="notice error" id="infoError" hidden>
+                    <span data-icon="alert" data-size="15"></span>
+                    <span class="grow" id="infoErrorText"></span>
+                    <button class="link" id="infoRetry" type="button" data-i18n="btnRetry"></button>
+                </div>
+
+                <div class="section-label" data-i18n="lblQuality"></div>
+                <div class="chips" id="formatChips"></div>
+
+                <button class="btn primary big" id="downloadBtn" type="button">
+                    <span data-icon="download"></span>
+                    <span id="downloadLabel"></span>
+                </button>
+                <div class="hint" id="shortcutHint" hidden></div>
+            </div>
+        </section>
+
+        <section class="view" id="view-file" hidden>
+            <article class="card file-card">
+                <div class="file-icon" id="fileIcon"></div>
+                <div class="meta">
+                    <div class="title" id="fileName"></div>
+                    <div class="sub" id="fileType"></div>
+                </div>
+            </article>
+            <div class="section-label" data-i18n="lblConvertTo"></div>
+            <div class="chips" id="targetChips"></div>
+            <button class="btn primary big" id="convertBtn" type="button">
+                <span data-icon="convert"></span>
+                <span id="convertLabel"></span>
+            </button>
+            <button class="btn big" id="ocrBtn" type="button" hidden>
+                <span data-icon="text"></span>
+                <span data-i18n="btnOcr"></span>
+            </button>
+        </section>
+
+        <section class="view" id="view-queue" hidden>
+            <div class="queue-head">
+                <span id="queueSummary"></span>
+                <button class="link" id="clearFinished" type="button" data-i18n="btnClearFinished"></button>
+            </div>
+            <div class="queue" id="queueList"></div>
+            <div class="empty" id="queueEmpty" hidden>
+                <div class="big-icon" data-icon="inbox" data-size="24"></div>
+                <h3 data-i18n="emptyQueueTitle"></h3>
+                <p data-i18n="emptyQueueText"></p>
+            </div>
+        </section>
+    </main>
+
+    <script src="shared.js"></script>
+    <script src="ui.js"></script>
+    <script src="popup.js"></script>
 </body>
 </html>

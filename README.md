@@ -52,21 +52,14 @@
 git clone https://github.com/PanPeryskop/OmniConv
 cd OmniConv
 
-# Create virtual environment
-python -m venv .venv
-
-# Activate virtual environment
-# Windows:
-.venv\Scripts\activate
-# Linux/macOS:
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
+# Create .venv and install dependencies (https://docs.astral.sh/uv/)
+uv sync
 
 # Run the application
-python run.py
+uv run run.py
 ```
+
+On Windows you can also double-click `start.bat` (runs in the tray, no console window) and `autostart.bat` to launch OmniConv at login. yt-dlp updates itself on every start; pass `--no-update` or set `OMNICONV_NO_UPDATE=1` to disable it.
 
 ### 🌐 Open in Browser
 
@@ -173,7 +166,8 @@ OmniConv/
 │   └── templates/          # HTML templates
 ├── uploads/                # Temporary uploads
 ├── outputs/                # Converted files
-├── requirements.txt
+├── pyproject.toml          # Dependencies (uv)
+├── uv.lock
 └── run.py                  # Entry point
 ```
 

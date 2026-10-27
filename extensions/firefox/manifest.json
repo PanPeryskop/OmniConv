@@ -1,25 +1,47 @@
 {
   "manifest_version": 3,
   "name": "OmniConv",
-  "version": "1.0.0",
-  "description": "Premium download assistant for OmniConv",
+  "version": "1.1.0",
+  "description": "__MSG_extDescription__",
+  "default_locale": "en",
   "permissions": [
     "contextMenus",
     "notifications",
     "activeTab",
-    "downloads"
+    "downloads",
+    "downloads.open",
+    "storage",
+    "alarms",
+    "clipboardWrite"
   ],
   "host_permissions": [
-    "http://127.0.0.1:5000/*",
-    "http://localhost:5000/*",
     "<all_urls>"
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "OmniConv"
+    "default_title": "OmniConv",
+    "default_icon": "icon.svg"
   },
   "background": {
-    "scripts": ["background.js"]
+    "scripts": ["shared.js", "background.js"]
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+O" },
+      "description": "__MSG_cmdOpen__"
+    },
+    "quick-download": {
+      "suggested_key": { "default": "Alt+Shift+D" },
+      "description": "__MSG_cmdQuickDownload__"
+    },
+    "quick-audio": {
+      "suggested_key": { "default": "Alt+Shift+M" },
+      "description": "__MSG_cmdQuickAudio__"
+    }
   },
   "icons": {
     "16": "icon.svg",
@@ -29,7 +51,10 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "omniconv@gad.local",
-      "strict_min_version": "109.0"
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
     }
   }
 }

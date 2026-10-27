@@ -1,0 +1,401 @@
+{
+  "extDescription": {
+    "message": "Pobieraj filmy i muzykę, konwertuj pliki i wyciągaj tekst przez swój serwer OmniConv."
+  },
+  "cmdOpen": {
+    "message": "Otwórz OmniConv"
+  },
+  "cmdQuickDownload": {
+    "message": "Pobierz bieżącą stronę (domyślna jakość)"
+  },
+  "cmdQuickAudio": {
+    "message": "Pobierz bieżącą stronę jako MP3"
+  },
+  "errTimeout": {
+    "message": "Serwer zbyt długo nie odpowiada."
+  },
+  "errOffline": {
+    "message": "Brak połączenia z OmniConv pod $1. Czy serwer działa?"
+  },
+  "errUnknown": {
+    "message": "Coś poszło nie tak."
+  },
+  "errFetchSource": {
+    "message": "Nie udało się pobrać pliku źródłowego."
+  },
+  "errOcrEmpty": {
+    "message": "Nie znaleziono tekstu na tym obrazie."
+  },
+  "errFormatUnavailable": {
+    "message": "$1 nie jest dostępny dla tego pliku. Dostępne: $2"
+  },
+  "errJobLost": {
+    "message": "Serwer nie zna już tego zadania (restart serwera?)."
+  },
+  "errSave": {
+    "message": "Nie udało się zapisać pliku."
+  },
+  "errDownloadInterrupted": {
+    "message": "Zapisywanie przerwane ($1)."
+  },
+  "errInterrupted": {
+    "message": "Przerwane przez zamknięcie przeglądarki."
+  },
+  "errNoUrl": {
+    "message": "Na tej stronie nie ma czego pobrać."
+  },
+  "errFileMissing": {
+    "message": "Pliku nie ma już na dysku."
+  },
+  "fmtAudio": {
+    "message": "MP3"
+  },
+  "fmtBest": {
+    "message": "Najlepsza"
+  },
+  "fmtImages": {
+    "message": "Obrazy"
+  },
+  "fmtOcrText": {
+    "message": "Tekst OCR"
+  },
+  "ntfStartTitle": {
+    "message": "OmniConv: start"
+  },
+  "ntfErrorTitle": {
+    "message": "OmniConv: błąd"
+  },
+  "ntfOcrTitle": {
+    "message": "Tekst wyciągnięty"
+  },
+  "ntfOcrCopied": {
+    "message": "Skopiowano do schowka."
+  },
+  "ntfDoneTitle": {
+    "message": "Pobieranie zakończone"
+  },
+  "stStarting": {
+    "message": "Uruchamianie…"
+  },
+  "stQueued": {
+    "message": "W kolejce"
+  },
+  "stUploading": {
+    "message": "Wysyłanie…"
+  },
+  "stOcr": {
+    "message": "Odczytywanie tekstu…"
+  },
+  "stCopied": {
+    "message": "Skopiowano"
+  },
+  "stOcrReady": {
+    "message": "Tekst gotowy"
+  },
+  "stConverting": {
+    "message": "Konwersja"
+  },
+  "stDownloading": {
+    "message": "Pobieranie"
+  },
+  "stReconnecting": {
+    "message": "Ponowne łączenie…"
+  },
+  "stSaving": {
+    "message": "Zapisywanie…"
+  },
+  "stRenaming": {
+    "message": "Inteligentna zmiana nazwy…"
+  },
+  "stProcessing": {
+    "message": "Przetwarzanie"
+  },
+  "stDone": {
+    "message": "Gotowe"
+  },
+  "stCancelled": {
+    "message": "Anulowano"
+  },
+  "lblFile": {
+    "message": "Plik"
+  },
+  "lblQuality": {
+    "message": "Jakość"
+  },
+  "lblConvertTo": {
+    "message": "Konwertuj do"
+  },
+  "lblItems": {
+    "message": "elementów: $1"
+  },
+  "lblPlaylistItems": {
+    "message": "Playlista · elementów: $1"
+  },
+  "lblEta": {
+    "message": "zostało $1"
+  },
+  "menuDownloadBest": {
+    "message": "Pobierz (domyślna jakość)"
+  },
+  "menuDownloadAudio": {
+    "message": "Pobierz jako MP3"
+  },
+  "menuDownloadQuality": {
+    "message": "Pobierz w jakości"
+  },
+  "menuConvertImage": {
+    "message": "Konwertuj obraz do"
+  },
+  "menuOcr": {
+    "message": "Wyciągnij tekst (OCR) do schowka"
+  },
+  "menuConvertLink": {
+    "message": "Konwertuj plik z linku do"
+  },
+  "menuOpenApp": {
+    "message": "Otwórz w OmniConv"
+  },
+  "menuOpenQueue": {
+    "message": "Pokaż kolejkę"
+  },
+  "statusRecheck": {
+    "message": "Sprawdź połączenie ponownie"
+  },
+  "statusChecking": {
+    "message": "Sprawdzanie…"
+  },
+  "statusOnline": {
+    "message": "Połączono"
+  },
+  "statusOffline": {
+    "message": "Offline"
+  },
+  "btnOpenApp": {
+    "message": "Otwórz aplikację"
+  },
+  "btnSettings": {
+    "message": "Ustawienia"
+  },
+  "btnRetry": {
+    "message": "Spróbuj ponownie"
+  },
+  "btnDownload": {
+    "message": "Pobierz · $1"
+  },
+  "btnDownloadPlaylist": {
+    "message": "Pobierz playlistę · $1"
+  },
+  "btnAdded": {
+    "message": "Dodano do kolejki"
+  },
+  "btnConvertTo": {
+    "message": "Konwertuj do $1"
+  },
+  "btnOcr": {
+    "message": "Wyciągnij tekst (OCR)"
+  },
+  "btnClearFinished": {
+    "message": "Wyczyść zakończone"
+  },
+  "tabMedia": {
+    "message": "Pobierz"
+  },
+  "tabFile": {
+    "message": "Konwertuj"
+  },
+  "tabQueue": {
+    "message": "Kolejka"
+  },
+  "emptyNoPageTitle": {
+    "message": "Tu nie ma nic do pobrania"
+  },
+  "emptyNoPageText": {
+    "message": "Otwórz stronę z filmem, muzyką albo plikiem, np. YouTube, SoundCloud lub PDF."
+  },
+  "offlineTitle": {
+    "message": "OmniConv nie odpowiada"
+  },
+  "offlineText": {
+    "message": "Uruchom serwer (start.bat) albo sprawdź adres:"
+  },
+  "emptyQueueTitle": {
+    "message": "Kolejka jest pusta"
+  },
+  "emptyQueueText": {
+    "message": "Tu pojawią się pobierania i konwersje z postępem na żywo."
+  },
+  "segVideo": {
+    "message": "Ten film"
+  },
+  "segPlaylist": {
+    "message": "Cała playlista"
+  },
+  "chipBestSub": {
+    "message": "auto"
+  },
+  "chipMaxSub": {
+    "message": "maks."
+  },
+  "chipOcrSub": {
+    "message": "rozpoznawanie tekstu"
+  },
+  "chipZipSub": {
+    "message": "ZIP"
+  },
+  "hintQuick": {
+    "message": "szybkie pobieranie z każdej strony"
+  },
+  "type_image": {
+    "message": "Obraz"
+  },
+  "type_audio": {
+    "message": "Audio"
+  },
+  "type_video": {
+    "message": "Wideo"
+  },
+  "type_document": {
+    "message": "Dokument"
+  },
+  "queueSummary": {
+    "message": "Aktywne: $1 · Zakończone: $2"
+  },
+  "actCancel": {
+    "message": "Anuluj"
+  },
+  "actOpen": {
+    "message": "Otwórz plik"
+  },
+  "actShow": {
+    "message": "Pokaż w folderze"
+  },
+  "actCopy": {
+    "message": "Kopiuj tekst"
+  },
+  "actRetry": {
+    "message": "Ponów"
+  },
+  "actRemove": {
+    "message": "Usuń z listy"
+  },
+  "toastCopied": {
+    "message": "Skopiowano do schowka"
+  },
+  "toastSaved": {
+    "message": "Zapisano"
+  },
+  "toastCleared": {
+    "message": "Historia wyczyszczona"
+  },
+  "optTitle": {
+    "message": "Ustawienia OmniConv"
+  },
+  "optSubtitle": {
+    "message": "Dodatek do Twojego serwera OmniConv"
+  },
+  "optServer": {
+    "message": "Serwer"
+  },
+  "optServerUrl": {
+    "message": "Adres serwera"
+  },
+  "optServerUrlDesc": {
+    "message": "Gdzie działa OmniConv. Podaj adres w sieci lokalnej, żeby korzystać z innego komputera."
+  },
+  "optTest": {
+    "message": "Testuj"
+  },
+  "optTestOk": {
+    "message": "Połączono z $1"
+  },
+  "optTestFail": {
+    "message": "Brak odpowiedzi z $1"
+  },
+  "optDownloads": {
+    "message": "Pobieranie"
+  },
+  "optQuality": {
+    "message": "Domyślna jakość"
+  },
+  "optQualityDesc": {
+    "message": "Używana w menu kontekstowym i skrócie, domyślnie zaznaczona w okienku."
+  },
+  "optSubfolder": {
+    "message": "Podfolder w Pobranych"
+  },
+  "optSubfolderDesc": {
+    "message": "Zostaw puste, żeby zapisywać prosto do Pobranych."
+  },
+  "optSubfolderPlaceholder": {
+    "message": "(brak)"
+  },
+  "optSaveAs": {
+    "message": "Pytaj, gdzie zapisać"
+  },
+  "optSaveAsDesc": {
+    "message": "Pokazuj okno zapisu dla każdego pliku."
+  },
+  "optSmartRename": {
+    "message": "Inteligentne nazwy plików (AI)"
+  },
+  "optSmartRenameDesc": {
+    "message": "Porządkuje nazwy lokalnym LLM przed zapisem. Wymaga skonfigurowanego LLM."
+  },
+  "optOther": {
+    "message": "Inne"
+  },
+  "optNotifications": {
+    "message": "Powiadomienia"
+  },
+  "optNotificationsDesc": {
+    "message": "Powiadamiaj o zakończeniu lub błędzie pobierania."
+  },
+  "optOcrLang": {
+    "message": "Język OCR"
+  },
+  "optOcrLangDesc": {
+    "message": "Podpowiedź języka dla rozpoznawania tekstu."
+  },
+  "optHistory": {
+    "message": "Historia"
+  },
+  "optHistoryDesc": {
+    "message": "Usuń zakończone pozycje z kolejki."
+  },
+  "optClear": {
+    "message": "Wyczyść"
+  },
+  "optShortcuts": {
+    "message": "Skróty klawiszowe"
+  },
+  "optShortcutsDesc": {
+    "message": "Skróty zmienisz w about:addons, ikona zębatki, Zarządzaj skrótami rozszerzeń."
+  },
+  "optEditShortcuts": {
+    "message": "Zmień skróty"
+  },
+  "optNoShortcut": {
+    "message": "brak"
+  },
+  "qualityBest": {
+    "message": "Najlepsza dostępna"
+  },
+  "quality2160": {
+    "message": "Do 2160p (4K)"
+  },
+  "quality1440": {
+    "message": "Do 1440p"
+  },
+  "quality1080": {
+    "message": "Do 1080p"
+  },
+  "quality720": {
+    "message": "Do 720p"
+  },
+  "quality480": {
+    "message": "Do 480p"
+  },
+  "qualityAudio": {
+    "message": "Tylko audio (MP3)"
+  }
+}

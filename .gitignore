@@ -89,3 +89,6 @@ build.bat
 
 # Cloudflare Tunnel
 cloudflared-config.yml
+
+.amo-upload-uuid
+web-ext-artifacts/

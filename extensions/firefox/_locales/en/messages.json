@@ -1,0 +1,401 @@
+{
+  "extDescription": {
+    "message": "Download videos and music, convert files and extract text with your OmniConv server."
+  },
+  "cmdOpen": {
+    "message": "Open OmniConv"
+  },
+  "cmdQuickDownload": {
+    "message": "Download current page (default quality)"
+  },
+  "cmdQuickAudio": {
+    "message": "Download current page as MP3"
+  },
+  "errTimeout": {
+    "message": "The server took too long to respond."
+  },
+  "errOffline": {
+    "message": "Cannot reach OmniConv at $1. Is the server running?"
+  },
+  "errUnknown": {
+    "message": "Something went wrong."
+  },
+  "errFetchSource": {
+    "message": "Could not fetch the source file."
+  },
+  "errOcrEmpty": {
+    "message": "No text was found in this image."
+  },
+  "errFormatUnavailable": {
+    "message": "$1 is not available for this file. Available: $2"
+  },
+  "errJobLost": {
+    "message": "The server no longer knows this job (was it restarted?)."
+  },
+  "errSave": {
+    "message": "Could not save the file."
+  },
+  "errDownloadInterrupted": {
+    "message": "Saving was interrupted ($1)."
+  },
+  "errInterrupted": {
+    "message": "Interrupted when the browser was closed."
+  },
+  "errNoUrl": {
+    "message": "There is nothing to download on this page."
+  },
+  "errFileMissing": {
+    "message": "The file is no longer on disk."
+  },
+  "fmtAudio": {
+    "message": "MP3"
+  },
+  "fmtBest": {
+    "message": "Best"
+  },
+  "fmtImages": {
+    "message": "Images"
+  },
+  "fmtOcrText": {
+    "message": "OCR text"
+  },
+  "ntfStartTitle": {
+    "message": "OmniConv: started"
+  },
+  "ntfErrorTitle": {
+    "message": "OmniConv: error"
+  },
+  "ntfOcrTitle": {
+    "message": "Text extracted"
+  },
+  "ntfOcrCopied": {
+    "message": "Copied to clipboard."
+  },
+  "ntfDoneTitle": {
+    "message": "Download finished"
+  },
+  "stStarting": {
+    "message": "Starting…"
+  },
+  "stQueued": {
+    "message": "Queued"
+  },
+  "stUploading": {
+    "message": "Uploading…"
+  },
+  "stOcr": {
+    "message": "Reading text…"
+  },
+  "stCopied": {
+    "message": "Copied"
+  },
+  "stOcrReady": {
+    "message": "Text ready"
+  },
+  "stConverting": {
+    "message": "Converting"
+  },
+  "stDownloading": {
+    "message": "Downloading"
+  },
+  "stReconnecting": {
+    "message": "Reconnecting…"
+  },
+  "stSaving": {
+    "message": "Saving…"
+  },
+  "stRenaming": {
+    "message": "Smart renaming…"
+  },
+  "stProcessing": {
+    "message": "Processing"
+  },
+  "stDone": {
+    "message": "Done"
+  },
+  "stCancelled": {
+    "message": "Cancelled"
+  },
+  "lblFile": {
+    "message": "File"
+  },
+  "lblQuality": {
+    "message": "Quality"
+  },
+  "lblConvertTo": {
+    "message": "Convert to"
+  },
+  "lblItems": {
+    "message": "$1 items"
+  },
+  "lblPlaylistItems": {
+    "message": "Playlist · $1 items"
+  },
+  "lblEta": {
+    "message": "$1 left"
+  },
+  "menuDownloadBest": {
+    "message": "Download (default quality)"
+  },
+  "menuDownloadAudio": {
+    "message": "Download as MP3"
+  },
+  "menuDownloadQuality": {
+    "message": "Download in quality"
+  },
+  "menuConvertImage": {
+    "message": "Convert image to"
+  },
+  "menuOcr": {
+    "message": "Extract text (OCR) to clipboard"
+  },
+  "menuConvertLink": {
+    "message": "Convert linked file to"
+  },
+  "menuOpenApp": {
+    "message": "Open in OmniConv"
+  },
+  "menuOpenQueue": {
+    "message": "Show queue"
+  },
+  "statusRecheck": {
+    "message": "Check connection again"
+  },
+  "statusChecking": {
+    "message": "Checking…"
+  },
+  "statusOnline": {
+    "message": "Online"
+  },
+  "statusOffline": {
+    "message": "Offline"
+  },
+  "btnOpenApp": {
+    "message": "Open web app"
+  },
+  "btnSettings": {
+    "message": "Settings"
+  },
+  "btnRetry": {
+    "message": "Try again"
+  },
+  "btnDownload": {
+    "message": "Download · $1"
+  },
+  "btnDownloadPlaylist": {
+    "message": "Download playlist · $1"
+  },
+  "btnAdded": {
+    "message": "Added to queue"
+  },
+  "btnConvertTo": {
+    "message": "Convert to $1"
+  },
+  "btnOcr": {
+    "message": "Extract text (OCR)"
+  },
+  "btnClearFinished": {
+    "message": "Clear finished"
+  },
+  "tabMedia": {
+    "message": "Download"
+  },
+  "tabFile": {
+    "message": "Convert"
+  },
+  "tabQueue": {
+    "message": "Queue"
+  },
+  "emptyNoPageTitle": {
+    "message": "Nothing to grab here"
+  },
+  "emptyNoPageText": {
+    "message": "Open a page with a video, music or a file, e.g. YouTube, SoundCloud or a PDF."
+  },
+  "offlineTitle": {
+    "message": "OmniConv is not responding"
+  },
+  "offlineText": {
+    "message": "Start the server (start.bat) or check the address:"
+  },
+  "emptyQueueTitle": {
+    "message": "Queue is empty"
+  },
+  "emptyQueueText": {
+    "message": "Downloads and conversions will show up here with live progress."
+  },
+  "segVideo": {
+    "message": "This video"
+  },
+  "segPlaylist": {
+    "message": "Whole playlist"
+  },
+  "chipBestSub": {
+    "message": "auto"
+  },
+  "chipMaxSub": {
+    "message": "max"
+  },
+  "chipOcrSub": {
+    "message": "text recognition"
+  },
+  "chipZipSub": {
+    "message": "ZIP"
+  },
+  "hintQuick": {
+    "message": "quick download from any page"
+  },
+  "type_image": {
+    "message": "Image"
+  },
+  "type_audio": {
+    "message": "Audio"
+  },
+  "type_video": {
+    "message": "Video"
+  },
+  "type_document": {
+    "message": "Document"
+  },
+  "queueSummary": {
+    "message": "Active: $1 · Finished: $2"
+  },
+  "actCancel": {
+    "message": "Cancel"
+  },
+  "actOpen": {
+    "message": "Open file"
+  },
+  "actShow": {
+    "message": "Show in folder"
+  },
+  "actCopy": {
+    "message": "Copy text"
+  },
+  "actRetry": {
+    "message": "Retry"
+  },
+  "actRemove": {
+    "message": "Remove from list"
+  },
+  "toastCopied": {
+    "message": "Copied to clipboard"
+  },
+  "toastSaved": {
+    "message": "Saved"
+  },
+  "toastCleared": {
+    "message": "History cleared"
+  },
+  "optTitle": {
+    "message": "OmniConv settings"
+  },
+  "optSubtitle": {
+    "message": "Browser companion for your OmniConv server"
+  },
+  "optServer": {
+    "message": "Server"
+  },
+  "optServerUrl": {
+    "message": "Server address"
+  },
+  "optServerUrlDesc": {
+    "message": "Where OmniConv runs. Use a LAN address to use it from another computer."
+  },
+  "optTest": {
+    "message": "Test"
+  },
+  "optTestOk": {
+    "message": "Connected to $1"
+  },
+  "optTestFail": {
+    "message": "No response from $1"
+  },
+  "optDownloads": {
+    "message": "Downloads"
+  },
+  "optQuality": {
+    "message": "Default quality"
+  },
+  "optQualityDesc": {
+    "message": "Used by the context menu and the shortcut, preselected in the popup."
+  },
+  "optSubfolder": {
+    "message": "Subfolder in Downloads"
+  },
+  "optSubfolderDesc": {
+    "message": "Leave empty to save directly into Downloads."
+  },
+  "optSubfolderPlaceholder": {
+    "message": "(none)"
+  },
+  "optSaveAs": {
+    "message": "Ask where to save"
+  },
+  "optSaveAsDesc": {
+    "message": "Show the save dialog for every file."
+  },
+  "optSmartRename": {
+    "message": "Smart file names (AI)"
+  },
+  "optSmartRenameDesc": {
+    "message": "Clean up names with the local LLM before saving. Requires a configured LLM."
+  },
+  "optOther": {
+    "message": "Other"
+  },
+  "optNotifications": {
+    "message": "Notifications"
+  },
+  "optNotificationsDesc": {
+    "message": "Notify when a download finishes or fails."
+  },
+  "optOcrLang": {
+    "message": "OCR language"
+  },
+  "optOcrLangDesc": {
+    "message": "Language hint for text recognition."
+  },
+  "optHistory": {
+    "message": "History"
+  },
+  "optHistoryDesc": {
+    "message": "Remove finished items from the queue."
+  },
+  "optClear": {
+    "message": "Clear"
+  },
+  "optShortcuts": {
+    "message": "Keyboard shortcuts"
+  },
+  "optShortcutsDesc": {
+    "message": "Change shortcuts in about:addons, gear icon, Manage Extension Shortcuts."
+  },
+  "optEditShortcuts": {
+    "message": "Change shortcuts"
+  },
+  "optNoShortcut": {
+    "message": "not set"
+  },
+  "qualityBest": {
+    "message": "Best available"
+  },
+  "quality2160": {
+    "message": "Up to 2160p (4K)"
+  },
+  "quality1440": {
+    "message": "Up to 1440p"
+  },
+  "quality1080": {
+    "message": "Up to 1080p"
+  },
+  "quality720": {
+    "message": "Up to 720p"
+  },
+  "quality480": {
+    "message": "Up to 480p"
+  },
+  "qualityAudio": {
+    "message": "Audio only (MP3)"
+  }
+}

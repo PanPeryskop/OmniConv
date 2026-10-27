@@ -1,6 +1,7 @@
 from typing import Dict, Any, List, Optional, Tuple
 import yt_dlp
 import os
+import re
 import time
 import logging
 
@@ -16,6 +17,8 @@ class DownloadError(Exception):
 
 class VideoDownloaderService:
     MAX_RETRIES = 3
+    NO_PREMIUM = '[format_note!*=?Premium]'
+    INVISIBLE_CHARS = re.compile(r'[\s​-‏‪-‮⁠﻿]+')
     RETRY_DELAY = 2
     SOCKET_TIMEOUT = 30
 
@@ -272,6 +275,8 @@ class VideoDownloaderService:
         for f in raw_formats:
             if f.get('vcodec') == 'none':
                 continue
+            if 'premium' in (f.get('format_note') or '').lower():
+                continue
 
             resolution = f.get('resolution') or f.get('format_note') or ''
             if not resolution and f.get('height'):
@@ -332,6 +337,27 @@ class VideoDownloaderService:
 
         return formats
 
+    @classmethod
+    def _video_format(cls, format_id: Optional[str]) -> str:
+        best = f"bestvideo{cls.NO_PREMIUM}+bestaudio/best{cls.NO_PREMIUM}/bestvideo+bestaudio/best"
+        if not format_id or format_id in ('best', 'bestvideo+bestaudio/best'):
+            return best
+        selected = format_id
+        if selected.startswith('bestvideo'):
+            selected = 'bestvideo' + cls.NO_PREMIUM + selected[len('bestvideo'):]
+        return f"{selected}+bestaudio/{selected}/{best}"
+
+    @classmethod
+    def _ensure_named(cls, path: str, info: Dict[str, Any]) -> str:
+        if not path or not os.path.exists(path):
+            return path
+        stem, ext = os.path.splitext(os.path.basename(path))
+        if cls.INVISIBLE_CHARS.sub('', stem):
+            return path
+        new_path = os.path.join(os.path.dirname(path), f"{info.get('id') or 'video'}{ext}")
+        os.replace(path, new_path)
+        return new_path
+
     def download_video(self, url: str, format_id: str = None, progress_hook=None) -> str:
         platform = self._detect_platform(url)
         if platform == 'spotify':
@@ -353,11 +379,8 @@ class VideoDownloaderService:
                 'preferredcodec': 'mp3',
                 'preferredquality': '192',
             }]
-        elif format_id and format_id not in ('best', 'bestvideo+bestaudio/best'):
-            ydl_opts['format'] = f"{format_id}+bestaudio/best"
-            ydl_opts['format'] += f"/{format_id}/bestvideo+bestaudio/best"
         else:
-            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+            ydl_opts['format'] = self._video_format(format_id)
 
         if not is_audio:
             ydl_opts['merge_output_format'] = 'mp4'
@@ -365,11 +388,11 @@ class VideoDownloaderService:
         def _download(ydl, url):
             info = ydl.extract_info(url, download=True)
             if 'requested_downloads' in info:
-                return info['requested_downloads'][0]['filepath']
+                return self._ensure_named(info['requested_downloads'][0]['filepath'], info)
             filename = ydl.prepare_filename(info)
             if is_audio:
                 filename = os.path.splitext(filename)[0] + '.mp3'
-            return filename
+            return self._ensure_named(filename, info)
 
         return self._execute_with_retry(_download, url, ydl_opts)
 
@@ -400,10 +423,8 @@ class VideoDownloaderService:
                 'preferredcodec': 'mp3',
                 'preferredquality': '192',
             }]
-        elif format_id and format_id not in ('best', 'bestvideo+bestaudio/best'):
-            ydl_opts['format'] = f"{format_id}+bestaudio/best/{format_id}/bestvideo+bestaudio/best"
         else:
-            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+            ydl_opts['format'] = self._video_format(format_id)
 
         if not is_audio:
             ydl_opts['merge_output_format'] = 'mp4'

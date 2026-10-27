@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OmniConv</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="options">
+        <header>
+            <span class="logo" data-icon="download" data-size="22"></span>
+            <div>
+                <h1 data-i18n="optTitle"></h1>
+                <p data-i18n="optSubtitle"></p>
+            </div>
+        </header>
+
+        <section class="panel">
+            <h2 data-i18n="optServer"></h2>
+            <div class="field stack">
+                <div>
+                    <div class="label" data-i18n="optServerUrl"></div>
+                    <div class="desc" data-i18n="optServerUrlDesc"></div>
+                </div>
+                <div class="inline">
+                    <input type="url" id="serverUrl" spellcheck="false" placeholder="http://127.0.0.1:5000">
+                    <button class="btn" id="testServer" type="button"><span data-icon="server" data-size="14"></span><span data-i18n="optTest"></span></button>
+                </div>
+                <div class="test-result" id="testResult" role="status"></div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2 data-i18n="optDownloads"></h2>
+            <div class="field">
+                <div>
+                    <div class="label" data-i18n="optQuality"></div>
+                    <div class="desc" data-i18n="optQualityDesc"></div>
+                </div>
+                <select id="defaultQuality"></select>
+            </div>
+            <div class="field">
+                <div>
+                    <div class="label" data-i18n="optSubfolder"></div>
+                    <div class="desc" data-i18n="optSubfolderDesc"></div>
+                </div>
+                <input type="text" id="subfolder" spellcheck="false" data-i18n-placeholder="optSubfolderPlaceholder">
+            </div>
+            <div class="field">
+                <div>
+                    <div class="label" data-i18n="optSaveAs"></div>
+                    <div class="desc" data-i18n="optSaveAsDesc"></div>
+                </div>
+                <label class="switch"><input type="checkbox" id="saveAs"><span></span></label>
+            </div>
+            <div class="field">
+                <div>
+                    <div class="label" data-i18n="optSmartRename"></div>
+                    <div class="desc" data-i18n="optSmartRenameDesc"></div>
+                </div>
+                <label class="switch"><input type="checkbox" id="smartRename"><span></span></label>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2 data-i18n="optOther"></h2>
+            <div class="field">
+                <div>
+                    <div class="label" data-i18n="optNotifications"></div>
+                    <div class="desc" data-i18n="optNotificationsDesc"></div>
+                </div>
+                <label class="switch"><input type="checkbox" id="notifications"><span></span></label>
+            </div>
+            <div class="field">
+                <div>
+                    <div class="label" data-i18n="optOcrLang"></div>
+                    <div class="desc" data-i18n="optOcrLangDesc"></div>
+                </div>
+                <select id="ocrLang">
+                    <option value="pl">Polski</option>
+                    <option value="en">English</option>
+                    <option value="de">Deutsch</option>
+                    <option value="fr">Français</option>
+                    <option value="es">Español</option>
+                </select>
+            </div>
+            <div class="field">
+                <div>
+                    <div class="label" data-i18n="optHistory"></div>
+                    <div class="desc" data-i18n="optHistoryDesc"></div>
+                </div>
+                <button class="btn" id="clearHistory" type="button"><span data-icon="trash" data-size="14"></span><span data-i18n="optClear"></span></button>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2 data-i18n="optShortcuts"></h2>
+            <div class="shortcuts" id="shortcuts"></div>
+            <div class="field">
+                <div class="desc" data-i18n="optShortcutsDesc"></div>
+                <button class="btn" id="editShortcuts" type="button" hidden><span data-icon="keyboard" data-size="14"></span><span data-i18n="optEditShortcuts"></span></button>
+            </div>
+        </section>
+    </div>
+
+    <script src="shared.js"></script>
+    <script src="ui.js"></script>
+    <script src="options.js"></script>
+</body>
+</html>

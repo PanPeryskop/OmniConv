@@ -408,7 +408,7 @@ class LLMService:
                 if f in ignore_files: continue
                 context.append(os.path.join(rel_path, f))
 
-        key_files = ['requirements.txt', 'app/routes/api.py', 'app/services/ocr.py']
+        key_files = ['pyproject.toml', 'app/routes/api.py', 'app/services/ocr.py']
         context.append("\nKey File Contents:")
         for kf in key_files:
             kf_path = os.path.join(project_root, kf)
