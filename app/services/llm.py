@@ -1,14 +1,97 @@
 import requests
 import json
+import logging
 import os
 import base64
+import threading
+from contextlib import contextmanager
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_OCR_MODEL = 'qwen/qwen3-vl-8b'
+DEFAULT_FORMATTING_MODEL = 'ministral-3-8b-instruct-2512'
+DEFAULT_TEXT_MODEL = 'ministral-3-8b-instruct-2512'
+
 
 class LLMService:
     _models_cache = {'at': 0.0, 'keys': None}
+    _usage = {}
+    _usage_lock = threading.Lock()
+    _swap_lock = threading.Lock()
 
     def __init__(self, api_url="http://localhost:1234/api/v1/chat"):
         self.api_url = api_url
+
+    @staticmethod
+    def ocr_model() -> str:
+        return os.environ.get('LLM_OCR_MODEL', DEFAULT_OCR_MODEL)
+
+    @staticmethod
+    def formatting_model() -> str:
+        return os.environ.get('LLM_FORMATTING_MODEL', DEFAULT_FORMATTING_MODEL)
+
+    @staticmethod
+    def text_model() -> str:
+        return os.environ.get('LLM_TEXT_MODEL', DEFAULT_TEXT_MODEL)
+
+    @property
+    def base_url(self) -> str:
+        return self.api_url.rsplit('/api/', 1)[0]
+
+    @classmethod
+    @contextmanager
+    def using(cls, model_key):
+        if not model_key:
+            yield
+            return
+        key = cls().resolve_model(model_key)
+        with cls._usage_lock:
+            cls._usage[key] = cls._usage.get(key, 0) + 1
+        try:
+            yield
+        finally:
+            with cls._usage_lock:
+                cls._usage[key] -= 1
+                if cls._usage[key] <= 0:
+                    del cls._usage[key]
+
+    @classmethod
+    def busy_models(cls) -> set:
+        with cls._usage_lock:
+            return set(cls._usage)
+
+    def loaded_instances(self):
+        try:
+            response = requests.get(f"{self.base_url}/api/v1/models", timeout=2)
+            response.raise_for_status()
+        except Exception:
+            return None
+        return [
+            (model.get('key'), instance.get('id'))
+            for model in response.json().get('models', [])
+            for instance in model.get('loaded_instances') or []
+            if model.get('key') and instance.get('id')
+        ]
+
+    def ensure_model_ready(self, model_key: str):
+        if not model_key or os.environ.get('OMNICONV_LLM_SWAP', '1') == '0':
+            return
+        target = self.resolve_model(model_key)
+        with LLMService._swap_lock:
+            loaded = self.loaded_instances()
+            if not loaded or any(key == target for key, _ in loaded):
+                return
+            managed = {self.resolve_model(m) for m in (self.ocr_model(), self.formatting_model(), self.text_model())}
+            busy = self.busy_models()
+            for key, instance_id in loaded:
+                if key == target or key not in managed or key in busy:
+                    continue
+                try:
+                    requests.post(f"{self.base_url}/api/v1/models/unload", json={'instance_id': instance_id}, timeout=30)
+                    logger.info("Unloaded %s from LM Studio to make room for %s", key, target)
+                except Exception as e:
+                    logger.warning("Could not unload %s: %s", key, e)
 
     def available_models(self, max_age: float = 30.0):
         import time
@@ -46,12 +129,14 @@ class LLMService:
         if payload.get('model'):
             payload = dict(payload, model=self.resolve_model(payload['model']))
         try:
-            response = requests.post(
-                self.api_url, 
-                headers={"Content-Type": "application/json"},
-                data=json.dumps(payload),
-                timeout=1800
-            )
+            with LLMService.using(payload.get('model')):
+                self.ensure_model_ready(payload.get('model'))
+                response = requests.post(
+                    self.api_url,
+                    headers={"Content-Type": "application/json"},
+                    data=json.dumps(payload),
+                    timeout=1800
+                )
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -287,7 +372,8 @@ class LLMService:
             payload["previous_response_id"] = previous_response_id
 
         try:
-            with requests.post(self.api_url, json=payload, stream=True, timeout=1800) as response:
+            self.ensure_model_ready(payload["model"])
+            with LLMService.using(payload["model"]), requests.post(self.api_url, json=payload, stream=True, timeout=1800) as response:
                 response.raise_for_status()
                 
                 for line in response.iter_lines():
@@ -363,7 +449,8 @@ class LLMService:
         }
 
         try:
-            with requests.post(self.api_url, json=payload, stream=True, timeout=1800) as response:
+            self.ensure_model_ready(payload["model"])
+            with LLMService.using(payload["model"]), requests.post(self.api_url, json=payload, stream=True, timeout=1800) as response:
                 response.raise_for_status()
                 for line in response.iter_lines():
                     if line:

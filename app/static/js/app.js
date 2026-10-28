@@ -105,12 +105,18 @@ function updateOcrVisibility() {
 
     const hints = [];
     if (engine) hints.push(t(`ocr_engine_${engine}_desc`));
+    if (engine === 'rapid' && ['ocr-md', 'ocr-html', 'ocr-docx'].includes((appState.selectedFormat || '').toLowerCase()) && engines.qwen?.available) hints.push(t('ocr_tip_structure'));
+    if (!appState.rapidOptions) appState.rapidOptions = OcrRapidOptions.init(document.querySelector('#ocrOptions [data-ocr-rapid]'));
+    appState.rapidOptions?.setVisible(engine === 'rapid');
     ['rapid', 'qwen'].forEach(id => {
         const info = engines[id];
         if (info && !info.available) hints.push(`${t(`ocr_engine_${id}`)}: ${t(`ocr_reason_${info.reason}`, { model: info.model || '' })}`);
     });
     ui.ocrEngineHint.textContent = hints.join(' ');
 
+    const isRapid = engine === 'rapid';
+    ui.useLLM.closest('.check-row').classList.toggle('hidden', !isRapid);
+    ui.ocrCorrectHint.classList.toggle('hidden', !isRapid);
     ui.useLLM.disabled = !correction.available;
     if (!correction.available) ui.useLLM.checked = false;
     ui.ocrCorrectHint.textContent = correction.available ? t('ocr_ai_correction_desc') : t(`ocr_reason_${correction.reason}`, { model: correction.model || '' });
@@ -423,7 +429,8 @@ async function startConversion(format) {
     }
     if (isOcrFormat(format) && !ui.ocrOptions.classList.contains('hidden')) {
         options.ocr_engine = ui.ocrSelect.value || 'rapid';
-        options.use_llm = ui.useLLM.checked;
+        if (options.ocr_engine === 'rapid' && appState.rapidOptions) Object.assign(options, appState.rapidOptions.values());
+        options.use_llm = options.ocr_engine === 'rapid' && ui.useLLM.checked;
         if (!ui.ocrThemeContainer.classList.contains('hidden')) options.ocr_theme = ui.ocrThemeSelect.value;
         if (ui.ocrLimitCss.checked && !ui.ocrCssContainer.classList.contains('hidden')) {
             options.css_limit_enabled = true;

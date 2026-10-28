@@ -226,6 +226,7 @@
                     </label>
                 </div>
                 <p class="option-hint" id="ocrEngineHint"></p>
+                {% with select_class='select-input', hint_class='option-hint' %}{% include 'partials/ocr_rapid_options.html' %}{% endwith %}
                 <label class="check-row"><input type="checkbox" id="ocrCorrect"><span data-i18n="ocr_ai_correction">Fix the text with AI</span></label>
                 <p class="option-hint" id="ocrCorrectHint"></p>
                 <label class="check-row" id="ocrForceRow"><input type="checkbox" id="ocrForce"><span data-i18n="ocr_force">Also OCR pages that already have text</span></label>
@@ -1869,6 +1870,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function initOcr() {
+        if (!state.rapidOptions) state.rapidOptions = OcrRapidOptions.init(document.querySelector('.tool-options[data-tool="ocr"] [data-ocr-rapid]'));
         const engines = await loadEngines(true);
         const select = $('ocrEngine');
         const previous = select.value || 'rapid';
@@ -1892,9 +1894,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const output = groupValue('ocrOutput');
         const correction = engines.correction || { available: false, reason: 'llm_offline' };
         const hints = [t(`ocr_engine_${engine}_desc`)];
+        if (engine === 'rapid' && ['md', 'html', 'docx'].includes(output) && engines.qwen?.available) hints.push(t('ocr_tip_structure'));
+        state.rapidOptions?.setVisible(engine === 'rapid');
         const unavailable = ['rapid', 'qwen'].filter(id => engines[id] && !engines[id].available);
         unavailable.forEach(id => hints.push(`${t(`ocr_engine_${id}`)}: ${reasonText(engines[id])}`));
         $('ocrEngineHint').textContent = hints.join(' ');
+        $('ocrCorrect').closest('.check-row').classList.toggle('hidden', engine !== 'rapid');
+        $('ocrCorrectHint').classList.toggle('hidden', engine !== 'rapid');
         $('ocrCorrect').disabled = !correction.available;
         if (!correction.available) $('ocrCorrect').checked = false;
         $('ocrCorrectHint').textContent = correction.available ? t('ocr_ai_correction_desc') : reasonText(correction);
@@ -2110,7 +2116,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             case 'ocr': {
                 const output = groupValue('ocrOutput');
-                const options = { ocr_engine: $('ocrEngine').value, use_llm: $('ocrCorrect').checked };
+                const options = { ocr_engine: $('ocrEngine').value, use_llm: $('ocrEngine').value === 'rapid' && $('ocrCorrect').checked };
+                if (options.ocr_engine === 'rapid' && state.rapidOptions) Object.assign(options, state.rapidOptions.values());
                 if (output === 'pdf') options.ocr_force = $('ocrForce').checked;
                 if (output === 'html') {
                     options.ocr_theme = $('ocrTheme').value;

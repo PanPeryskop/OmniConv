@@ -92,6 +92,7 @@
         <div class="preset-selector">
             <select id="ocrSelect" class="preset-dropdown" aria-label="OCR engine" data-i18n-aria="ocr_engine"></select>
             <p class="preset-hint" id="ocrEngineHint"></p>
+            {% with select_class='preset-dropdown', hint_class='preset-hint' %}{% include 'partials/ocr_rapid_options.html' %}{% endwith %}
             <label class="check-row"><input type="checkbox" id="useLLM"><span data-i18n="ocr_ai_correction">Fix the text with AI</span></label>
             <p class="preset-hint" id="ocrCorrectHint"></p>
 

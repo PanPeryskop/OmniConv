@@ -1,3 +1,5 @@
+import gc
+import logging
 import os
 import re
 import html
@@ -12,14 +14,175 @@ from .converter import BaseConverter
 from ..utils.exceptions import OCRError
 from .llm import LLMService
 
+logger = logging.getLogger(__name__)
+
 OCR_DPI = 200
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tif', '.tiff'}
 
+RAPID_QUALITIES = {
+    'fast': {'model': 'tiny', 'dpi': 150, 'max_side': 2000},
+    'standard': {'model': 'small', 'dpi': 200, 'max_side': 2000},
+    'accurate': {'model': 'medium', 'dpi': 300, 'max_side': 4000},
+}
+DEFAULT_RAPID_QUALITY = 'accurate'
+RAPID_SCRIPTS = ('latin', 'eslav', 'cyrillic', 'el', 'arabic', 'korean', 'th', 'devanagari', 'ta', 'te')
+DEFAULT_RAPID_SCRIPT = 'latin'
+LANG_TO_SCRIPT = {
+    'ru': 'eslav', 'uk': 'eslav', 'be': 'eslav',
+    'bg': 'cyrillic', 'sr': 'cyrillic', 'mk': 'cyrillic', 'kk': 'cyrillic', 'mn': 'cyrillic',
+    'el': 'el', 'ar': 'arabic', 'fa': 'arabic', 'ur': 'arabic', 'ko': 'korean', 'th': 'th',
+    'hi': 'devanagari', 'mr': 'devanagari', 'ne': 'devanagari', 'ta': 'ta', 'te': 'te',
+}
+DET_MIN_SIDE = 736
+
+
+LAYOUT_QUALITY = 'standard'
+SCRIPT_BLOCKS = (
+    ('el', 0x0370, 0x03FF), ('cyr', 0x0400, 0x04FF), ('arabic', 0x0600, 0x06FF),
+    ('devanagari', 0x0900, 0x097F), ('ta', 0x0B80, 0x0BFF), ('te', 0x0C00, 0x0C7F),
+    ('th', 0x0E00, 0x0E7F), ('korean', 0xAC00, 0xD7AF),
+)
+MIN_ALIGN_RATIO = 0.4
+
 
 class OcrPage:
-    def __init__(self, text: str, lines: Optional[list] = None):
+    def __init__(self, text: str, lines: Optional[list] = None, layout: Optional[tuple] = None):
         self.text = text or ''
         self.lines = lines or []
+        self.layout = layout
+
+
+def _detect_script(text: str) -> str:
+    counts: Dict[str, int] = {}
+    for char in text:
+        if not char.isalpha():
+            continue
+        code = ord(char)
+        script = next((name for name, lo, hi in SCRIPT_BLOCKS if lo <= code <= hi), 'latin')
+        counts[script] = counts.get(script, 0) + 1
+    if not counts:
+        return DEFAULT_RAPID_SCRIPT
+    script = max(counts, key=counts.get)
+    if script != 'cyr':
+        return script
+    lower = text.lower()
+    if any(c in lower for c in 'ђјљњћџѓќѕ'):
+        return 'cyrillic'
+    if any(c in lower for c in 'ыэёіїєґў'):
+        return 'eslav'
+    return 'cyrillic' if 'ъ' in lower else 'eslav'
+
+
+def _xy_cut(items) -> list:
+    if len(items) <= 1:
+        return list(items)
+    best = None
+    for lo, hi in ((1, 3), (0, 2)):
+        ordered = sorted(items, key=lambda item: item[2][lo])
+        reach = ordered[0][2][hi]
+        for k in range(1, len(ordered)):
+            gap = ordered[k][2][lo] - reach
+            if gap > 0 and (best is None or gap > best[0]):
+                best = (gap, ordered, k)
+            reach = max(reach, ordered[k][2][hi])
+    if best is None:
+        return sorted(items, key=lambda item: (item[2][1], item[2][0]))
+    _, ordered, k = best
+    return _xy_cut(ordered[:k]) + _xy_cut(ordered[k:])
+
+
+def _row_order(items) -> list:
+    return sorted(items, key=lambda item: (round(item[2][1] / 10), item[2][0]))
+
+
+def _clean_llm_text(text: str) -> str:
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = re.sub(r'^\s{0,3}#{1,6}\s+', '', text, flags=re.M)
+    text = re.sub(r'^[\s|:\-]*-{3,}[\s|:\-]*$', '', text, flags=re.M)
+    return text.replace('**', '').replace('|', ' ')
+
+
+def _matcher_key(text: str) -> str:
+    return ''.join(' ' if c.isspace() else (c.lower() if len(c.lower()) == 1 else c) for c in text)
+
+
+def _target_order(items, key: str, gram: int = 4, max_hits: int = 12) -> list:
+    from collections import Counter
+    index: Dict[str, List[int]] = {}
+    for j in range(len(key) - gram + 1):
+        index.setdefault(key[j:j + gram], []).append(j)
+    ordered = _xy_cut(items)
+    estimates = []
+    previous = 0.0
+    for n, item in enumerate(ordered):
+        line = _matcher_key(item[0])
+        votes = Counter()
+        grams = 0
+        for i in range(len(line) - gram + 1):
+            hits = index.get(line[i:i + gram], ())
+            if 0 < len(hits) <= max_hits:
+                grams += 1
+                for j in hits:
+                    votes[(j - i) // gram] += 1
+        stripped = line.strip()
+        if votes:
+            offset, count = votes.most_common(1)[0]
+            if count >= max(1 if grams <= 2 else 2, grams * 0.25):
+                previous = offset * gram
+                votes = None
+        if votes is not None and stripped and key.count(stripped) == 1:
+            previous = key.find(stripped)
+        estimates.append((previous, n))
+    return [ordered[n] for _, n in sorted(estimates)]
+
+
+def _snap_cut(target: str, cut: int, window: int = 12) -> int:
+    if cut <= 0 or cut >= len(target) or target[cut - 1].isspace() or target[cut].isspace():
+        return cut
+    for distance in range(1, window + 1):
+        for candidate in (cut - distance, cut + distance):
+            if 0 < candidate < len(target) and target[candidate].isspace():
+                return candidate
+    return cut
+
+
+def _align_items(items, text: str):
+    from difflib import SequenceMatcher
+    target = _clean_llm_text(text)
+    key = _matcher_key(target)
+    best = None
+    for ordered in (_target_order(items, key), _row_order(items), _xy_cut(items)):
+        source = ' '.join(item[0] for item in ordered)
+        matcher = SequenceMatcher(None, _matcher_key(source), key, autojunk=False)
+        matched = sum(block.size for block in matcher.get_matching_blocks())
+        ratio = 2 * matched / max(1, len(source) + len(key))
+        if best is None or ratio > best[0]:
+            best = (ratio, ordered, matcher.get_opcodes())
+    ratio, ordered, opcodes = best
+    if ratio < MIN_ALIGN_RATIO:
+        return None
+
+    def to_target(pos: int) -> int:
+        for tag, i1, i2, j1, j2 in opcodes:
+            if i1 <= pos < i2:
+                if tag == 'equal':
+                    return j1 + pos - i1
+                return j1 + round((pos - i1) * (j2 - j1) / (i2 - i1))
+        return len(target)
+
+    cuts = [0]
+    position = 0
+    for item in ordered[:-1]:
+        position += len(item[0])
+        cuts.append(max(cuts[-1], _snap_cut(target, to_target(position))))
+        position += 1
+    cuts.append(len(target))
+
+    aligned = []
+    for n, item in enumerate(ordered):
+        segment = ' '.join(target[cuts[n]:cuts[n + 1]].split())
+        aligned.append((segment or item[0], item[1], item[2]))
+    return aligned
 
 
 def _paragraphs_from_boxes(items) -> str:
@@ -44,6 +207,7 @@ class OCRService(BaseConverter):
     DEFAULT_ENGINE = 'rapid'
 
     _rapid = None
+    _rapid_key = None
     _rapid_lock = threading.Lock()
     _status_cache = {'at': 0.0, 'data': None}
 
@@ -51,6 +215,8 @@ class OCRService(BaseConverter):
         super().__init__(*args, **kwargs)
         self.llm = LLMService()
         self.info: Dict[str, Any] = {}
+        self.rapid_quality = DEFAULT_RAPID_QUALITY
+        self.rapid_script = DEFAULT_RAPID_SCRIPT
 
     @classmethod
     def engine_status(cls, max_age: float = 20.0) -> Dict[str, Dict[str, Any]]:
@@ -88,22 +254,76 @@ class OCRService(BaseConverter):
         info = status[engine]
         if not info['available']:
             raise OCRError(f"OCR engine '{engine}' is not available ({info['reason']})", code=f"err_ocr_{info['reason']}")
-        correct = bool(options.get('use_llm'))
+        correct = engine == 'rapid' and bool(options.get('use_llm'))
         if correct and not status['correction']['available']:
             raise OCRError("AI text correction is not available", code=f"err_ocr_{status['correction']['reason']}")
+        quality = options.get('ocr_quality')
+        self.rapid_quality = quality if quality in RAPID_QUALITIES else DEFAULT_RAPID_QUALITY
+        script = options.get('ocr_script')
+        self.rapid_script = script if script in RAPID_SCRIPTS else DEFAULT_RAPID_SCRIPT
         return engine, correct
 
+    @staticmethod
+    def _rapid_params(quality: str, script: str) -> Dict[str, Any]:
+        from rapidocr import ModelType, OCRVersion, LangDet, LangRec
+        profile = RAPID_QUALITIES[quality]
+        params = {'Global.log_level': 'error', 'Global.max_side_len': profile['max_side']}
+        if script == 'latin':
+            params.update({
+                'Det.ocr_version': OCRVersion.PPOCRV6, 'Det.model_type': ModelType(profile['model']),
+                'Rec.ocr_version': OCRVersion.PPOCRV6, 'Rec.model_type': ModelType(profile['model']),
+            })
+        else:
+            params.update({
+                'Det.ocr_version': OCRVersion.PPOCRV5, 'Det.lang_type': LangDet.MULTI,
+                'Det.model_type': ModelType.SERVER if quality == 'accurate' else ModelType.MOBILE,
+                'Rec.ocr_version': OCRVersion.PPOCRV5, 'Rec.model_type': ModelType.MOBILE,
+                'Rec.lang_type': LangRec(script),
+            })
+        return params
+
     @classmethod
-    def _get_rapid(cls):
+    def _get_rapid(cls, quality: str = DEFAULT_RAPID_QUALITY, script: str = DEFAULT_RAPID_SCRIPT):
+        key = (quality, script)
         with cls._rapid_lock:
-            if cls._rapid is None:
+            if cls._rapid_key != key:
+                cls._release_rapid_locked()
                 from rapidocr import RapidOCR
-                cls._rapid = RapidOCR()
+                cls._rapid = RapidOCR(params=cls._rapid_params(quality, script))
+                cls._rapid_key = key
             return cls._rapid
 
+    @classmethod
+    def _release_rapid_locked(cls):
+        if cls._rapid is not None:
+            cls._rapid = None
+            cls._rapid_key = None
+            gc.collect()
 
-    def _rapid_raw(self, image_path: str):
-        result = self._get_rapid()(image_path)
+    @classmethod
+    def release_rapid(cls):
+        with cls._rapid_lock:
+            cls._release_rapid_locked()
+
+    @property
+    def rapid_dpi(self) -> int:
+        return RAPID_QUALITIES[self.rapid_quality]['dpi']
+
+    @staticmethod
+    def _padded_image(image_path: str):
+        from PIL import Image
+        with Image.open(image_path) as source:
+            image = source.convert('RGB')
+        width, height = image.size
+        if min(width, height) >= DET_MIN_SIDE:
+            return image
+        canvas = Image.new('RGB', (max(width, DET_MIN_SIDE), max(height, DET_MIN_SIDE)), image.getpixel((0, 0)))
+        canvas.paste(image, (0, 0))
+        return canvas
+
+    def _rapid_raw(self, image_path: str, quality: Optional[str] = None, script: Optional[str] = None):
+        engine = self._get_rapid(quality or self.rapid_quality, script or self.rapid_script)
+        result = engine(self._padded_image(image_path))
         boxes = result.boxes if result.boxes is not None else []
         items = []
         for box, text, score in zip(boxes, result.txts or [], result.scores or []):
@@ -127,12 +347,39 @@ class OCRService(BaseConverter):
         items = self._rapid_raw(image_path)
         return OcrPage(_paragraphs_from_boxes(items), [])
 
-    def _ocr_pdf_page(self, page, engine: str, output_format: str, options: Dict[str, Any], temp_path: str) -> OcrPage:
+    @staticmethod
+    def _page_lines(items, to_page, offset, zoom) -> list:
         import fitz
-        zoom = OCR_DPI / 72.0
+        lines = []
+        for text, _, (x0, y0, x1, y1) in items:
+            height = y1 - y0
+            baseline = y1 - height * 0.18
+            start = (fitz.Point(x0, baseline) + offset) * to_page
+            end = (fitz.Point(x1, baseline) + offset) * to_page
+            lines.append((text, start, end, height / zoom))
+        return lines
+
+    def _layout_items(self, image_path: str, text: str) -> list:
+        script = _detect_script(text)
+        try:
+            return self._rapid_raw(image_path, LAYOUT_QUALITY if script == 'latin' else 'accurate', script)
+        except Exception as e:
+            logger.warning("OCR layout detection failed: %s", e)
+            return []
+
+    def _ocr_pdf_page(self, page, engine: str, output_format: str, options: Dict[str, Any], temp_path: str, with_layout: bool = False) -> OcrPage:
+        import fitz
+        zoom = (self.rapid_dpi if engine == 'rapid' else OCR_DPI) / 72.0
         if engine != 'rapid':
-            page.get_pixmap(matrix=fitz.Matrix(zoom, zoom)).save(temp_path)
-            return self.recognize(temp_path, engine, output_format, options)
+            matrix = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=matrix)
+            pix.save(temp_path)
+            result = self.recognize(temp_path, engine, output_format, options)
+            if with_layout and result.text.strip():
+                items = self._layout_items(temp_path, result.text)
+                if items:
+                    result.layout = (items, ~matrix * page.derotation_matrix, fitz.Point(pix.x, pix.y), zoom)
+            return result
 
         best = None
         for angle in (0, 90, 270):
@@ -148,14 +395,8 @@ class OCRService(BaseConverter):
 
         _, items, matrix, offset = best
         to_page = ~matrix * page.derotation_matrix
-        lines = []
-        for text, _, (x0, y0, x1, y1) in items:
-            height = y1 - y0
-            baseline = y1 - height * 0.18
-            start = (fitz.Point(x0, baseline) + offset) * to_page
-            end = (fitz.Point(x1, baseline) + offset) * to_page
-            lines.append((text, start, end, height / zoom))
-        return OcrPage(_paragraphs_from_boxes(items), lines)
+        lines = self._page_lines(items, to_page, offset, zoom)
+        return OcrPage(_paragraphs_from_boxes(items), lines, (items, to_page, offset, zoom) if items else None)
 
     def _recognize_llm(self, image_path: str, output_format: str, options: Dict[str, Any]) -> OcrPage:
         prompt = (
@@ -213,28 +454,50 @@ class OCRService(BaseConverter):
                     return
                 yield i, total, self._ocr_pdf_page(page, engine, output_format, options, os.path.join(temp_dir, f'page_{i}.png'))
 
+    def _engine_model(self, engine: str):
+        return LLMService.ocr_model() if engine == 'qwen' else None
+
+    def _correct_pages(self, texts: List[str], output_format: str, start: int, end: int) -> List[str]:
+        corrected = []
+        with LLMService.using(LLMService.formatting_model()):
+            for i, text in enumerate(texts):
+                if self.is_cancelled:
+                    return []
+                corrected.append(self.llm.correct_text(text, output_format) if text.strip() else text)
+                self.report_progress(start + int((i + 1) / len(texts) * (end - start)))
+        return corrected
+
     def _recognize_document(self, input_path: str, output_format: str, options: Dict[str, Any]) -> List[str]:
         engine, correct = self._resolve_engine(options)
+        correct_pages = correct and output_format != 'html'
+        ocr_end = 60 if correct_pages else 90
         temp_dir = tempfile.mkdtemp(prefix='ocr_')
         texts = []
         try:
-            for i, total, page in self._iter_ocr_pages(input_path, engine, output_format, options, temp_dir):
-                if self.is_cancelled:
-                    return []
-                text = page.text
-                if correct and output_format != 'html':
-                    text = self.llm.correct_text(text, output_format)
-                texts.append(text)
-                self.report_progress(5 + int((i + 1) / total * 85))
+            with LLMService.using(self._engine_model(engine)):
+                for i, total, page in self._iter_ocr_pages(input_path, engine, output_format, options, temp_dir):
+                    if self.is_cancelled:
+                        return []
+                    texts.append(page.text)
+                    self.report_progress(5 + int((i + 1) / total * (ocr_end - 5)))
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+        if correct_pages and texts:
+            texts = self._correct_pages(texts, output_format, ocr_end, 90)
+            if self.is_cancelled:
+                return []
         self.info = {'engine': engine, 'correction': correct, 'pages': len(texts)}
+        if engine == 'rapid':
+            self.info.update({'quality': self.rapid_quality, 'script': self.rapid_script})
         if not any(t.strip() for t in texts):
             raise OCRError("No text was recognized", code='err_ocr_no_text')
         return texts
 
     def get_text_from_image(self, input_path: str, lang: Optional[str] = None, options: Optional[Dict[str, Any]] = None) -> str:
-        return '\n\n'.join(self._recognize_document(input_path, 'txt', options or {}))
+        options = dict(options or {})
+        if lang and 'ocr_script' not in options:
+            options['ocr_script'] = LANG_TO_SCRIPT.get(lang.lower().split('-')[0], DEFAULT_RAPID_SCRIPT)
+        return '\n\n'.join(self._recognize_document(input_path, 'txt', options))
 
     def _html_document(self, pages: List[str], options: Dict[str, Any], engine_html: bool) -> str:
         dark = options.get('ocr_theme') == 'dark'
@@ -293,28 +556,47 @@ class OCRService(BaseConverter):
 
         temp_dir = tempfile.mkdtemp(prefix='ocr_pdf_')
         recognized = skipped = 0
+        blocks = []
         try:
             total = doc.page_count
-            for i, page in enumerate(doc):
+            ocr_end = 60 if correct else 95
+            with LLMService.using(self._engine_model(engine)):
+                for i, page in enumerate(doc):
+                    if self.is_cancelled:
+                        return None
+                    if not force and page.get_text().strip():
+                        skipped += 1
+                        self.report_progress(5 + int((i + 1) / total * (ocr_end - 5)))
+                        continue
+                    result = self._ocr_pdf_page(page, engine, 'txt', options, os.path.join(temp_dir, f'page_{i}.png'), with_layout=True)
+                    if result.lines and not correct:
+                        self._place_lines(page, result.lines, font)
+                    elif result.text.strip():
+                        blocks.append((i, result.text, result.layout))
+                    recognized += 1
+                    self.report_progress(5 + int((i + 1) / total * (ocr_end - 5)))
+            texts = [text for _, text, _ in blocks]
+            if correct and texts:
+                texts = self._correct_pages(texts, 'txt', ocr_end, 95)
                 if self.is_cancelled:
                     return None
-                if not force and page.get_text().strip():
-                    skipped += 1
-                    self.report_progress(5 + int((i + 1) / total * 90))
-                    continue
-                result = self._ocr_pdf_page(page, engine, 'txt', options, os.path.join(temp_dir, f'page_{i}.png'))
-                if result.lines:
-                    self._place_lines(page, result.lines, font)
-                elif result.text.strip():
-                    text = self.llm.correct_text(result.text, 'txt') if correct else result.text
-                    self._place_block(page, text, font)
-                recognized += 1
-                self.report_progress(5 + int((i + 1) / total * 90))
+            positioned = 0
+            for (index, _, layout), text in zip(blocks, texts):
+                aligned = _align_items(layout[0], text) if layout else None
+                if aligned:
+                    self._place_lines(doc[index], self._page_lines(aligned, *layout[1:]), font)
+                    positioned += 1
+                else:
+                    self._place_block(doc[index], text, font)
             doc.save(output_path, garbage=3, deflate=True)
         finally:
             doc.close()
             shutil.rmtree(temp_dir, ignore_errors=True)
         self.info = {'engine': engine, 'pages_ocr': recognized, 'pages_skipped': skipped}
+        if blocks:
+            self.info['pages_positioned'] = positioned
+        if engine == 'rapid':
+            self.info.update({'quality': self.rapid_quality, 'script': self.rapid_script})
         return output_path
 
     @staticmethod
