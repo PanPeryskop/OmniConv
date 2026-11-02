@@ -3,7 +3,7 @@ import io
 import os
 import re
 import threading
-from flask import Blueprint, request, current_app, send_file
+from flask import Blueprint, request, current_app, send_file, g
 
 from .api_common import conversion_jobs, api_response, unique_output_base, touch_file, file_expiry, register_result_file
 from ..utils.file_handler import generate_file_id
@@ -245,6 +245,7 @@ def pdf_edit_page():
     if error:
         return error
     touch_file(data.get('file_id'))
+    g.edit_file_id = data.get('file_id')
     try:
         page = int(data.get('page', 0))
         width = min(3000, max(100, int(data.get('width', 800))))

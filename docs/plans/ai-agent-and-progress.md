@@ -505,3 +505,8 @@ WP0 jest zrobione i scalone na branchu bazowym. Ustalenia wiążące dla WP1–W
   ostatniej wiadomości użytkownika.
 - **Branche:** subagenci pracują w izolowanych worktree na lokalnych branchach i **nie pushują**. Scalanie robi
   prowadzący do `claude/exciting-sagan-psmedl`.
+- **Zdarzenia zadań rdzenia:** `bridge.on('task', fn)` dostaje `{id, kind: 'translate' | 'search' | 'ai', status,
+  done, total, cancellable}` z istniejących przepływów edytora (tłumaczenie dokumentu, wyszukiwanie, AI rewrite);
+  `bridge.cancelTask(id)` zatrzymuje tłumaczenie. WP3 mapuje je na `PdfProgress.local`.
+- **OCR i właściciel zadania:** trasa podglądu ustawia `flask.g.edit_file_id`; `pdf_scan` w kontekście żądania bierze
+  właściciela z `client_id()` i plik z `g.edit_file_id` (poza żądaniem, np. w jobie zapisu, nie tworzy zadania).

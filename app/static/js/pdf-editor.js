@@ -64,6 +64,7 @@ const PdfEditor = (() => {
     let s = null;
     const listeners = {};
     const menuItems = [];
+    const cancels = new Map();
     let committedDigest = null;
 
     function icon(name) {
@@ -1092,7 +1093,9 @@ const PdfEditor = (() => {
         const session = s;
         s.ai.busy = true;
         renderSheet();
+        const task = coreTask('ai', null);
         const { body } = await postJson('/api/pdf/edit/ai', { mode, text, language: languageName(s.ai.language, 'en') }).catch(() => ({ body: {} }));
+        task.end(body.success ? 'done' : 'failed');
         if (s !== session) return;
         s.ai.busy = false;
         if (body.success) s.ai.result = body.data.text;
@@ -1117,21 +1120,26 @@ const PdfEditor = (() => {
         const language = languageName(s.ai.language, 'en');
         const pages = s.order.slice();
         const run = s.translation = { done: 0, total: pages.length, stopped: false };
+        const task = coreTask('translate', pages.length, () => { run.stopped = true; });
         const result = [];
+        let failed = false;
         renderSheet();
         for (const id of pages) {
             if (run.stopped || s !== session) break;
             const { body } = await postJson('/api/pdf/edit/translate', { file_id: s.fileId, ops: s.ops, page: id, language }).catch(() => ({ body: {} }));
-            if (s !== session) return;
+            if (s !== session) return task.end('cancelled');
             if (!body.success) {
                 Toast.error(escapeHtml(errorText(body, 'err_ai_failed')));
+                failed = true;
                 break;
             }
             result.push(...body.data.ops);
             run.done++;
+            task.step(run.done);
             if (s.sheet === 'translate') renderSheet();
         }
-        if (s !== session) return;
+        if (s !== session) return task.end('cancelled');
+        task.end(failed ? 'failed' : run.stopped ? 'cancelled' : 'done');
         s.translation = null;
         if (result.length) {
             pushOps(result);
@@ -1305,9 +1313,11 @@ const PdfEditor = (() => {
         const session = s;
         f.busy = true;
         renderSheet();
+        const task = coreTask('search', null);
         const { body } = await postJson('/api/pdf/edit/search', {
             file_id: s.fileId, ops: s.ops, query: f.query, patterns: [...f.kinds], whole_word: f.whole
         }).catch(() => ({ body: {} }));
+        task.end(body.success ? 'done' : 'failed');
         if (s !== session) return;
         f.busy = false;
         if (!body.success) {
@@ -2417,6 +2427,24 @@ const PdfEditor = (() => {
         });
     }
 
+    function coreTask(kind, total, cancel) {
+        const task = { id: `core_${kind}_${Date.now().toString(36)}`, kind, status: 'running', done: 0, total };
+        if (cancel) cancels.set(task.id, cancel);
+        emit('task', { ...task, cancellable: !!cancel });
+        return {
+            step(done) {
+                task.done = done;
+                emit('task', { ...task, cancellable: !!cancel });
+            },
+            end(status = 'done') {
+                if (task.status !== 'running') return;
+                task.status = status;
+                cancels.delete(task.id);
+                emit('task', { ...task, cancellable: false });
+            }
+        };
+    }
+
     function side(open) {
         if (!els) return false;
         const show = open ?? els.side.classList.contains('hidden');
@@ -2491,6 +2519,10 @@ const PdfEditor = (() => {
         sheetSlot: () => (init(), els.side),
         side,
         button: name => (init(), { agent: els.agentBtn, activity: els.activityBtn }[name] || null),
+        cancelTask(id) {
+            cancels.get(id)?.();
+            return cancels.has(id);
+        },
         addMenuItem(entry) {
             if (!menuItems.some(item => item.id === entry.id)) menuItems.push(entry);
         },
