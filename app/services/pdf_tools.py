@@ -8,6 +8,7 @@ from typing import Optional, Callable, Dict, Any, List
 import fitz
 
 from .pdf_editor import apply_ops
+from .pdf_sign import SignError, sign_pdf
 
 
 class PdfToolError(Exception):
@@ -488,11 +489,33 @@ class PdfTools:
 
     def tool_edit(self, paths, out_base, options):
         out_path = out_base + '.pdf'
+        certificate = options.get('certificate')
         with self.open(paths[0]) as doc:
             self.report_progress(20)
-            apply_ops(doc, options.get('ops') or [])
-            self.report_progress(80)
+            info = apply_ops(doc, options.get('ops') or [])
+            self.report_progress(70)
+            if info['fonts_added']:
+                try:
+                    doc.subset_fonts()
+                except Exception:
+                    pass
+            self.report_progress(85)
             self.save(doc, out_path)
+        if certificate and not info['signature']:
+            os.remove(out_path)
+            raise PdfToolError('err_cert_no_field', 'The digital signature box is no longer in the document')
+        if certificate:
+            unsigned = out_base + '_unsigned.pdf'
+            os.replace(out_path, unsigned)
+            try:
+                sign_pdf(unsigned, out_path, certificate, info['signature'])
+            except Exception as e:
+                if os.path.exists(out_path):
+                    os.remove(out_path)
+                raise PdfToolError(e.code if isinstance(e, SignError) else 'err_cert_sign', str(e)) from e
+            finally:
+                if os.path.exists(unsigned):
+                    os.remove(unsigned)
         return out_path
 
     def tool_metadata(self, paths, out_base, options):

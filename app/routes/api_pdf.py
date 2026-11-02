@@ -1,3 +1,4 @@
+import hashlib
 import io
 import os
 import re
@@ -7,7 +8,8 @@ from flask import Blueprint, request, current_app, send_file
 from .api_common import conversion_jobs, api_response, unique_output_base, touch_file, file_expiry, register_result_file
 from ..utils.file_handler import generate_file_id
 from ..services.pdf_tools import PdfTools, PdfToolError
-from ..services import pdf_editor
+from ..services import pdf_ai, pdf_editor
+from ..services.pdf_sign import CERTIFICATES, MAX_CERT_BYTES, SignError
 from .websocket import emit_progress, emit_complete, emit_error
 from ..services.job_registry import registry
 from ..utils.client import client_id
@@ -47,9 +49,19 @@ def get_pdf_job(file_id):
     return job, None
 
 
+def file_digest(job):
+    if not job.get('digest'):
+        sha = hashlib.sha256()
+        with open(job['input_path'], 'rb') as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b''):
+                sha.update(chunk)
+        job['digest'] = sha.hexdigest()
+    return job['digest']
+
+
 def resolve_edit_ops(ops):
     if not isinstance(ops, list):
-        return None
+        return None, (api_response(error={'type': 'InvalidRequestError', 'message': 'ops must be a list'}, success=False), 400)
     resolved = []
     for op in ops:
         if not isinstance(op, dict):
@@ -60,10 +72,11 @@ def resolve_edit_ops(ops):
             image_job = conversion_jobs.owned(op['file_id'])
             path = image_job.get('input_path') if image_job else None
             if not path or not os.path.exists(path) or not path.lower().endswith(IMAGE_EXTENSIONS):
-                continue
+                return None, (api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_edit_image_missing', 'message': 'An inserted image is no longer available'}, success=False), 400)
+            touch_file(op['file_id'])
             op['path'] = path
         resolved.append(op)
-    return resolved
+    return resolved, None
 
 
 def tool_error_response(e: PdfToolError):
@@ -113,7 +126,21 @@ def pdf_edit_pages():
     except Exception:
         return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_damaged', 'message': 'The PDF could not be opened'}, success=False), 400
     touch_file(data.get('file_id'))
-    return api_response(data={'pages': sizes})
+    return api_response(data={'pages': sizes, 'digest': file_digest(job)})
+
+
+@pdf_bp.route('/pdf/edit/keepalive', methods=['POST'])
+def pdf_edit_keepalive():
+    data = request.get_json(silent=True) or {}
+    job, error = get_pdf_job(data.get('file_id'))
+    if error:
+        return error
+    touch_file(data.get('file_id'))
+    images = data.get('images') if isinstance(data.get('images'), list) else []
+    alive = [image_id for image_id in images if conversion_jobs.owned(image_id)]
+    for image_id in alive:
+        touch_file(image_id)
+    return api_response(data={'images': alive})
 
 
 @pdf_bp.route('/pdf/edit/font/<file_id>/<int:xref>', methods=['GET'])
@@ -129,15 +156,95 @@ def pdf_edit_font(file_id, xref):
     return response
 
 
+@pdf_bp.route('/pdf/edit/certificate', methods=['POST'])
+def pdf_edit_certificate():
+    upload = request.files.get('file')
+    if not upload:
+        return api_response(error={'type': 'InvalidRequestError', 'code': 'err_cert_invalid', 'message': 'Certificate file required'}, success=False), 400
+    data = upload.read(MAX_CERT_BYTES + 1)
+    try:
+        cert_id, info = CERTIFICATES.put(client_id(), data, request.form.get('password', ''))
+    except SignError as e:
+        return api_response(error={'type': 'SignError', 'code': e.code, 'message': str(e)}, success=False), 400
+    return api_response(data={'cert_id': cert_id, **info})
+
+
+def ai_error_response(e):
+    return api_response(error={'type': 'AiError', 'code': e.code, 'message': str(e)}, success=False), 400
+
+
+@pdf_bp.route('/pdf/edit/ai/status', methods=['GET'])
+def pdf_edit_ai_status():
+    return api_response(data={'status': pdf_ai.status()})
+
+
+@pdf_bp.route('/pdf/edit/ai', methods=['POST'])
+def pdf_edit_ai():
+    data = request.get_json(silent=True) or {}
+    try:
+        text = pdf_ai.rewrite(str(data.get('text') or ''), data.get('mode'), str(data.get('language') or '')[:40])
+    except pdf_ai.AiError as e:
+        return ai_error_response(e)
+    return api_response(data={'text': text})
+
+
+@pdf_bp.route('/pdf/edit/translate', methods=['POST'])
+def pdf_edit_translate():
+    data = request.get_json(silent=True) or {}
+    job, error = get_pdf_job(data.get('file_id'))
+    if error:
+        return error
+    ops, error = resolve_edit_ops(data.get('ops') or [])
+    if error:
+        return error
+    language = str(data.get('language') or '')[:40]
+    try:
+        page = int(data.get('page', 0))
+        layout = pdf_editor.render_preview(job['input_path'], page, ops, 100)
+        if layout is None:
+            return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_ranges', 'message': 'Page out of range'}, success=False), 400
+        if layout.get('ocr_pending'):
+            return api_response(error={'type': 'PdfToolError', 'code': 'err_ocr_pending', 'message': 'Text recognition is still running'}, success=False), 409
+        result = pdf_ai.translate_page(layout, page, language)
+    except (TypeError, ValueError):
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'Invalid page'}, success=False), 400
+    except pdf_ai.AiError as e:
+        return ai_error_response(e)
+    touch_file(data.get('file_id'))
+    return api_response(data={'ops': result})
+
+
+@pdf_bp.route('/pdf/edit/search', methods=['POST'])
+def pdf_edit_search():
+    data = request.get_json(silent=True) or {}
+    job, error = get_pdf_job(data.get('file_id'))
+    if error:
+        return error
+    ops, error = resolve_edit_ops(data.get('ops') or [])
+    if error:
+        return error
+    kinds = data.get('patterns') if isinstance(data.get('patterns'), list) else []
+    query = str(data.get('query') or '')[:200]
+    if not query.strip() and not kinds:
+        return api_response(data={'matches': [], 'truncated': False})
+    try:
+        matches, truncated = pdf_editor.search_document(job['input_path'], ops, query, kinds, bool(data.get('whole_word')))
+    except Exception as e:
+        return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_edit', 'message': str(e)}, success=False), 400
+    touch_file(data.get('file_id'))
+    return api_response(data={'matches': matches, 'truncated': truncated})
+
+
 @pdf_bp.route('/pdf/edit/page', methods=['POST'])
 def pdf_edit_page():
     data = request.get_json(silent=True) or {}
     job, error = get_pdf_job(data.get('file_id'))
     if error:
         return error
-    ops = resolve_edit_ops(data.get('ops') or [])
-    if ops is None:
-        return api_response(error={'type': 'InvalidRequestError', 'message': 'ops must be a list'}, success=False), 400
+    ops, error = resolve_edit_ops(data.get('ops') or [])
+    if error:
+        return error
+    touch_file(data.get('file_id'))
     try:
         page = int(data.get('page', 0))
         width = min(3000, max(100, int(data.get('width', 800))))
@@ -186,7 +293,15 @@ def pdf_process():
         options['names'] = [j['original_filename'] for j in jobs]
 
     if tool == 'edit':
-        options['ops'] = resolve_edit_ops(options.get('ops'))
+        options['ops'], error = resolve_edit_ops(options.get('ops'))
+        if error:
+            return error
+        cert_id = options.pop('cert_id', None)
+        options.pop('certificate', None)
+        if cert_id:
+            options['certificate'] = CERTIFICATES.take(cert_id, client_id())
+            if not options['certificate']:
+                return api_response(error={'type': 'SignError', 'code': 'err_cert_missing', 'message': 'Load the certificate again'}, success=False), 400
         if not options['ops']:
             return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_edit_empty', 'message': 'Nothing to save'}, success=False), 400
 
