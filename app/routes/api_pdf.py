@@ -49,7 +49,7 @@ def get_pdf_job(file_id):
 
 def resolve_edit_ops(ops):
     if not isinstance(ops, list):
-        return None
+        return None, (api_response(error={'type': 'InvalidRequestError', 'message': 'ops must be a list'}, success=False), 400)
     resolved = []
     for op in ops:
         if not isinstance(op, dict):
@@ -60,10 +60,11 @@ def resolve_edit_ops(ops):
             image_job = conversion_jobs.owned(op['file_id'])
             path = image_job.get('input_path') if image_job else None
             if not path or not os.path.exists(path) or not path.lower().endswith(IMAGE_EXTENSIONS):
-                continue
+                return None, (api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_edit_image_missing', 'message': 'An inserted image is no longer available'}, success=False), 400)
+            touch_file(op['file_id'])
             op['path'] = path
         resolved.append(op)
-    return resolved
+    return resolved, None
 
 
 def tool_error_response(e: PdfToolError):
@@ -135,9 +136,9 @@ def pdf_edit_page():
     job, error = get_pdf_job(data.get('file_id'))
     if error:
         return error
-    ops = resolve_edit_ops(data.get('ops') or [])
-    if ops is None:
-        return api_response(error={'type': 'InvalidRequestError', 'message': 'ops must be a list'}, success=False), 400
+    ops, error = resolve_edit_ops(data.get('ops') or [])
+    if error:
+        return error
     try:
         page = int(data.get('page', 0))
         width = min(3000, max(100, int(data.get('width', 800))))
@@ -186,7 +187,9 @@ def pdf_process():
         options['names'] = [j['original_filename'] for j in jobs]
 
     if tool == 'edit':
-        options['ops'] = resolve_edit_ops(options.get('ops'))
+        options['ops'], error = resolve_edit_ops(options.get('ops'))
+        if error:
+            return error
         if not options['ops']:
             return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_edit_empty', 'message': 'Nothing to save'}, success=False), 400
 

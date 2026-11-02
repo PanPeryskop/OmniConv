@@ -69,6 +69,12 @@ const PdfEditor = (() => {
         return '#' + m.slice(0, 3).map(v => Math.round(Number(v)).toString(16).padStart(2, '0')).join('');
     }
 
+    function errorText(body, fallback) {
+        const code = body?.error?.code;
+        if (code && code in translations.en) return t(code);
+        return body?.error?.message || t(fallback);
+    }
+
     function postJson(url, body) {
         return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
             .then(async res => ({ status: res.status, body: await res.json().catch(() => ({})) }));
@@ -140,7 +146,7 @@ const PdfEditor = (() => {
         updateHistory();
         try {
             const { body } = await postJson('/api/pdf/edit/pages', { file_id: s.fileId });
-            if (!body.success) throw new Error(body.error?.message || t('pdf_err_failed'));
+            if (!body.success) throw new Error(errorText(body, 'pdf_err_failed'));
             buildPages(body.data.pages);
         } catch (err) {
             Toast.error(err.message);
@@ -148,10 +154,17 @@ const PdfEditor = (() => {
         }
     }
 
+    function editorChanged(ed) {
+        if (!ed) return false;
+        const runs = serialize(ed);
+        const align = ed.box.style.textAlign || 'left';
+        return JSON.stringify(runs) !== ed.initial || !!ed.dx || !!ed.dy || ed.box.dataset.family !== ed.family || align !== ed.align;
+    }
+
     function close(force) {
         if (!s) return;
+        if (!force && (s.ops.length || editorChanged(s.editor)) && !confirm(t('pe_discard_confirm'))) return;
         finishText(false);
-        if (!force && s.ops.length && !confirm(t('pe_discard_confirm'))) return;
         clearTimeout(s.zoomTimer);
         s = null;
         els.pages.innerHTML = '';
@@ -267,7 +280,7 @@ const PdfEditor = (() => {
         if (!body.success) {
             page.el.classList.remove('loading');
             if (status === 404) Toast.error(t('pdf_expired'));
-            else Toast.error(body.error?.message || t('err_connection'));
+            else Toast.error(errorText(body, 'err_connection'));
             return;
         }
         const data = body.data;
@@ -351,7 +364,7 @@ const PdfEditor = (() => {
         if (!data) return;
         const keep = [...page.layer.children].filter(el => el === s.editor?.wrap || el.classList.contains('pe-note-pop'));
         const parts = [];
-        data.images.forEach((image, i) => parts.push(`<div class="pe-obj pe-image" data-img="${i}" style="${pct(page, image.bbox)}"></div>`));
+        data.images.forEach((image, i) => parts.push(`<div class="pe-obj pe-image ${image.movable === false ? '' : 'movable'}" data-img="${i}" style="${pct(page, image.bbox)}"></div>`));
         data.blocks.forEach((block, i) => parts.push(`<div class="pe-block" data-b="${i}" style="${pct(page, block.bbox)}"></div>`));
         data.annots.forEach((annot, i) => parts.push(`<div class="pe-obj pe-annot ${annot.movable ? 'movable' : ''}" data-an="${i}" style="${pct(page, annot.rect)}"></div>`));
         data.widgets.forEach((widget, i) => parts.push(widgetHtml(page, widget, i)));
@@ -377,7 +390,8 @@ const PdfEditor = (() => {
     function widgetHtml(page, widget, i) {
         const style = `${pct(page, widget.rect)};font-size:calc(var(--pp) * ${Math.min(14, Math.max(7, (widget.rect[3] - widget.rect[1]) * 0.62))}px)`;
         const attrs = `class="pe-widget" data-w="${i}" style="${style}" ${widget.readonly ? 'disabled' : ''} aria-label="${escapeHtml(widget.name)}"`;
-        if (widget.kind === 'checkbox' || widget.kind === 'radio') return `<input type="checkbox" ${attrs}>`;
+        if (widget.kind === 'radio') return `<input type="radio" name="pe-radio-${page.i}-${escapeHtml(widget.name)}" ${attrs}>`;
+        if (widget.kind === 'checkbox') return `<input type="checkbox" ${attrs}>`;
         if (widget.kind === 'combo' || widget.kind === 'list') {
             const options = widget.options.map(o => {
                 const value = Array.isArray(o) ? o[0] : o;
@@ -395,7 +409,8 @@ const PdfEditor = (() => {
         if (!input || !s) return;
         const page = pageOf(input);
         const widget = page.data.widgets[Number(input.dataset.w)];
-        const value = input.type === 'checkbox' ? input.checked : input.value;
+        const value = input.type === 'checkbox' || input.type === 'radio' ? input.checked : input.value;
+        if (widget.kind === 'radio') page.data.widgets.forEach(w => { if (w.kind === 'radio' && w.name === widget.name) w.value = false; });
         widget.value = value;
         pushOp({ type: 'form', page: page.i, name: widget.name, rect: widget.rect, value });
     }
@@ -530,7 +545,7 @@ const PdfEditor = (() => {
         const el = page.layer.querySelector(kind === 'image' ? `[data-img="${index}"]` : `[data-an="${index}"]`);
         if (!el) return;
         el.classList.add('selected');
-        if (kind === 'image') el.insertAdjacentHTML('beforeend', '<span class="pe-handle"></span>');
+        if (kind === 'image' && page.data.images[index].movable !== false) el.insertAdjacentHTML('beforeend', '<span class="pe-handle"></span>');
         s.selection = { page, kind, index, el };
         renderContext();
     }
@@ -585,7 +600,7 @@ const PdfEditor = (() => {
             const kind = obj.classList.contains('pe-image') ? 'image' : 'annot';
             const index = Number(kind === 'image' ? obj.dataset.img : obj.dataset.an);
             if (s.selection?.el !== obj) select(page, kind, index);
-            const movable = kind === 'image' || page.data.annots[index].movable;
+            const movable = kind === 'image' ? page.data.images[index].movable !== false : page.data.annots[index].movable;
             if (!movable) return;
             const rect = (kind === 'image' ? page.data.images[index].bbox : page.data.annots[index].rect).slice();
             s.drag = { type: e.target.closest('.pe-handle') ? 'resize' : 'move', page, el: obj, kind, index, start: p, origin: rect, rect, moved: false };
@@ -953,7 +968,7 @@ const PdfEditor = (() => {
         s.editor = null;
         const family = ed.box.dataset.family;
         const align = ed.box.style.textAlign || 'left';
-        const changed = JSON.stringify(runs) !== ed.initial || ed.dx || ed.dy || family !== ed.family || align !== ed.align;
+        const changed = editorChanged(ed);
         const empty = !runs.some(r => r.t.trim());
         if (save && changed && !(empty && !ed.block)) {
             const [x0, y0, x1, y1] = ed.bbox;

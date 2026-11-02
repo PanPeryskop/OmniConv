@@ -1,9 +1,12 @@
 import base64
+import hashlib
 import re
 import statistics
 from collections import Counter
 
 import fitz
+import pymupdf.mupdf as mupdf
+from pymupdf import _make_PdfFilterOptions
 
 GENERIC_FONTS = {
     'sans': ('helv', 'hebo', 'heit', 'hebi'),
@@ -65,6 +68,24 @@ def kind_of(name, flags=0):
     return 'sans'
 
 
+class EditContext:
+    def __init__(self, doc):
+        self.doc = doc
+        self.original_xrefs = doc.xref_length()
+        self.origins = {}
+        self.chars = {}
+
+    def picker(self, page):
+        return FontPicker(self.doc, page, self.chars.get(page.number), self)
+
+    def stable_font(self, xref):
+        if not xref:
+            return 0
+        if xref < self.original_xrefs:
+            return xref
+        return self.origins.get(xref, 0)
+
+
 def prepare_page(page):
     if page.rotation:
         page.remove_rotation()
@@ -74,10 +95,14 @@ def page_fonts(page):
     return [(bare_name(basefont), xref, bool(SUBSET_RE.match(basefont))) for xref, _e, _t, basefont, *_ in page.get_fonts(full=True) if xref and basefont]
 
 
+def font_key(name):
+    return re.sub(r'[^a-z0-9]', '', bare_name(name).lower())
+
+
 def font_lookup(fonts):
     lookup = {}
     for name, xref, _subset in fonts:
-        lookup.setdefault(name, xref)
+        lookup.setdefault(font_key(name), xref)
     return lookup
 
 
@@ -178,8 +203,10 @@ def absorb_shadows(blocks):
     return kept
 
 
-def text_blocks(page, fonts):
+def text_blocks(page, fonts, ctx=None):
     lookup = font_lookup(fonts)
+    if ctx:
+        lookup = {name: ctx.stable_font(xref) for name, xref in lookup.items()}
     result = []
     for lines in group_paragraphs(raw_lines(page)):
         bbox = fitz.Rect(lines[0]['bbox'])
@@ -197,7 +224,7 @@ def text_blocks(page, fonts):
                 spans.append({
                     't': s['text'], 's': round(size if scan else s['size'], 2), 'c': '#000000' if scan else hex_color(s['color']),
                     'b': bold and not scan, 'i': italic and not scan,
-                    'f': 0 if scan else lookup.get(bare_name(s['font']), 0), 'k': 'serif' if scan else kind_of(s['font'], s['flags']),
+                    'f': 0 if scan else lookup.get(font_key(s['font']), 0), 'k': 'serif' if scan else kind_of(s['font'], s['flags']),
                 })
             out_lines.append({
                 'bbox': [round(v, 2) for v in line['bbox']],
@@ -216,13 +243,13 @@ def text_blocks(page, fonts):
     return absorb_shadows(result)
 
 
-def page_layout(page):
+def page_layout(page, ctx=None):
     fonts = page_fonts(page)
     images = []
-    for info in page.get_image_info(xrefs=True):
-        bbox = fitz.Rect(info['bbox']) & page.rect
+    for image in page_images(page):
+        bbox = image['bbox'] & page.rect
         if bbox.width > 4 and bbox.height > 4:
-            images.append({'xref': info['xref'], 'bbox': [round(v, 2) for v in bbox]})
+            images.append({'xref': image['xref'], 'bbox': [round(v, 2) for v in image['bbox']], 'movable': image['movable']})
     annots = []
     for annot in page.annots():
         kind = annot.type[1]
@@ -243,16 +270,19 @@ def page_layout(page):
     words = [[round(w[0], 1), round(w[1], 1), round(w[2], 1), round(w[3], 1), w[5], w[6]] for w in page.get_text('words', flags=fitz.TEXT_MEDIABOX_CLIP)]
     return {
         'width': round(page.rect.width, 2), 'height': round(page.rect.height, 2),
-        'blocks': text_blocks(page, fonts), 'images': images, 'annots': annots, 'widgets': widgets, 'words': words,
+        'blocks': text_blocks(page, fonts, ctx), 'images': images, 'annots': annots, 'widgets': widgets, 'words': words,
     }
 
 
 INK_CACHE = {}
+INK_CACHE_LIMIT = 20000
 
 
-def glyph_has_ink(font, char):
-    key = (font.name, font.glyph_count, len(font.buffer), char)
+def glyph_has_ink(font, digest, char):
+    key = (digest, char)
     if key not in INK_CACHE:
+        if len(INK_CACHE) >= INK_CACHE_LIMIT:
+            INK_CACHE.clear()
         with fitz.open() as doc:
             page = doc.new_page(width=40, height=40)
             writer = fitz.TextWriter(page.rect)
@@ -262,29 +292,39 @@ def glyph_has_ink(font, char):
     return INK_CACHE[key]
 
 
+def used_chars(page):
+    lookup = font_lookup(page_fonts(page))
+    chars = {}
+    for block in page.get_text('rawdict')['blocks']:
+        for line in block.get('lines', []):
+            for span in line['spans']:
+                xref = lookup.get(font_key(span['font']))
+                if xref:
+                    chars.setdefault(xref, set()).update(c['c'] for c in span['chars'])
+    return chars
+
+
 class FontPicker:
-    def __init__(self, doc, page):
+    def __init__(self, doc, page, chars=None, ctx=None):
         self.doc = doc
         self.cache = {}
-        self.fonts = page_fonts(page)
+        self.digests = {}
+        limit = ctx.original_xrefs if ctx else doc.xref_length()
+        self.fonts = [f for f in page_fonts(page) if f[1] < limit]
         self.names = {xref: name for name, xref, _subset in self.fonts}
         self.subset = {xref for _name, xref, subset in self.fonts if subset}
-        lookup = font_lookup(self.fonts)
-        self.chars = {}
-        for block in page.get_text('rawdict')['blocks']:
-            for line in block.get('lines', []):
-                for span in line['spans']:
-                    xref = lookup.get(bare_name(span['font']))
-                    if xref:
-                        self.chars.setdefault(xref, set()).update(c['c'] for c in span['chars'])
+        self.chars = used_chars(page) if chars is None else chars
 
     def load(self, xref):
         if xref not in self.cache:
+            self.cache[xref] = None
             try:
                 _name, ext, _type, buffer = self.doc.extract_font(xref)
-                self.cache[xref] = fitz.Font(fontbuffer=buffer) if buffer and ext != 'n/a' else None
+                if buffer and ext != 'n/a':
+                    self.cache[xref] = fitz.Font(fontbuffer=buffer)
+                    self.digests[xref] = hashlib.blake2b(buffer, digest_size=16).digest()
             except Exception:
-                self.cache[xref] = None
+                pass
         return self.cache[xref]
 
     def candidates(self, xref, bold, italic):
@@ -297,7 +337,7 @@ class FontPicker:
     def has(self, font, xref, char):
         if not font.has_glyph(ord(char)):
             return False
-        return xref not in self.subset or char in self.chars.get(xref, ()) or glyph_has_ink(font, char)
+        return xref not in self.subset or char in self.chars.get(xref, ()) or glyph_has_ink(font, self.digests[xref], char)
 
     def originals(self, run):
         if not run.get('f'):
@@ -328,11 +368,11 @@ def space_width(font, size, mono):
 def split_pieces(text, originals, fallback, picker):
     pieces = []
     for char in text:
-        font = next((f for f, xref in originals if picker.has(f, xref, char)), fallback)
+        font, source = next(((f, xref) for f, xref in originals if picker.has(f, xref, char)), (fallback, 0))
         if pieces and pieces[-1][1] is font:
             pieces[-1][0] += char
         else:
-            pieces.append([char, font])
+            pieces.append([char, font, source])
     return pieces
 
 
@@ -358,7 +398,7 @@ def layout_runs(op, picker):
                 tokens.append({'pieces': [], 'run': run, 'size': size, 'space': True, 'width': width})
                 continue
             pieces = split_pieces(part, originals, fallback, picker)
-            width = sum(font.text_length(text, fontsize=size) for text, font in pieces)
+            width = sum(font.text_length(text, fontsize=size) for text, font, _source in pieces)
             tokens.append({'pieces': pieces, 'run': run, 'size': size, 'space': False, 'width': width})
     return tokens
 
@@ -401,7 +441,7 @@ def text_rect(page, op):
     return rect
 
 
-def write_text(page, op, picker):
+def write_text(page, op, picker, ctx=None):
     rect = text_rect(page, op)
     tokens = layout_runs(op, picker)
     if not any(t and not t['space'] for t in tokens):
@@ -434,12 +474,16 @@ def write_text(page, op, picker):
                 x += token['width'] + gap_extra
                 continue
             color = token['run'].get('c') or '#000000'
-            writer = writers.setdefault(color, fitz.TextWriter(page.rect))
-            for text, font in token['pieces']:
+            for text, font, source in token['pieces']:
+                writer = writers.setdefault((color, source), fitz.TextWriter(page.rect))
                 writer.append((x, baseline), text, font=font, fontsize=token['size'])
                 x += font.text_length(text, fontsize=token['size'])
-    for color, writer in writers.items():
+    for (color, source), writer in writers.items():
+        before = {f[0] for f in page.get_fonts()}
         writer.write_text(page, color=rgb(color))
+        if ctx and source:
+            for xref in {f[0] for f in page.get_fonts()} - before:
+                ctx.origins[xref] = ctx.stable_font(source)
 
 
 def shrink(rect):
@@ -462,7 +506,28 @@ def baked_background(page, area, before):
     return tuple(c / 255 for c in color)
 
 
-def op_text(doc, page, op, picker):
+def apply_own_redactions(page, rects, fill, **options):
+    doc = page.parent
+    pending = [xref for xref, kind, _id in page.annot_xrefs() if kind == fitz.PDF_ANNOT_REDACT]
+    if pending:
+        keep = [xref for xref, kind, _id in page.annot_xrefs() if kind != fitz.PDF_ANNOT_REDACT]
+        doc.xref_set_key(page.xref, 'Annots', annots_array(keep))
+        page = doc.reload_page(page)
+    for rect in rects:
+        page.add_redact_annot(rect, fill=fill)
+    page.apply_redactions(**options)
+    if pending:
+        current = [xref for xref, _kind, _id in page.annot_xrefs()]
+        doc.xref_set_key(page.xref, 'Annots', annots_array(current + pending))
+        page = doc.reload_page(page)
+    return page
+
+
+def annots_array(xrefs):
+    return '[' + ' '.join(f'{xref} 0 R' for xref in xrefs) + ']'
+
+
+def op_text(ctx, page, op):
     removes = [rect_of(r) for r in op.get('remove') or []]
     if removes:
         area = fitz.Rect(removes[0])
@@ -470,74 +535,102 @@ def op_text(doc, page, op, picker):
             area |= r
         area = (area + (-1, -1, 1, 1)) & page.rect
         before = page.get_pixmap(clip=area, matrix=fitz.Matrix(2, 2), alpha=False)
-        for r in removes:
-            page.add_redact_annot(shrink(r), fill=False)
-        page.apply_redactions(**KEEP_GRAPHICS)
+        page = apply_own_redactions(page, [shrink(r) for r in removes], False, **KEEP_GRAPHICS)
         cover = baked_background(page, area, before)
         if cover:
             page.draw_rect(area, color=None, fill=cover, overlay=True)
     if op.get('runs') and op.get('rect'):
-        write_text(page, op, picker)
-
-
-def image_pixmap(doc, xref):
-    pix = fitz.Pixmap(doc, xref)
-    smask = doc.xref_get_key(xref, 'SMask')
-    if smask[0] == 'xref':
-        try:
-            pix = fitz.Pixmap(pix, fitz.Pixmap(doc, int(smask[1].split()[0])))
-        except Exception:
-            pass
-    if pix.colorspace and pix.colorspace.n > 3:
-        pix = fitz.Pixmap(fitz.csRGB, pix)
-    return pix
+        write_text(page, op, ctx.picker(page), ctx)
+    return page
 
 
 def rect_distance(a, b):
     return abs(a.x0 - b.x0) + abs(a.y0 - b.y0) + abs(a.x1 - b.x1) + abs(a.y1 - b.y1)
 
 
-def find_image(page, xref, bbox):
-    target = rect_of(bbox)
+def image_draws(page, drop=None):
+    pdfpage = fitz._as_pdf_page(page)
+    page_matrix = mupdf.FzMatrix()
+    mupdf.pdf_page_transform(pdfpage, mupdf.FzRect(), page_matrix)
+    unit = mupdf.FzRect(mupdf.FzRect.Fixed_UNIT)
+    draws = []
+    dropped = []
+
+    class Options(mupdf.PdfSanitizeFilterOptions2):
+        def __init__(self):
+            super().__init__()
+            self.use_virtual_image_filter()
+
+        def image_filter(self, _ctx, ctm, _name, image, _scissor):
+            ctm = mupdf.FzMatrix(ctm)
+            box = mupdf.fz_transform_rect(unit, mupdf.fz_concat(ctm, page_matrix))
+            draws.append({
+                'bbox': fitz.Rect(box.x0, box.y0, box.x1, box.y1),
+                'upright': abs(ctm.b) < 1e-6 and abs(ctm.c) < 1e-6 and ctm.a > 0 and ctm.d > 0,
+                'mask': bool(image.imagemask),
+            })
+            if len(draws) - 1 == drop:
+                dropped.append(mupdf.FzImage(mupdf.ll_fz_keep_image(image)))
+                return None
+            return mupdf.ll_fz_keep_image(image)
+
+    options = Options()
+    filters = _make_PdfFilterOptions(recurse=1, instance_forms=1, no_update=int(drop is None), sanitize=1, sopts=options)
+    mupdf.pdf_filter_page_contents(pdfpage.doc(), pdfpage, filters)
+    return draws, (dropped[0] if dropped else None)
+
+
+def page_images(page):
+    draws, _ = image_draws(page)
     infos = page.get_image_info(xrefs=True)
-    scored = [(rect_distance(fitz.Rect(info['bbox']) & page.rect, target) - (0.5 if info['xref'] == xref else 0), i) for i, info in enumerate(infos)]
+    for draw in draws:
+        match = min(infos, key=lambda info: rect_distance(fitz.Rect(info['bbox']), draw['bbox']), default=None)
+        close = match is not None and rect_distance(fitz.Rect(match['bbox']), draw['bbox']) < 1
+        draw['xref'] = match['xref'] if close else 0
+        draw['movable'] = draw['upright'] and not draw['mask']
+    return draws
+
+
+def find_image(images, xref, bbox):
+    target = rect_of(bbox)
+    scored = [(rect_distance(image['bbox'], target) - (0.5 if xref and image['xref'] == xref else 0), i) for i, image in enumerate(images)]
     score, index = min(scored, default=(99, -1))
-    return infos[index] if score < 4 else None
+    return index if score < 4 else -1
 
 
-def remove_image(doc, page, info):
-    xref = info['xref']
-    same = [i for i in page.get_image_info(xrefs=True) if i['xref'] == xref]
-    names = [item[7] for item in page.get_images(full=True) if item[0] == xref]
-    if same and names:
-        index = min(range(len(same)), key=lambda i: rect_distance(fitz.Rect(same[i]['bbox']), fitz.Rect(info['bbox'])))
-        page.clean_contents()
-        xrefs = page.get_contents()
-        if len(xrefs) == 1:
-            stream = doc.xref_stream(xrefs[0])
-            pattern = rb'/(?:' + b'|'.join(re.escape(n.encode()) for n in set(names)) + rb')\s+Do\b'
-            found = list(re.finditer(pattern, stream))
-            if len(found) == len(same):
-                hit = found[index]
-                doc.update_stream(xrefs[0], stream[:hit.start()] + stream[hit.end():])
-                return
-    page.draw_rect(fitz.Rect(info['bbox']) & page.rect, color=None, fill=(1, 1, 1), overlay=True)
+def decoded_pixmap(image):
+    pix = fitz.Pixmap(mupdf.fz_get_pixmap_from_image(image, mupdf.FzIrect(mupdf.fz_infinite_irect), mupdf.FzMatrix())[0])
+    if pix.colorspace and pix.colorspace.n > 3:
+        pix = fitz.Pixmap(fitz.csRGB, pix)
+    return pix
 
 
-def op_image(doc, page, op, picker):
-    found = find_image(page, int(op.get('xref') or 0), op['remove']) if op.get('remove') else None
-    pix = image_pixmap(doc, found['xref']) if found and op.get('rect') and not op.get('path') else None
-    if found:
-        remove_image(doc, page, found)
-    if op.get('rect'):
-        rect = rect_of(op['rect'])
-        if op.get('path'):
-            page.insert_image(rect, filename=op['path'], keep_proportion=False)
-        elif pix:
-            page.insert_image(rect, pixmap=pix, keep_proportion=False)
+def op_image(ctx, page, op):
+    rect = rect_of(op['rect']) if op.get('rect') else None
+    path = op.get('path')
+    if op.get('remove'):
+        images = page_images(page)
+        index = find_image(images, int(op.get('xref') or 0), op['remove'])
+        if index >= 0:
+            image = images[index]
+            if rect and not path and not image['movable']:
+                return page
+            _draws, decoded = image_draws(page, drop=index)
+            page = ctx.doc.reload_page(page)
+            if rect and not path:
+                if image['xref']:
+                    page.insert_image(rect, xref=image['xref'], keep_proportion=False)
+                elif decoded is not None:
+                    page.insert_image(rect, pixmap=decoded_pixmap(decoded), keep_proportion=False)
+                return page
+        elif rect and not path:
+            return page
+    if rect and path:
+        page.insert_image(rect, filename=path, keep_proportion=False)
+    return page
 
 
-def op_annot(doc, page, op, picker):
+def op_annot(ctx, page, op):
     kind = op.get('kind')
     color = rgb(op.get('color'), (1, 0.85, 0) if kind == 'highlight' else (0.9, 0.1, 0.1))
     fill = rgb(op['fill']) if op.get('fill') else None
@@ -545,13 +638,13 @@ def op_annot(doc, page, op, picker):
     if kind in MARKUP_KINDS:
         quads = [rect_of(r).quad for r in op.get('rects') or []]
         if not quads:
-            return
+            return page
         annot = getattr(page, f'add_{kind}_annot')(quads)
         annot.set_colors(stroke=color)
     elif kind == 'ink':
         strokes = [[(float(x), float(y)) for x, y in stroke] for stroke in op.get('points') or [] if len(stroke) > 1]
         if not strokes:
-            return
+            return page
         annot = page.add_ink_annot(strokes)
         annot.set_colors(stroke=color)
         annot.set_border(width=width)
@@ -561,7 +654,7 @@ def op_annot(doc, page, op, picker):
         annot.set_colors(stroke=color, fill=fill)
         annot.set_border(width=width)
     elif kind in ('line', 'arrow'):
-        x0, y0, x1, y1 = [float(v) for v in op['rect']]
+        x0, y0, x1, y1 = [float(v) for v in op['rect'][:4]]
         annot = page.add_line_annot((x0, y0), (x1, y1))
         annot.set_colors(stroke=color, fill=color)
         annot.set_border(width=width)
@@ -572,10 +665,11 @@ def op_annot(doc, page, op, picker):
         annot = page.add_text_annot((x, y), str(op.get('text') or ''), icon='Comment')
         annot.set_colors(stroke=color)
     else:
-        return
+        return page
     if op.get('opacity') is not None:
         annot.set_opacity(max(0.05, min(1.0, float(op['opacity']))))
     annot.update()
+    return page
 
 
 def find_annot(page, rect):
@@ -584,34 +678,34 @@ def find_annot(page, rect):
     for annot in page.annots():
         if annot.type[1] in ('Popup', 'Link', 'Widget'):
             continue
-        r = annot.rect
-        diff = abs(r.x0 - target.x0) + abs(r.y0 - target.y0) + abs(r.x1 - target.x1) + abs(r.y1 - target.y1)
+        diff = rect_distance(annot.rect, target)
         if diff < score:
             best, score = annot, diff
     return best
 
 
-def op_annot_edit(doc, page, op, picker):
+def op_annot_edit(ctx, page, op):
     annot = find_annot(page, op['target'])
     if not annot:
-        return
+        return page
     if op.get('delete'):
         page.delete_annot(annot)
     elif op.get('rect') and annot.type[1] in MOVABLE_ANNOTS:
         annot.set_rect(rect_of(op['rect']))
         annot.update()
+    return page
 
 
-def op_whiteout(doc, page, op, picker):
+def op_whiteout(ctx, page, op):
     page.draw_rect(rect_of(op['rect']), color=None, fill=rgb(op.get('color'), (1, 1, 1)), overlay=True)
+    return page
 
 
-def op_redact(doc, page, op, picker):
-    page.add_redact_annot(rect_of(op['rect']), fill=(0, 0, 0))
-    page.apply_redactions()
+def op_redact(ctx, page, op):
+    return apply_own_redactions(page, [rect_of(op['rect'])], (0, 0, 0))
 
 
-def op_form(doc, page, op, picker):
+def op_form(ctx, page, op):
     target = rect_of(op['rect']) if op.get('rect') else None
     for widget in page.widgets():
         if widget.field_name != op.get('name'):
@@ -620,33 +714,36 @@ def op_form(doc, page, op, picker):
             continue
         kind = WIDGET_TYPES.get(widget.field_type)
         value = op.get('value')
-        if kind in ('checkbox', 'radio'):
+        if kind == 'radio':
+            if not value:
+                continue
+            widget.field_value = True
+        elif kind == 'checkbox':
             widget.field_value = widget.on_state() if value else 'Off'
         else:
             widget.field_value = '' if value is None else str(value)
         widget.update()
-        doc.xref_set_key(doc.pdf_catalog(), 'AcroForm/NeedAppearances', 'true')
+        ctx.doc.xref_set_key(ctx.doc.pdf_catalog(), 'AcroForm/NeedAppearances', 'true')
+    return page
 
 
 OPS = {
     'text': op_text, 'image': op_image, 'annot': op_annot, 'annot_edit': op_annot_edit,
     'whiteout': op_whiteout, 'redact': op_redact, 'form': op_form,
 }
+RELOAD_AFTER = {'text', 'image', 'redact'}
 
 
-def apply_page_ops(doc, page, ops):
+def apply_page_ops(ctx, page, ops):
     prepare_page(page)
-    picker = None
+    ctx.chars[page.number] = used_chars(page)
     for op in ops:
         handler = OPS.get(op.get('type'))
         if not handler:
             continue
-        if op.get('type') == 'text' and picker is None:
-            picker = FontPicker(doc, page)
-        handler(doc, page, op, picker)
-        if op.get('type') in ('text', 'image', 'redact'):
-            page = doc.reload_page(page)
-            picker = None
+        page = handler(ctx, page, op)
+        if op.get('type') in RELOAD_AFTER:
+            page = ctx.doc.reload_page(page)
     return page
 
 
@@ -663,17 +760,18 @@ def group_ops(ops, page_count):
 
 
 def apply_ops(doc, ops):
+    ctx = EditContext(doc)
     for index, page_ops in sorted(group_ops(ops, doc.page_count).items()):
-        apply_page_ops(doc, doc[index], page_ops)
+        apply_page_ops(ctx, doc[index], page_ops)
 
 
 def render_preview(path, index, ops, width):
     with fitz.open(path) as doc:
         if doc.needs_pass or index < 0 or index >= doc.page_count:
             return None
-        page = apply_page_ops(doc, doc[index], [op for op in ops or [] if op.get('page') == index])
-        layout = page_layout(doc.reload_page(page))
-        page = doc[index]
+        ctx = EditContext(doc)
+        page = apply_page_ops(ctx, doc[index], group_ops(ops, doc.page_count).get(index, []))
+        layout = page_layout(page, ctx)
         zoom = max(0.05, min(5.0, width / max(1.0, page.rect.width)))
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
         layout['image'] = 'data:image/jpeg;base64,' + base64.b64encode(pix.tobytes(output='jpeg', jpg_quality=85)).decode()
