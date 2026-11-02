@@ -11,7 +11,9 @@ import fitz
 import pymupdf.mupdf as mupdf
 from pymupdf import _make_PdfFilterOptions
 
-from .font_match import FontLibrary, pdf_font_profile
+from . import pdf_scan
+from .font_match import FontLibrary, family_key, pdf_font_profile
+from .pdf_search import MAX_MATCHES, search_page
 from .web_fonts import web_font_bytes
 
 GENERIC_FONTS = {
@@ -88,6 +90,15 @@ class EditContext:
         self.overflow = {}
         self.current = None
         self.programs = {}
+        self.scan_fonts = {}
+
+    def scan_font(self, page):
+        if page.number not in self.scan_fonts:
+            try:
+                self.scan_fonts[page.number] = pdf_scan.match_scan_font(page, page.get_text('words'), self.library)
+            except Exception:
+                self.scan_fonts[page.number] = None
+        return self.scan_fonts[page.number]
 
     def program(self, xref):
         if xref not in self.programs:
@@ -304,7 +315,11 @@ def text_blocks(page, fonts, ctx):
         kinds[xref] = profile['kind'] if profile else None
         names[xref] = ctx.web_names(xref)
     result = []
-    for lines in group_paragraphs(raw_lines(page)):
+    paragraphs = group_paragraphs(raw_lines(page))
+    scanned = [all(s.get('alpha', 255) == 0 for l in lines for s in l['spans']) for lines in paragraphs]
+    pixels = pdf_scan.raster(page) if any(scanned) else None
+    scan_font = ctx.scan_font(page) if pixels is not None else None
+    for lines in paragraphs:
         bbox = fitz.Rect(lines[0]['bbox'])
         for line in lines[1:]:
             bbox |= fitz.Rect(line['bbox'])
@@ -313,6 +328,7 @@ def text_blocks(page, fonts, ctx):
         deltas = [b - a for a, b in zip(baselines, baselines[1:]) if b - a > size * 0.5]
         scan = all(s.get('alpha', 255) == 0 for l in lines for s in l['spans'])
         align = guess_align(lines, bbox, page.rect.width)
+        scan_color = pdf_scan.ink_color(pdf_scan.crop(pixels, bbox)) if scan else None
         out_lines = []
         for i, line in enumerate(lines):
             spans = []
@@ -321,9 +337,11 @@ def text_blocks(page, fonts, ctx):
                 xref = 0 if scan else lookup.get(font_key(s['font']), 0)
                 rise = baselines[i] - s['origin'][1]
                 spans.append({
-                    't': s['text'], 's': round(size if scan else s['size'], 2), 'c': '#000000' if scan else hex_color(s['color']),
+                    't': s['text'], 's': round(size if scan else s['size'], 2), 'c': (scan_color or '#000000') if scan else hex_color(s['color']),
                     'b': bold and not scan, 'i': italic and not scan, 'f': xref,
-                    'k': 'serif' if scan else kinds.get(xref) or kind_of(s['font'], s['flags']), 'n': names.get(xref, []),
+                    'k': (scan_font[1] if scan_font else 'serif') if scan else kinds.get(xref) or kind_of(s['font'], s['flags']),
+                    'n': ([scan_font[0]] if scan_font else []) if scan else names.get(xref, []),
+                    'lib': scan_font[0] if scan and scan_font else '',
                     'cs': 0.0 if scan or align == 'justify' else letter_spacing(s, ctx.program(xref)[0] if xref else None),
                     'rise': round(rise, 2) if abs(rise) > 0.5 and not scan else 0.0,
                 })
@@ -373,9 +391,12 @@ def page_layout(page, ctx=None):
             'readonly': bool(widget.field_flags & fitz.PDF_FIELD_IS_READ_ONLY),
         })
     words = [[round(w[0], 1), round(w[1], 1), round(w[2], 1), round(w[3], 1), w[5], w[6]] for w in page.get_text('words', flags=fitz.TEXT_MEDIABOX_CLIP)]
+    blocks = text_blocks(page, fonts, ctx)
+    covered = sum((fitz.Rect(i['bbox']) & page.rect).get_area() for i in images)
     return {
         'width': round(page.rect.width, 2), 'height': round(page.rect.height, 2),
-        'blocks': text_blocks(page, fonts, ctx), 'images': images, 'annots': annots, 'widgets': widgets, 'words': words,
+        'blocks': blocks, 'images': images, 'annots': annots, 'widgets': widgets, 'words': words,
+        'scanned': not words and covered >= page.rect.get_area() * 0.5,
     }
 
 
@@ -456,7 +477,9 @@ class FontPicker:
 
     def sources(self, run):
         if not run.get('f'):
-            return []
+            entry = self.ctx.library.styled(family_key(run.get('lib') or ''), bool(run.get('b')), bool(run.get('i'))) if run.get('lib') else None
+            font = self.ctx.library.font(entry) if entry else None
+            return [(font, 0, covers(font))] if font else []
         source = int(run['f'])
         font, quality = self.substitute(run)
         if quality == 'exact':
@@ -706,7 +729,7 @@ def op_text(ctx, page, op):
         before = page.get_pixmap(clip=area, matrix=fitz.Matrix(2, 2), alpha=False)
         page = apply_own_redactions(page, [shrink(r) for r in removes], False, **KEEP_GRAPHICS)
         cover = baked_background(page, area, before)
-        if cover:
+        if cover and not pdf_scan.inpaint(page, area, before, removes):
             page.draw_rect(area, color=None, fill=cover, overlay=True)
     if op.get('runs') and op.get('rect'):
         overflow = write_text(page, op, ctx.picker(page), ctx)
@@ -919,13 +942,57 @@ def op_annot_edit(ctx, page, op):
     return page
 
 
+def op_ocr(ctx, page, op):
+    if not page.get_text('words'):
+        pdf_scan.recognize(page)
+    return page
+
+
 def op_whiteout(ctx, page, op):
     page.draw_rect(rect_of(op['rect']), color=None, fill=rgb(op.get('color'), (1, 1, 1)), overlay=True)
     return page
 
 
+def without_ref(value, xref):
+    return '[' + ' '.join(re.findall(r'\d+ \d+ R', value.replace(f'{xref} 0 R', ''))) + ']'
+
+
+def detach_field(doc, xref):
+    kind, parent = doc.xref_get_key(xref, 'Parent')
+    if kind == 'xref':
+        owner = int(parent.split()[0])
+        kids = without_ref(doc.xref_get_key(owner, 'Kids')[1], xref)
+        doc.xref_set_key(owner, 'Kids', kids)
+        if kids == '[]':
+            detach_field(doc, owner)
+        return
+    fields = doc.xref_get_key(doc.pdf_catalog(), 'AcroForm/Fields')
+    if fields[0] == 'array':
+        doc.xref_set_key(doc.pdf_catalog(), 'AcroForm/Fields', without_ref(fields[1], xref))
+
+
+def remove_widgets(page, xrefs):
+    doc = page.parent
+    keep = [xref for xref, _kind, _id in page.annot_xrefs() if xref not in xrefs]
+    doc.xref_set_key(page.xref, 'Annots', annots_array(keep))
+    for xref in xrefs:
+        detach_field(doc, xref)
+    return doc.reload_page(page)
+
+
 def op_redact(ctx, page, op):
-    return apply_own_redactions(page, [rect_of(op['rect'])], (0, 0, 0))
+    rects = [rect_of(r) for r in op.get('rects') or [op['rect']]]
+    hits = lambda area: any(area.intersects(r) for r in rects)
+    covered = [w.xref for w in page.widgets() if hits(w.rect)]
+    if covered:
+        page = remove_widgets(page, set(covered))
+    for xref in [a.xref for a in page.annots() if a.type[1] not in ('Popup', 'Redact') and hits(a.rect)]:
+        annot = page.load_annot(xref)
+        if annot:
+            page.delete_annot(annot)
+    for link in [link for link in page.get_links() if hits(fitz.Rect(link['from']))]:
+        page.delete_link(link)
+    return apply_own_redactions(page, rects, (0, 0, 0))
 
 
 def op_form(ctx, page, op):
@@ -952,9 +1019,9 @@ def op_form(ctx, page, op):
 
 OPS = {
     'text': op_text, 'image': op_image, 'annot': op_annot, 'annot_edit': op_annot_edit,
-    'whiteout': op_whiteout, 'redact': op_redact, 'form': op_form,
+    'whiteout': op_whiteout, 'redact': op_redact, 'form': op_form, 'ocr': op_ocr,
 }
-RELOAD_AFTER = {'text', 'image', 'redact'}
+RELOAD_AFTER = {'text', 'image', 'redact', 'ocr'}
 
 
 def apply_page_ops(ctx, page, ops):
@@ -977,7 +1044,7 @@ PAGE_SIZE_LIMIT = (36, 14400)
 def group_ops(ops, page_count):
     pages = {}
     for op in ops or []:
-        if op.get('type') == 'page':
+        if op.get('type') in ('page', 'sanitize'):
             continue
         try:
             index = int(op.get('page'))
@@ -1033,6 +1100,22 @@ def add_blanks(doc, blanks, upto=None):
         doc.new_page(width=width, height=height)
 
 
+def sanitize(doc, options):
+    pick = lambda key: bool(options.get(key))
+    if pick('comments'):
+        for page in doc:
+            for xref in [a.xref for a in page.annots() if a.type[1] not in ('Widget', 'Link')]:
+                annot = page.load_annot(xref)
+                if annot:
+                    page.delete_annot(annot)
+    doc.scrub(
+        attached_files=pick('attachments'), embedded_files=pick('attachments'), hidden_text=pick('hidden_text'),
+        javascript=pick('javascript'), metadata=pick('metadata'), xml_metadata=pick('metadata'),
+        remove_links=pick('links'), reset_fields=pick('fields'), reset_responses=pick('comments'),
+        thumbnails=True, redactions=False, clean_pages=True,
+    )
+
+
 def apply_ops(doc, ops):
     ctx = EditContext(doc)
     count = doc.page_count
@@ -1043,8 +1126,33 @@ def apply_ops(doc, ops):
     for pid, angle in rotation.items():
         page = doc[pid]
         page.set_rotation((page.rotation + angle) % 360)
+    cleanup = next((op for op in reversed(ops or []) if op.get('type') == 'sanitize'), None)
+    if cleanup and isinstance(cleanup.get('options'), dict):
+        sanitize(doc, cleanup['options'])
     if order != list(range(doc.page_count)):
         doc.select(order)
+
+
+def search_document(path, ops, query, kinds, whole_word=False):
+    with fitz.open(path) as doc:
+        if doc.needs_pass:
+            return [], False
+        ctx = EditContext(doc)
+        order, _rotation, blanks = page_structure(ops, doc.page_count)
+        add_blanks(doc, blanks)
+        grouped = group_ops(ops, doc.page_count)
+        results = []
+        for index in order:
+            page = doc[index]
+            if grouped.get(index):
+                page = apply_page_ops(ctx, page, grouped[index])
+            else:
+                prepare_page(page)
+            for match in search_page(page, query, kinds, whole_word):
+                results.append(dict(match, page=index))
+                if len(results) >= MAX_MATCHES:
+                    return results, True
+        return results, False
 
 
 class PreviewCache:

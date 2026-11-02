@@ -155,6 +155,27 @@ def pdf_edit_font(file_id, xref):
     return response
 
 
+@pdf_bp.route('/pdf/edit/search', methods=['POST'])
+def pdf_edit_search():
+    data = request.get_json(silent=True) or {}
+    job, error = get_pdf_job(data.get('file_id'))
+    if error:
+        return error
+    ops, error = resolve_edit_ops(data.get('ops') or [])
+    if error:
+        return error
+    kinds = data.get('patterns') if isinstance(data.get('patterns'), list) else []
+    query = str(data.get('query') or '')[:200]
+    if not query.strip() and not kinds:
+        return api_response(data={'matches': [], 'truncated': False})
+    try:
+        matches, truncated = pdf_editor.search_document(job['input_path'], ops, query, kinds, bool(data.get('whole_word')))
+    except Exception as e:
+        return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_edit', 'message': str(e)}, success=False), 400
+    touch_file(data.get('file_id'))
+    return api_response(data={'matches': matches, 'truncated': truncated})
+
+
 @pdf_bp.route('/pdf/edit/page', methods=['POST'])
 def pdf_edit_page():
     data = request.get_json(silent=True) or {}

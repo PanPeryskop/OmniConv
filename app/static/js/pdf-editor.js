@@ -1,8 +1,11 @@
 const PdfEditor = (() => {
-    const TOOLS = ['edit', 'text', 'image', 'markup', 'draw', 'shape', 'note', 'whiteout', 'redact'];
+    const TOOLS = ['edit', 'text', 'sign', 'image', 'markup', 'draw', 'shape', 'note', 'whiteout', 'redact'];
     const ICONS = {
         edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
         text: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>',
+        sign: '<path d="M3 17c2-1 3-6 5-6s1 5 3 5 2-3 4-3 2 2 3 2"/><path d="M3 21h18"/><path d="M15 4l5 5-6 6h-5v-5z"/>',
+        date: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+        cross: '<path d="M6 6l12 12M18 6L6 18"/>',
         image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-9 9"/>',
         markup: '<path d="M9 11l-5 5v4h4l5-5"/><path d="M14 4l6 6-7 7-6-6z"/>',
         draw: '<path d="M3 17c3-6 5-6 7-2s4 4 7-3l2-4"/>',
@@ -41,6 +44,10 @@ const PdfEditor = (() => {
         mono: "Consolas, 'Courier New', monospace"
     };
     const KEEPALIVE_MS = 4 * 60 * 1000;
+    const PATTERN_KINDS = ['pesel', 'nip', 'regon', 'iban', 'card', 'id_card', 'email', 'phone', 'date'];
+    const SANITIZE_KEYS = ['metadata', 'attachments', 'javascript', 'comments', 'links', 'hidden_text', 'fields'];
+    const SANITIZE_DEFAULTS = ['metadata', 'attachments', 'javascript'];
+    const RESULTS_SHOWN = 200;
     const SNAP_PX = 6;
     const NUDGE_MERGE_MS = 1500;
     const MIN_ZOOM = 0.4;
@@ -97,7 +104,7 @@ const PdfEditor = (() => {
             undo: $('peUndo'), redo: $('peRedo'), zoomIn: $('peZoomIn'), zoomOut: $('peZoomOut'), zoomValue: $('peZoomValue'),
             save: $('peSave'), scroll: $('peScroll'), pages: $('pePages'), dock: $('peDock'), pill: $('pePagePill'),
             context: $('peContext'), tools: $('peTools'), imageInput: $('peImageInput'), notice: $('peNotice'),
-            pagesBtn: $('pePagesBtn'), panel: $('pePanel'), thumbs: $('peThumbs')
+            pagesBtn: $('pePagesBtn'), panel: $('pePanel'), thumbs: $('peThumbs'), sheet: $('peSheet')
         };
         els.tools.innerHTML = TOOLS.map(tool => `
             <button type="button" class="pe-tool" data-tool="${tool}">
@@ -121,6 +128,20 @@ const PdfEditor = (() => {
         els.context.addEventListener('click', onContextClick);
         els.notice.addEventListener('click', onNoticeClick);
         els.pagesBtn.addEventListener('click', () => togglePanel());
+        els.sheet.addEventListener('click', onSheetClick);
+        els.sheet.addEventListener('change', onSheetChange);
+        els.sheet.addEventListener('input', e => {
+            if (e.target.matches('[data-sign="name"]')) {
+                s.sign.name = e.target.value;
+                els.sheet.querySelectorAll('.pe-sig-font').forEach(el => { el.textContent = s.sign.name || t('pe_sig_name'); });
+            }
+        });
+        els.sheet.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && e.target.matches('[data-find="query"]')) {
+                e.preventDefault();
+                runSearch();
+            }
+        });
         els.thumbs.addEventListener('click', onThumbClick);
         if (window.Sortable) {
             Sortable.create(els.thumbs, {
@@ -151,7 +172,7 @@ const PdfEditor = (() => {
         window.visualViewport?.addEventListener('resize', updateKeyboard);
         window.visualViewport?.addEventListener('scroll', updateKeyboard);
         document.addEventListener('keydown', onKeyDown);
-        document.addEventListener('languagechange', () => s && (renderContext(), updateStatus(), renderBanner()));
+        document.addEventListener('languagechange', () => s && (renderContext(), updateStatus(), renderBanner(), renderSheet(), renderThumbs()));
     }
 
     async function open(file, { onSave, ops } = {}) {
@@ -160,7 +181,9 @@ const PdfEditor = (() => {
             fileId: file.file_id, ops: Array.isArray(ops) ? ops.slice() : [], redo: [], zoom: 1, tool: 'edit', pages: [], selection: null, editor: null,
             drag: null, gesture: null, reselect: null, imageTarget: null, note: null, fonts: {}, onSave,
             banner: null, dismissed: new WeakSet(), digest: null, draftTimer: 0, keepalive: 0, restoring: false,
-            group: 0, nudge: null, clipboard: null, pasteCount: 0, current: 0, suppressClick: false,
+            group: 0, nudge: null, clipboard: null, pasteCount: 0, current: 0, suppressClick: false, sheet: null,
+            find: { query: '', whole: false, kinds: new Set(), matches: null, off: new Set(), truncated: false, busy: false },
+            scansDismissed: new Set(), place: null, sign: { tab: 'draw', color: INK[0], font: 0, name: '', image: null, keep: true, pad: null },
             opts: { ink: INK[1], mark: MARKS[0], width: WIDTHS[1], markup: 'highlight', shape: 'rect', textColor: INK[0], textSize: 12 }
         };
         els.title.textContent = file.filename;
@@ -269,6 +292,7 @@ const PdfEditor = (() => {
         clearTimeout(s.zoomTimer);
         clearInterval(s.keepalive);
         hideBanner();
+        closeSheet();
         s = null;
         els.pages.innerHTML = '';
         els.root.classList.add('hidden');
@@ -514,9 +538,21 @@ const PdfEditor = (() => {
         renderLayer(page);
         const thumb = els.thumbs.querySelector(`.pe-thumb[data-id="${page.i}"] .pe-thumb-page`);
         if (thumb) thumb.innerHTML = `<img src="${escapeHtml(data.image)}" alt="">`;
+        if (data.scanned && !s.banner && !s.scansDismissed.has(page.i) && !s.ops.some(op => op.type === 'ocr' && op.page === page.i)) offerOcr(page);
         Object.keys(data.overflow || {}).forEach(i => {
             const op = sent[Number(i)];
             if (op && !op.fit && !s.dismissed.has(op) && s.ops.includes(op)) offerFit(op);
+        });
+    }
+
+    function offerOcr(page) {
+        showBanner({
+            key: 'pe_scan_detected',
+            actions: [{ key: 'pe_scan_ocr', primary: true, run: () => {
+                Toast.info(escapeHtml(t('pe_scan_wait')));
+                pushOp({ type: 'ocr', page: page.i });
+            } }],
+            dismiss: () => s.scansDismissed.add(page.i)
         });
     }
 
@@ -664,6 +700,7 @@ const PdfEditor = (() => {
             if (widget.kind === 'checkbox' || widget.kind === 'radio') input.checked = !!widget.value;
             else input.value = widget.value ?? '';
         });
+        renderHits(page);
         if (s.reselect?.page === page.i) {
             const target = s.reselect;
             s.reselect = null;
@@ -716,6 +753,8 @@ const PdfEditor = (() => {
         finishText(true);
         clearSelection();
         closeNote();
+        if (tool !== 'redact' && tool !== 'sign') closeSheet();
+        if (tool !== 'sign') s.place = null;
         s.tool = tool;
         els.tools.querySelectorAll('[data-tool]').forEach(btn => {
             const active = btn.dataset.tool === tool;
@@ -781,6 +820,18 @@ const PdfEditor = (() => {
             html = swatches('ink', INK, o.ink) + widths(o.width);
         } else if (s.tool === 'shape') {
             html = SHAPES.map(k => chip('shape', label(`pe_shape_${k}`), { value: k, active: o.shape === k })).join('') + swatches('ink', INK, o.ink) + widths(o.width);
+        } else if (s.tool === 'sign') {
+            const active = key => s.place?.key === key;
+            const saved = PdfSign.list().map(item => chip('place', `<img src="${escapeHtml(item.url)}" alt="">`, { value: `sig:${item.id}`, active: active(`sig:${item.id}`) })).join('');
+            html = hint(s.place ? 'pe_hint_place' : 'pe_hint_sign') + saved
+                + chip('new-signature', icon('plus') + label('pe_new_signature'), { active: s.sheet === 'sign' })
+                + chip('place', icon('date'), { value: 'date', active: active('date'), title: 'pe_date' })
+                + chip('place', icon('check'), { value: 'check', active: active('check'), title: 'pe_check' })
+                + chip('place', icon('cross'), { value: 'cross', active: active('cross'), title: 'pe_cross' });
+        } else if (s.tool === 'redact') {
+            const cleanup = sanitizeOp();
+            html = hint('pe_hint_redact') + chip('open-find', label('pe_find_redact'), { active: s.sheet === 'find' })
+                + chip('open-sanitize', label('pe_sanitize'), { active: s.sheet === 'sanitize' || !!cleanup });
         } else if (s.tool === 'text') {
             html = hint('pe_hint_text') + swatches('text-color', INK, o.textColor);
         } else {
@@ -834,9 +885,314 @@ const PdfEditor = (() => {
                 return;
             }
             case 'duplicate': duplicateSelection(); return;
+            case 'open-find': toggleSheet('find'); return;
+            case 'new-signature': toggleSheet('sign'); return;
+            case 'place': choosePlacement(value); break;
+            case 'open-sanitize': toggleSheet('sanitize'); return;
             case 'delete-object': deleteSelection(); return;
         }
         renderContext();
+    }
+
+    function sanitizeOp() {
+        const op = [...s.ops].reverse().find(o => o.type === 'sanitize');
+        return op && SANITIZE_KEYS.some(key => op.options?.[key]) ? op : null;
+    }
+
+    function toggleSheet(kind) {
+        if (s.sheet === kind) return closeSheet();
+        s.sheet = kind;
+        renderSheet();
+        renderContext();
+        els.sheet.querySelector('input[type="search"]')?.focus();
+    }
+
+    function closeSheet() {
+        if (!s) return;
+        const wasFind = s.sheet === 'find';
+        s.sheet = null;
+        els.sheet.classList.add('hidden');
+        els.sheet.innerHTML = '';
+        if (wasFind) {
+            s.find.matches = null;
+            s.pages.forEach(renderHits);
+        }
+        renderContext();
+    }
+
+    function renderSheet() {
+        if (!s?.sheet) return;
+        els.sheet.classList.remove('hidden');
+        const views = { find: findSheet, sanitize: sanitizeSheet, sign: signSheet };
+        els.sheet.innerHTML = views[s.sheet]();
+        if (s.sheet === 'sign' && s.sign.tab === 'draw') s.sign.pad = PdfSign.pad(els.sheet.querySelector('.pe-sigpad'), () => s.sign.color);
+    }
+
+    function signSheet() {
+        const g = s.sign;
+        const tabs = ['draw', 'type', 'image'].map(tab => chip('sig-tab', escapeHtml(t(`pe_sig_${tab}`)), { value: tab, active: g.tab === tab })).join('');
+        const colors = swatches('sig-color', [INK[0], INK[4]], g.color);
+        let body = '';
+        if (g.tab === 'draw') {
+            body = `<canvas class="pe-sigpad" aria-label="${escapeHtml(t('pe_sig_draw'))}"></canvas>
+                <div class="pe-sheet-row">${colors}<button type="button" class="btn btn-ghost btn-small" data-sign="clear">${escapeHtml(t('pe_sig_clear'))}</button></div>`;
+        } else if (g.tab === 'type') {
+            body = `<input type="search" data-sign="name" value="${escapeHtml(g.name)}" placeholder="${escapeHtml(t('pe_sig_name'))}" aria-label="${escapeHtml(t('pe_sig_name'))}">
+                <div class="pe-sig-fonts">${PdfSign.FONTS.map((font, i) => `<button type="button" class="pe-sig-font ${g.font === i ? 'active' : ''}" data-sign="font" data-index="${i}" style="font-family:${escapeHtml(font)};color:${g.color}">${escapeHtml(g.name || t('pe_sig_name'))}</button>`).join('')}</div>
+                <div class="pe-sheet-row">${colors}</div>`;
+        } else {
+            body = `<div class="pe-sig-preview">${g.image ? `<img src="${escapeHtml(g.image)}" alt="">` : ''}</div>
+                <div class="pe-sheet-row"><label class="btn btn-ghost btn-small">${escapeHtml(t('pe_sig_choose'))}<input type="file" data-sign="file" accept="image/png,image/jpeg,image/webp" hidden></label></div>`;
+        }
+        const saved = PdfSign.list();
+        const list = saved.length ? `<div class="pe-muted">${escapeHtml(t('pe_sig_saved'))}</div><div class="pe-sig-saved">${saved.map(item => `
+            <div class="pe-sig-item"><img src="${escapeHtml(item.url)}" alt=""><button type="button" data-sign="remove" data-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(t('pe_sig_remove'))}" title="${escapeHtml(t('pe_sig_remove'))}">${icon('close')}</button></div>`).join('')}</div>` : '';
+        return `${sheetHead('pe_new_signature')}
+            <div class="pe-tabs">${tabs}</div>
+            ${body}
+            <label><input type="checkbox" data-sign="keep" ${g.keep ? 'checked' : ''}>${escapeHtml(t('pe_sig_keep'))}</label>
+            <div class="pe-sheet-row"><button type="button" class="btn btn-primary btn-small" data-sign="use">${escapeHtml(t('pe_sig_use'))}</button></div>
+            ${list}`;
+    }
+
+    function signatureResult() {
+        const g = s.sign;
+        if (g.tab === 'draw') return g.pad?.result() || null;
+        if (g.tab === 'type') return g.name.trim() ? PdfSign.typed(g.name.trim(), PdfSign.FONTS[g.font], g.color) : null;
+        return g.image;
+    }
+
+    function choosePlacement(key) {
+        if (s.place?.key === key) {
+            s.place = null;
+            return;
+        }
+        if (key.startsWith('sig:')) {
+            const item = PdfSign.list().find(x => `sig:${x.id}` === key);
+            s.place = item ? { key, url: item.url } : null;
+        } else {
+            s.place = { key };
+        }
+    }
+
+    async function placeItem(page, p, e) {
+        const place = s.place;
+        if (place.key === 'check' || place.key === 'cross') {
+            const [x, y] = p;
+            const points = place.key === 'check'
+                ? [[[x - 6, y], [x - 2, y + 4.5], [x + 7, y - 6]]]
+                : [[[x - 5, y - 5], [x + 5, y + 5]], [[x + 5, y - 5], [x - 5, y + 5]]];
+            pushOp({ type: 'annot', page: page.i, kind: 'ink', points, color: INK[0], width: 1.6 });
+            return;
+        }
+        if (place.key === 'date') {
+            beginText(page, null, e);
+            s.editor.box.textContent = new Date().toLocaleDateString(i18n.currentLang);
+            finishText(true);
+            return;
+        }
+        const session = s;
+        try {
+            const [file, [w, h]] = await Promise.all([PdfSign.toFile(place.url), PdfSign.size(place.url)]);
+            const fileId = await uploadImage(file);
+            if (s !== session) return;
+            const width = Math.min(160, page.w * 0.4);
+            const height = width * h / w;
+            const x0 = clamp(p[0] - width / 2, 0, page.w - width);
+            const y0 = clamp(p[1] - height / 2, 0, page.h - height);
+            const rect = [x0, y0, x0 + width, y0 + height].map(round);
+            s.reselect = { page: page.i, items: [{ kind: 'image', rect }] };
+            pushOp({ type: 'image', page: page.i, rect, file_id: fileId });
+            setTool('edit');
+        } catch (err) {
+            Toast.error(escapeHtml(err.message || t('err_upload_failed')));
+        }
+    }
+
+    async function onSignAction(action, target) {
+        const g = s.sign;
+        if (action === 'clear') return g.pad?.clear();
+        if (action === 'font') {
+            g.font = Number(target.dataset.index);
+            return renderSheet();
+        }
+        if (action === 'remove') {
+            PdfSign.remove(target.dataset.id);
+            if (s.place?.key === `sig:${target.dataset.id}`) s.place = null;
+            renderSheet();
+            return renderContext();
+        }
+        if (action !== 'use') return;
+        const url = signatureResult();
+        if (!url) return;
+        const item = g.keep ? PdfSign.add(url) : null;
+        s.place = { key: item ? `sig:${item.id}` : 'sig:once', url };
+        g.image = null;
+        closeSheet();
+    }
+
+    function sheetHead(key) {
+        return `<div class="pe-sheet-head"><span>${escapeHtml(t(key))}</span><button type="button" class="pe-icon-btn" data-sheet="close" aria-label="${escapeHtml(t('close'))}" title="${escapeHtml(t('close'))}">${icon('close')}</button></div>`;
+    }
+
+    function findSheet() {
+        const f = s.find;
+        const chips = PATTERN_KINDS.map(kind => chip('find-kind', escapeHtml(t(`pe_pat_${kind}`)), { value: kind, active: f.kinds.has(kind) })).join('');
+        let results = '';
+        if (f.busy) {
+            results = `<p class="pe-muted">${escapeHtml(t('pe_searching'))}</p>`;
+        } else if (f.matches && !f.matches.length) {
+            results = `<p class="pe-muted">${escapeHtml(t('pe_no_matches'))}</p>`;
+        } else if (f.matches) {
+            const chosen = f.matches.length - f.off.size;
+            const pages = new Set(f.matches.map(m => m.page)).size;
+            results = `<div class="pe-sheet-row"><strong>${escapeHtml(t('pe_matches', { count: f.matches.length }))}</strong><span class="pe-muted">${escapeHtml(t('pe_page_count', { count: pages }))}</span></div>
+                <div class="pe-results">${f.matches.slice(0, RESULTS_SHOWN).map((m, i) => `
+                    <div class="pe-result">
+                        <input type="checkbox" data-find="pick" data-index="${i}" ${f.off.has(i) ? '' : 'checked'} aria-label="${escapeHtml(m.text)}">
+                        <span class="pe-result-kind">${escapeHtml(t(`pe_pat_${m.kind}`))}</span>
+                        <span class="pe-result-text" title="${escapeHtml(m.text)}">${escapeHtml(m.text)}</span>
+                        <button type="button" data-find="go" data-index="${i}">${escapeHtml(t('pe_page_short', { page: s.order.indexOf(m.page) + 1 }))}</button>
+                    </div>`).join('')}</div>
+                ${f.truncated || f.matches.length > RESULTS_SHOWN ? `<p class="pe-muted">${escapeHtml(t('pe_truncated'))}</p>` : ''}
+                <div class="pe-sheet-row"><button type="button" class="btn btn-primary btn-small" data-find="redact" ${chosen ? '' : 'disabled'}>${escapeHtml(t('pe_redact_selected', { count: chosen }))}</button></div>`;
+        }
+        return `${sheetHead('pe_find_redact')}
+            <div class="pe-sheet-row">
+                <input type="search" data-find="query" value="${escapeHtml(f.query)}" placeholder="${escapeHtml(t('pe_find_placeholder'))}" aria-label="${escapeHtml(t('pe_find_placeholder'))}">
+                <button type="button" class="btn btn-ghost btn-small" data-find="run">${escapeHtml(t('pe_find'))}</button>
+            </div>
+            <div class="pe-sheet-row"><label><input type="checkbox" data-find="whole" ${f.whole ? 'checked' : ''}>${escapeHtml(t('pe_whole_word'))}</label></div>
+            <div class="pe-muted">${escapeHtml(t('pe_patterns'))}</div>
+            <div class="pe-sheet-row">${chips}</div>
+            ${results}`;
+    }
+
+    function sanitizeSheet() {
+        const current = sanitizeOp()?.options;
+        const checked = key => current ? !!current[key] : SANITIZE_DEFAULTS.includes(key);
+        return `${sheetHead('pe_sanitize_title')}
+            ${SANITIZE_KEYS.map(key => `<label><input type="checkbox" data-clean="${key}" ${checked(key) ? 'checked' : ''}>${escapeHtml(t(`pe_s_${key}`))}</label>`).join('')}
+            <div class="pe-sheet-row"><button type="button" class="btn btn-primary btn-small" data-clean-apply>${escapeHtml(t('pe_apply'))}</button></div>`;
+    }
+
+    async function runSearch() {
+        const f = s.find;
+        const input = els.sheet.querySelector('[data-find="query"]');
+        if (input) f.query = input.value;
+        if (!f.query.trim() && !f.kinds.size) return;
+        const session = s;
+        f.busy = true;
+        renderSheet();
+        const { body } = await postJson('/api/pdf/edit/search', {
+            file_id: s.fileId, ops: s.ops, query: f.query, patterns: [...f.kinds], whole_word: f.whole
+        }).catch(() => ({ body: {} }));
+        if (s !== session) return;
+        f.busy = false;
+        if (!body.success) {
+            f.matches = null;
+            Toast.error(escapeHtml(errorText(body, 'err_connection')));
+        } else {
+            f.matches = body.data.matches;
+            f.truncated = body.data.truncated;
+            f.off = new Set();
+        }
+        renderSheet();
+        s.pages.forEach(renderHits);
+    }
+
+    function renderHits(page) {
+        if (!page?.layer) return;
+        page.layer.querySelectorAll('.pe-hit').forEach(el => el.remove());
+        const matches = s.find.matches || [];
+        const html = matches.flatMap((m, i) => m.page !== page.i ? [] : m.rects.map(rect =>
+            `<div class="pe-hit ${s.find.off.has(i) ? 'off' : ''}" data-hit="${i}" style="${pct(page, rect)}"></div>`)).join('');
+        if (html) page.layer.insertAdjacentHTML('beforeend', html);
+    }
+
+    function redactMatches() {
+        const f = s.find;
+        const byPage = new Map();
+        f.matches.forEach((m, i) => {
+            if (f.off.has(i)) return;
+            if (!byPage.has(m.page)) byPage.set(m.page, []);
+            byPage.get(m.page).push(...m.rects);
+        });
+        if (!byPage.size) return;
+        pushOps([...byPage].map(([page, rects]) => ({ type: 'redact', page, rects })));
+        closeSheet();
+    }
+
+    function onSheetClick(e) {
+        if (!s) return;
+        if (e.target.closest('[data-sheet="close"]')) return closeSheet();
+        const tab = e.target.closest('[data-act="sig-tab"]');
+        if (tab) {
+            s.sign.tab = tab.dataset.value;
+            return renderSheet();
+        }
+        const color = e.target.closest('[data-act="sig-color"]');
+        if (color) {
+            s.sign.color = color.dataset.value;
+            if (s.sign.tab === 'type') renderSheet();
+            else els.sheet.querySelectorAll('[data-act="sig-color"]').forEach(el => el.classList.toggle('active', el === color));
+            return;
+        }
+        const signAction = e.target.closest('[data-sign]');
+        if (signAction && e.type === 'click' && signAction.tagName === 'BUTTON') return onSignAction(signAction.dataset.sign, signAction);
+        if (e.target.closest('[data-clean-apply]')) {
+            const options = {};
+            els.sheet.querySelectorAll('[data-clean]').forEach(box => { options[box.dataset.clean] = box.checked; });
+            pushOp({ type: 'sanitize', page: -1, options });
+            closeSheet();
+            if (SANITIZE_KEYS.some(key => options[key])) Toast.info(escapeHtml(t('pe_sanitize_on')));
+            return;
+        }
+        const kindChip = e.target.closest('[data-act="find-kind"]');
+        if (kindChip) {
+            const kinds = s.find.kinds;
+            const kind = kindChip.dataset.value;
+            kinds.has(kind) ? kinds.delete(kind) : kinds.add(kind);
+            s.find.query = els.sheet.querySelector('[data-find="query"]')?.value || '';
+            kindChip.classList.toggle('active', kinds.has(kind));
+            return;
+        }
+        const action = e.target.closest('[data-find]')?.dataset.find;
+        if (action === 'run') runSearch();
+        else if (action === 'redact') redactMatches();
+        else if (action === 'go') {
+            const match = s.find.matches[Number(e.target.closest('[data-index]').dataset.index)];
+            const page = s.pages[match.page];
+            page.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(() => page.layer.querySelectorAll(`[data-hit="${s.find.matches.indexOf(match)}"]`).forEach(el => {
+                el.classList.remove('flash');
+                void el.offsetWidth;
+                el.classList.add('flash');
+            }), 350);
+        }
+    }
+
+    function onSheetChange(e) {
+        if (!s) return;
+        if (e.target.dataset.sign === 'keep') s.sign.keep = e.target.checked;
+        if (e.target.dataset.sign === 'file' && e.target.files[0]) {
+            PdfSign.cleanImage(e.target.files[0]).then(url => {
+                if (!s) return;
+                s.sign.image = url;
+                renderSheet();
+            }).catch(() => Toast.error(escapeHtml(t('err_upload_failed'))));
+        }
+        const action = e.target.dataset.find;
+        if (action === 'whole') s.find.whole = e.target.checked;
+        if (action === 'pick') {
+            const index = Number(e.target.dataset.index);
+            e.target.checked ? s.find.off.delete(index) : s.find.off.add(index);
+            s.pages.forEach(renderHits);
+            const chosen = s.find.matches.length - s.find.off.size;
+            const button = els.sheet.querySelector('[data-find="redact"]');
+            button.textContent = t('pe_redact_selected', { count: chosen });
+            button.disabled = !chosen;
+        }
     }
 
     function sameRect(a, b, tolerance = 3) {
@@ -1127,6 +1483,10 @@ const PdfEditor = (() => {
         }
         e.preventDefault();
         if (s.tool === 'text') return beginText(page, null, e);
+        if (s.tool === 'sign') {
+            if (!s.place) return toggleSheet('sign');
+            return placeItem(page, p, e);
+        }
         if (s.tool === 'image') {
             s.imageTarget = { page, at: p };
             els.imageInput.click();
@@ -1333,7 +1693,7 @@ const PdfEditor = (() => {
         const cs = Number(span.cs) || 0;
         const rise = Number(span.rise) || 0;
         const extra = `${cs ? `letter-spacing:calc(var(--pp) * ${cs}px);` : ''}${rise ? `vertical-align:calc(var(--pp) * ${rise}px);` : ''}`;
-        return `<span data-f="${span.f || 0}" data-k="${span.k || 'sans'}" data-s="${span.s}" data-cs="${cs}" data-rise="${rise}" style="font-size:calc(var(--pp) * ${span.s}px);font-weight:${span.b ? 700 : 400};font-style:${span.i ? 'italic' : 'normal'};color:${span.c};font-family:${escapeHtml(family)};${extra}">${escapeHtml(text)}</span>`;
+        return `<span data-f="${span.f || 0}" data-k="${span.k || 'sans'}" data-lib="${escapeHtml(span.lib || '')}" data-s="${span.s}" data-cs="${cs}" data-rise="${rise}" style="font-size:calc(var(--pp) * ${span.s}px);font-weight:${span.b ? 700 : 400};font-style:${span.i ? 'italic' : 'normal'};color:${span.c};font-family:${escapeHtml(family)};${extra}">${escapeHtml(text)}</span>`;
     }
 
     function blockHtml(block) {
@@ -1412,7 +1772,7 @@ const PdfEditor = (() => {
         box.innerHTML = block ? blockHtml(block) : '';
         if (inherited) {
             ensureFont(inherited);
-            Object.assign(box.dataset, { f: inherited.f || 0, k: inherited.k || 'sans', cs: inherited.cs || 0, rise: 0 });
+            Object.assign(box.dataset, { f: inherited.f || 0, k: inherited.k || 'sans', lib: inherited.lib || '', cs: inherited.cs || 0, rise: 0 });
             Object.assign(box.style, {
                 fontFamily: familyCss(inherited), fontWeight: inherited.b ? 700 : 400, fontStyle: inherited.i ? 'italic' : 'normal',
                 letterSpacing: inherited.cs ? `calc(var(--pp) * ${inherited.cs}px)` : ''
@@ -1489,10 +1849,10 @@ const PdfEditor = (() => {
                 t: text, s: round(parseFloat(cs.fontSize) / pp), c: hex(cs.color),
                 b: parseInt(cs.fontWeight, 10) >= 600, i: cs.fontStyle !== 'normal',
                 f: host ? Number(host.dataset.f) : 0, k: host?.dataset.k || 'sans',
-                cs: Number(host?.dataset.cs) || 0, rise: Number(host?.dataset.rise) || 0
+                cs: Number(host?.dataset.cs) || 0, rise: Number(host?.dataset.rise) || 0, lib: host?.dataset.lib || ''
             };
             const prev = runs[runs.length - 1];
-            if (prev && ['s', 'c', 'b', 'i', 'f', 'k', 'cs', 'rise'].every(key => prev[key] === run[key])) prev.t += text;
+            if (prev && ['s', 'c', 'b', 'i', 'f', 'k', 'cs', 'rise', 'lib'].every(key => prev[key] === run[key])) prev.t += text;
             else runs.push(run);
         };
         const walk = node => node.childNodes.forEach(child => {
@@ -1717,7 +2077,8 @@ const PdfEditor = (() => {
         const typing = e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable="true"]');
         const mod = e.ctrlKey || e.metaKey;
         if (e.key === 'Escape') {
-            if (s.editor) finishText(true);
+            if (s.sheet) closeSheet();
+            else if (s.editor) finishText(true);
             else if (s.note) closeNote();
             else if (s.selection) clearSelection();
             else if (s.tool !== 'edit') setTool('edit');

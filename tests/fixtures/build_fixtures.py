@@ -168,6 +168,23 @@ def rotated_page(doc, fonts):
     return page
 
 
+def build_scan(path=None, source=None):
+    path = path or os.path.join(HERE, 'pe_scan.pdf')
+    with fitz.open(source or os.path.join(HERE, 'pe_test.pdf')) as original:
+        pix = original[0].get_pixmap(dpi=150, colorspace=fitz.csGRAY)
+    pixels = Image.frombytes('L', (pix.width, pix.height), pix.samples).convert('RGB')
+    tint = Image.new('RGB', pixels.size, (246, 240, 226))
+    scanned = Image.composite(pixels, tint, pixels.convert('L').point(lambda v: 255 if v < 200 else 0))
+    out = io.BytesIO()
+    scanned.save(out, 'JPEG', quality=82)
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_image(page.rect, stream=out.getvalue())
+    doc.save(path, garbage=3, deflate=True)
+    doc.close()
+    return path
+
+
 def build(path=None):
     path = path or os.path.join(HERE, 'pe_test.pdf')
     doc = fitz.open()
@@ -188,4 +205,6 @@ def build(path=None):
 
 
 if __name__ == '__main__':
-    print(build(sys.argv[1] if len(sys.argv) > 1 else None))
+    target = sys.argv[1] if len(sys.argv) > 1 else None
+    print(build(target))
+    print(build_scan(None, target))

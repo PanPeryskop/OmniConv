@@ -4,14 +4,17 @@ import tempfile
 import unittest
 
 import io
+from unittest import mock
 
 import fitz
 from fontTools.ttLib import TTFont
 
 from app.services import font_match as fm
 from app.services import pdf_editor as pe
+from app.services import pdf_scan
+from app.services import pdf_search as ps
 from app.services.web_fonts import web_font_bytes
-from tests.fixtures.build_fixtures import build
+from tests.fixtures.build_fixtures import build, build_scan
 
 TEXT_PAGE, IMAGE_PAGE, ANNOT_PAGE, FORM_PAGE, ROTATED_PAGE = range(5)
 
@@ -47,6 +50,7 @@ class PdfEditorTest(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp()
         cls.path = build(os.path.join(cls.tmp, 'pe_test.pdf'))
+        cls.scan = build_scan(os.path.join(cls.tmp, 'pe_scan.pdf'), cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -219,6 +223,63 @@ class PdfEditorTest(unittest.TestCase):
         ], 2)
         self.assertEqual((order, rotation, blanks), ([1], {}, {}))
 
+    def test_finds_text_and_validated_patterns(self):
+        matches, truncated = pe.search_document(self.path, [], 'pending redaction', ['pesel', 'iban', 'phone'])
+        kinds = {(m['kind'], m['text']) for m in matches}
+        self.assertFalse(truncated)
+        self.assertIn(('pesel', '44051401359'), kinds)
+        self.assertIn(('iban', 'PL61109010140000071219812874'), kinds)
+        self.assertIn(('text', 'pending redaction'), kinds)
+        self.assertNotIn('44051401359', [m['text'] for m in matches if m['kind'] == 'phone'])
+
+    def test_redacting_matches_removes_text_and_overlapping_fields(self):
+        pesel = next(m for m in pe.search_document(self.path, [], '', ['pesel'])[0])
+        field = next(w for w in self.layout(FORM_PAGE)['widgets'] if w['name'] == 'imie')
+        ops = [{'type': 'redact', 'page': pesel['page'], 'rects': pesel['rects']},
+               {'type': 'redact', 'page': FORM_PAGE, 'rect': field['rect']}]
+        with saved(self.path, ops) as doc:
+            self.assertNotIn('44051401359', doc[ANNOT_PAGE].get_text())
+            self.assertIn('IBAN', doc[ANNOT_PAGE].get_text())
+            self.assertNotIn('imie', [w.field_name for w in doc[FORM_PAGE].widgets()])
+
+    def test_sanitize_scrubs_metadata(self):
+        with saved(self.path, [{'type': 'sanitize', 'page': -1, 'options': {'metadata': True, 'comments': True}}]) as doc:
+            self.assertEqual(doc.metadata['title'], '')
+            self.assertEqual([a.type[1] for a in doc[ANNOT_PAGE].annots()], [])
+
+    def fake_ocr(self, page):
+        with fitz.open(self.path) as original:
+            source = original[TEXT_PAGE]
+            lines = []
+            for block in source.get_text('dict')['blocks'][:3]:
+                for line in block.get('lines', []):
+                    text = ''.join(span['text'] for span in line['spans']).strip()
+                    x0, y0, x1, y1 = line['bbox']
+                    lines.append(('\uff2e' + text[1:] if text.startswith('N') else text, fitz.Point(x0, y1 - (y1 - y0) * 0.2), fitz.Point(x1, y1 - (y1 - y0) * 0.2), y1 - y0))
+        return lines
+
+    def test_scanned_page_is_detected_and_recognized(self):
+        self.assertTrue(pe.render_preview(self.scan, 0, [], 200)['scanned'])
+        with mock.patch.object(pdf_scan.OCR, 'lines', self.fake_ocr):
+            layout = pe.render_preview(self.scan, 0, [{'type': 'ocr', 'page': 0}], 200)
+        self.assertFalse(layout['scanned'])
+        self.assertTrue(layout['blocks'])
+        self.assertTrue(all(b['scan'] for b in layout['blocks']))
+        span = layout['blocks'][1]['lines'][0]['spans'][0]
+        self.assertLess(int(span['c'][1:3], 16), 60)
+        self.assertEqual(span['k'], 'sans')
+
+    def test_editing_scanned_text_inpaints_the_old_text(self):
+        with mock.patch.object(pdf_scan.OCR, 'lines', self.fake_ocr):
+            block = pe.render_preview(self.scan, 0, [{'type': 'ocr', 'page': 0}], 200)['blocks'][0]
+            op = text_op(0, block, 'Nowy', align='left')
+            with fitz.open(self.scan) as doc:
+                ctx = pe.EditContext(doc)
+                page = pe.apply_page_ops(ctx, doc[0], [{'type': 'ocr', 'page': 0}, op])
+                pixels = pdf_scan.raster(page, fitz.Rect(block['bbox']))
+        right = pixels[:, pixels.shape[1] // 2:]
+        self.assertGreater(right.min(), 150)
+
     def test_rotated_page_is_editable(self):
         layout = self.layout(ROTATED_PAGE)
         self.assertEqual((layout['width'], layout['height']), (842, 595))
@@ -251,3 +312,18 @@ class FontMatchTest(unittest.TestCase):
         self.assertEqual(library.match(times)[0]['family'], 'Liberation Serif')
         carlito = dict(calibri, family='Carlito', name_family='Carlito')
         self.assertEqual(library.match(carlito)[1], 'exact')
+
+
+class ValidatorTest(unittest.TestCase):
+    def test_checksums(self):
+        self.assertTrue(ps.valid_pesel('44051401359'))
+        self.assertFalse(ps.valid_pesel('44051401358'))
+        self.assertTrue(ps.valid_nip('526-025-09-95'))
+        self.assertFalse(ps.valid_nip('5260250996'))
+        self.assertTrue(ps.valid_regon('123456785'))
+        self.assertTrue(ps.valid_iban('PL61 1090 1014 0000 0712 1981 2874'))
+        self.assertFalse(ps.valid_iban('PL61 1090 1014 0000 0712 1981 2875'))
+        self.assertTrue(ps.valid_card('4111 1111 1111 1111'))
+        self.assertFalse(ps.valid_card('4111 1111 1111 1112'))
+        self.assertTrue(ps.valid_id_card('ABA300000'))
+        self.assertFalse(ps.valid_id_card('ABA300001'))
