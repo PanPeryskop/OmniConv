@@ -10,6 +10,7 @@ import fitz
 from fontTools.ttLib import TTFont
 
 from app.services import font_match as fm
+from app.services import pdf_ai
 from app.services import pdf_editor as pe
 from app.services import pdf_scan
 from app.services import pdf_search as ps
@@ -327,3 +328,34 @@ class ValidatorTest(unittest.TestCase):
         self.assertFalse(ps.valid_card('4111 1111 1111 1112'))
         self.assertTrue(ps.valid_id_card('ABA300000'))
         self.assertFalse(ps.valid_id_card('ABA300001'))
+
+
+class AiTest(unittest.TestCase):
+    @staticmethod
+    def segmented(_prompt, text):
+        return '\n\n'.join(f'<<{n}>> DE {body.strip()}' for n, body in pdf_ai.SEGMENT_RE.findall(text))
+
+    def test_translate_many_keeps_segment_order(self):
+        with mock.patch.object(pdf_ai, 'ask', self.segmented):
+            self.assertEqual(pdf_ai.translate_many(['eins', 'zwei'], 'German'), ['DE eins', 'DE zwei'])
+
+    def test_translate_many_falls_back_to_single_requests(self):
+        replies = iter(['broken output', 'DE eins', 'DE zwei'])
+        with mock.patch.object(pdf_ai, 'ask', lambda _prompt, _text: next(replies)):
+            self.assertEqual(pdf_ai.translate_many(['eins', 'zwei'], 'German'), ['DE eins', 'DE zwei'])
+
+    def test_translated_page_becomes_fitted_text_ops(self):
+        path = build(os.path.join(tempfile.mkdtemp(), 'pe.pdf'))
+        layout = pe.render_preview(path, TEXT_PAGE, [], 100)
+        with mock.patch.object(pdf_ai, 'ask', self.segmented):
+            ops = pdf_ai.translate_page(layout, TEXT_PAGE, 'German')
+        self.assertTrue(ops)
+        self.assertTrue(all(op['fit'] and op['runs'][0]['t'].startswith('DE ') for op in ops))
+        self.assertNotIn('•', [op['runs'][0]['t'][3:] for op in ops])
+        self.assertEqual(pe.render_preview(path, TEXT_PAGE, ops, 100)['overflow'], {})
+
+    def test_offline_model_is_reported(self):
+        with mock.patch.object(pdf_ai, 'status', lambda: 'llm_offline'):
+            with self.assertRaises(pdf_ai.AiError) as caught:
+                pdf_ai.rewrite('Tekst', 'shorter')
+        self.assertEqual(caught.exception.code, 'err_ai_llm_offline')

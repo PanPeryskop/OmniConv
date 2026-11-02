@@ -191,7 +191,9 @@ def line_break_after(line, next_line, right):
 def guess_align(lines, bbox, page_width):
     if len(lines) < 2:
         centered = abs((bbox.x0 + bbox.x1) / 2 - page_width / 2) < page_width * 0.03
-        return 'center' if centered and bbox.width < page_width * 0.85 else 'left'
+        if centered and bbox.width < page_width * 0.85:
+            return 'center'
+        return 'right' if page_width - bbox.x1 < bbox.x0 * 0.5 else 'left'
     lefts = [l['bbox'][0] - bbox.x0 for l in lines]
     rights = [bbox.x1 - l['bbox'][2] for l in lines]
     if max(lefts) < 2:

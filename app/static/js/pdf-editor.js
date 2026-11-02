@@ -3,6 +3,7 @@ const PdfEditor = (() => {
     const ICONS = {
         edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
         text: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>',
+        sparkles: '<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2 2.2.8-2.2.8L19 21l-.8-2.2-2.2-.8 2.2-.8z"/>',
         sign: '<path d="M3 17c2-1 3-6 5-6s1 5 3 5 2-3 4-3 2 2 3 2"/><path d="M3 21h18"/><path d="M15 4l5 5-6 6h-5v-5z"/>',
         date: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
         cross: '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -48,6 +49,8 @@ const PdfEditor = (() => {
     const SANITIZE_KEYS = ['metadata', 'attachments', 'javascript', 'comments', 'links', 'hidden_text', 'fields'];
     const SANITIZE_DEFAULTS = ['metadata', 'attachments', 'javascript'];
     const RESULTS_SHOWN = 200;
+    const AI_MODES = ['shorter', 'longer', 'formal', 'simple', 'fix'];
+    const LANGUAGES = ['en', 'pl', 'de', 'fr', 'es', 'it', 'pt', 'nl', 'cs', 'sk', 'uk', 'sv', 'da', 'fi', 'nb', 'hu', 'ro', 'tr', 'el', 'ja', 'zh', 'ko'];
     const SNAP_PX = 6;
     const NUDGE_MERGE_MS = 1500;
     const MIN_ZOOM = 0.4;
@@ -104,7 +107,7 @@ const PdfEditor = (() => {
             undo: $('peUndo'), redo: $('peRedo'), zoomIn: $('peZoomIn'), zoomOut: $('peZoomOut'), zoomValue: $('peZoomValue'),
             save: $('peSave'), scroll: $('peScroll'), pages: $('pePages'), dock: $('peDock'), pill: $('pePagePill'),
             context: $('peContext'), tools: $('peTools'), imageInput: $('peImageInput'), notice: $('peNotice'),
-            pagesBtn: $('pePagesBtn'), panel: $('pePanel'), thumbs: $('peThumbs'), sheet: $('peSheet')
+            pagesBtn: $('pePagesBtn'), panel: $('pePanel'), thumbs: $('peThumbs'), sheet: $('peSheet'), translateBtn: $('peTranslateBtn')
         };
         els.tools.innerHTML = TOOLS.map(tool => `
             <button type="button" class="pe-tool" data-tool="${tool}">
@@ -128,6 +131,7 @@ const PdfEditor = (() => {
         els.context.addEventListener('click', onContextClick);
         els.notice.addEventListener('click', onNoticeClick);
         els.pagesBtn.addEventListener('click', () => togglePanel());
+        els.translateBtn.addEventListener('click', () => s && toggleSheet('translate'));
         els.sheet.addEventListener('click', onSheetClick);
         els.sheet.addEventListener('change', onSheetChange);
         els.sheet.addEventListener('input', e => {
@@ -183,7 +187,8 @@ const PdfEditor = (() => {
             banner: null, dismissed: new WeakSet(), digest: null, draftTimer: 0, keepalive: 0, restoring: false,
             group: 0, nudge: null, clipboard: null, pasteCount: 0, current: 0, suppressClick: false, sheet: null,
             find: { query: '', whole: false, kinds: new Set(), matches: null, off: new Set(), truncated: false, busy: false },
-            scansDismissed: new Set(), place: null, sign: { tab: 'draw', color: INK[0], font: 0, name: '', image: null, keep: true, pad: null },
+            scansDismissed: new Set(), ai: { status: null, busy: false, result: null, language: defaultLanguage() },
+            translation: null, place: null, sign: { tab: 'draw', color: INK[0], font: 0, name: '', image: null, keep: true, pad: null },
             opts: { ink: INK[1], mark: MARKS[0], width: WIDTHS[1], markup: 'highlight', shape: 'rect', textColor: INK[0], textSize: 12 }
         };
         els.title.textContent = file.filename;
@@ -800,6 +805,7 @@ const PdfEditor = (() => {
                 ${chip('align', icon(align), { title: 'pe_align' })}
                 ${swatches('fore', INK, null)}
                 ${window.EyeDropper ? chip('eyedropper', icon('eyedropper'), { title: 'pe_eyedropper' }) : ''}
+                ${chip('ai', icon('sparkles') + label('pe_ai'), { active: s.sheet === 'ai' })}
                 ${chip('delete-text', icon('trash'), { title: 'pe_delete' })}
             `;
         } else if (s.selection) {
@@ -866,6 +872,7 @@ const PdfEditor = (() => {
             case 'italic': formatBox(() => document.execCommand('italic')); return;
             case 'fore': formatBox(() => document.execCommand('foreColor', false, value)); return;
             case 'eyedropper': pickColor(); return;
+            case 'ai': toggleSheet('ai'); return;
             case 'smaller': resizeBox(-1); return;
             case 'larger': resizeBox(1); return;
             case 'align': {
@@ -901,7 +908,9 @@ const PdfEditor = (() => {
 
     function toggleSheet(kind) {
         if (s.sheet === kind) return closeSheet();
+        if (s.sheet) closeSheet();
         s.sheet = kind;
+        if ((kind === 'ai' || kind === 'translate') && s.ai.status !== 'ok') checkAi();
         renderSheet();
         renderContext();
         els.sheet.querySelector('input[type="search"]')?.focus();
@@ -909,6 +918,8 @@ const PdfEditor = (() => {
 
     function closeSheet() {
         if (!s) return;
+        if (s.translation) s.translation.stopped = true;
+        s.ai.result = null;
         const wasFind = s.sheet === 'find';
         s.sheet = null;
         els.sheet.classList.add('hidden');
@@ -923,9 +934,119 @@ const PdfEditor = (() => {
     function renderSheet() {
         if (!s?.sheet) return;
         els.sheet.classList.remove('hidden');
-        const views = { find: findSheet, sanitize: sanitizeSheet, sign: signSheet };
+        const views = { find: findSheet, sanitize: sanitizeSheet, sign: signSheet, ai: aiSheet, translate: translateSheet };
         els.sheet.innerHTML = views[s.sheet]();
         if (s.sheet === 'sign' && s.sign.tab === 'draw') s.sign.pad = PdfSign.pad(els.sheet.querySelector('.pe-sigpad'), () => s.sign.color);
+    }
+
+    function defaultLanguage() {
+        const lang = (i18n.currentLang || 'en').slice(0, 2);
+        return lang === 'en' ? 'pl' : 'en';
+    }
+
+    function languageName(code, locale) {
+        try {
+            return new Intl.DisplayNames([locale], { type: 'language' }).of(code);
+        } catch (err) {
+            return code;
+        }
+    }
+
+    function languageSelect(action) {
+        return `<select data-${action}="language" aria-label="${escapeHtml(t('pe_ai_translate'))}">${LANGUAGES.map(code =>
+            `<option value="${code}" ${code === s.ai.language ? 'selected' : ''}>${escapeHtml(languageName(code, i18n.currentLang))}</option>`).join('')}</select>`;
+    }
+
+    async function checkAi() {
+        const session = s;
+        const res = await fetch('/api/pdf/edit/ai/status').then(r => r.json()).catch(() => ({}));
+        if (s !== session) return;
+        s.ai.status = res.data?.status || 'llm_offline';
+        renderSheet();
+    }
+
+    function aiNotice() {
+        if (s.ai.status === null || s.ai.status === 'ok') return '';
+        return `<p class="pe-muted">${escapeHtml(t(`err_ai_${s.ai.status}`))}</p>`;
+    }
+
+    function aiSheet() {
+        const a = s.ai;
+        const disabled = a.busy || a.status !== 'ok' ? 'disabled' : '';
+        const modes = AI_MODES.map(mode => `<button type="button" class="pe-chip" data-ai="${mode}" ${disabled}>${escapeHtml(t(`pe_ai_${mode}`))}</button>`).join('');
+        const result = a.busy ? `<p class="pe-muted">${escapeHtml(t('pe_ai_working'))}</p>` : a.result !== null ? `
+            <textarea data-ai="result">${escapeHtml(a.result)}</textarea>
+            <div class="pe-sheet-row"><button type="button" class="btn btn-primary btn-small" data-ai="apply">${escapeHtml(t('pe_ai_apply'))}</button></div>` : '';
+        return `${sheetHead('pe_ai_title')}${aiNotice()}
+            <div class="pe-sheet-row">${modes}</div>
+            <div class="pe-sheet-row"><span class="pe-muted">${escapeHtml(t('pe_ai_translate'))}</span>${languageSelect('ai')}<button type="button" class="pe-chip" data-ai="translate" ${disabled}>${icon('sparkles')}</button></div>
+            ${result}`;
+    }
+
+    function translateSheet() {
+        const run = s.translation;
+        const disabled = run || s.ai.status !== 'ok' ? 'disabled' : '';
+        const progress = run ? `<p>${escapeHtml(t('pe_translate_progress', { page: run.done + 1, total: run.total }))}</p>
+            <div class="pe-progress"><span style="width:${Math.round(run.done / run.total * 100)}%"></span></div>
+            <div class="pe-sheet-row"><button type="button" class="btn btn-ghost btn-small" data-translate="stop">${escapeHtml(t('pe_stop'))}</button></div>` : '';
+        return `${sheetHead('pe_translate_title')}${aiNotice()}
+            <div class="pe-sheet-row">${languageSelect('translate')}<button type="button" class="btn btn-primary btn-small" data-translate="run" ${disabled}>${escapeHtml(t('pe_translate_run'))}</button></div>
+            ${progress}`;
+    }
+
+    async function runAi(mode) {
+        const ed = s.editor;
+        if (!ed || s.ai.busy) return;
+        const text = serialize(ed).map(run => run.t).join('');
+        const session = s;
+        s.ai.busy = true;
+        renderSheet();
+        const { body } = await postJson('/api/pdf/edit/ai', { mode, text, language: languageName(s.ai.language, 'en') }).catch(() => ({ body: {} }));
+        if (s !== session) return;
+        s.ai.busy = false;
+        if (body.success) s.ai.result = body.data.text;
+        else Toast.error(escapeHtml(errorText(body, 'err_ai_failed')));
+        renderSheet();
+    }
+
+    function applyAi() {
+        const ed = s.editor;
+        const text = els.sheet.querySelector('[data-ai="result"]')?.value ?? s.ai.result;
+        if (!ed || text === null) return;
+        const run = serialize(ed)[0] || {};
+        const style = { ...(ed.block?.lines[0]?.spans[0] || {}), ...run, rise: 0 };
+        ed.box.innerHTML = text.split('\n').map(line => spanHtml(style, line)).join('<br>');
+        closeSheet();
+        ed.box.focus({ preventScroll: true });
+    }
+
+    async function translateDocument() {
+        if (s.translation) return;
+        const session = s;
+        const language = languageName(s.ai.language, 'en');
+        const pages = s.order.slice();
+        const run = s.translation = { done: 0, total: pages.length, stopped: false };
+        const result = [];
+        renderSheet();
+        for (const id of pages) {
+            if (run.stopped || s !== session) break;
+            const { body } = await postJson('/api/pdf/edit/translate', { file_id: s.fileId, ops: s.ops, page: id, language }).catch(() => ({ body: {} }));
+            if (s !== session) return;
+            if (!body.success) {
+                Toast.error(escapeHtml(errorText(body, 'err_ai_failed')));
+                break;
+            }
+            result.push(...body.data.ops);
+            run.done++;
+            if (s.sheet === 'translate') renderSheet();
+        }
+        if (s !== session) return;
+        s.translation = null;
+        if (result.length) {
+            pushOps(result);
+            Toast.success(escapeHtml(t('pe_translate_done')));
+        }
+        if (s.sheet === 'translate') closeSheet();
     }
 
     function signSheet() {
@@ -1138,6 +1259,15 @@ const PdfEditor = (() => {
             else els.sheet.querySelectorAll('[data-act="sig-color"]').forEach(el => el.classList.toggle('active', el === color));
             return;
         }
+        const aiAction = e.target.closest('button[data-ai]')?.dataset.ai;
+        if (aiAction === 'apply') return applyAi();
+        if (aiAction) return runAi(aiAction);
+        const translateAction = e.target.closest('button[data-translate]')?.dataset.translate;
+        if (translateAction === 'run') return translateDocument();
+        if (translateAction === 'stop' && s.translation) {
+            s.translation.stopped = true;
+            return;
+        }
         const signAction = e.target.closest('[data-sign]');
         if (signAction && e.type === 'click' && signAction.tagName === 'BUTTON') return onSignAction(signAction.dataset.sign, signAction);
         if (e.target.closest('[data-clean-apply]')) {
@@ -1175,6 +1305,7 @@ const PdfEditor = (() => {
     function onSheetChange(e) {
         if (!s) return;
         if (e.target.dataset.sign === 'keep') s.sign.keep = e.target.checked;
+        if (e.target.dataset.ai === 'language' || e.target.dataset.translate === 'language') s.ai.language = e.target.value;
         if (e.target.dataset.sign === 'file' && e.target.files[0]) {
             PdfSign.cleanImage(e.target.files[0]).then(url => {
                 if (!s) return;
@@ -1918,6 +2049,7 @@ const PdfEditor = (() => {
     function finishText(save) {
         const ed = s?.editor;
         if (!ed) return;
+        if (s.sheet === 'ai') closeSheet();
         const runs = serialize(ed);
         s.editor = null;
         const family = ed.box.dataset.family;
