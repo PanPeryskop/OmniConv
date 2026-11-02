@@ -994,6 +994,7 @@ body.drag-over::after {
 {% include "pdf_editor.html" %}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+<script src="{{ url_for('static', filename='js/pdf-editor-drafts.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pdf-editor.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
@@ -2312,6 +2313,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 setProgress(data.progress || 0);
                 if (data.status === 'completed') {
                     clearInterval(state.poll);
+                    if (tool === 'edit') PdfEditor.committed();
                     OmniStats.record({ jobId: state.jobId, ...stat, inputSize: data.input_size, outputSize: data.output_size });
                     await showResult(tool, data);
                 } else if (data.status === 'cancelled') {

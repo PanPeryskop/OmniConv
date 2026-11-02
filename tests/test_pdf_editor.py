@@ -193,6 +193,32 @@ class PdfEditorTest(unittest.TestCase):
         self.assertIn(ord('ż'), cmap)
         self.assertNotIn(ord('Q'), cmap)
 
+    def test_page_structure_inserts_rotates_moves_and_deletes(self):
+        ops = [
+            {'type': 'page', 'action': 'insert', 'page': 5, 'to': 1, 'size': [300, 400]},
+            {'type': 'annot', 'page': 5, 'kind': 'rect', 'rect': [20, 20, 120, 80], 'color': '#2563eb'},
+            {'type': 'page', 'action': 'rotate', 'page': 0, 'angle': 90},
+            {'type': 'page', 'action': 'delete', 'page': ANNOT_PAGE},
+            {'type': 'page', 'action': 'move', 'page': FORM_PAGE, 'to': 0},
+        ]
+        blank = pe.render_preview(self.path, 5, ops, 200)
+        self.assertEqual((blank['width'], blank['height']), (300, 400))
+        self.assertEqual([a['kind'] for a in blank['annots']], ['Square'])
+        with saved(self.path, ops) as doc:
+            self.assertEqual(doc.page_count, 5)
+            self.assertIn('Formularz', doc[0].get_text())
+            self.assertEqual(doc[1].rotation, 90)
+            self.assertEqual(tuple(doc[2].rect)[2:], (300, 400))
+            self.assertTrue(all('pending redaction' not in page.get_text() for page in doc))
+
+    def test_page_structure_ignores_invalid_ops(self):
+        order, rotation, blanks = pe.page_structure([
+            {'type': 'page', 'action': 'insert', 'page': 9, 'to': 0},
+            {'type': 'page', 'action': 'delete', 'page': 0},
+            {'type': 'page', 'action': 'delete', 'page': 1},
+        ], 2)
+        self.assertEqual((order, rotation, blanks), ([1], {}, {}))
+
     def test_rotated_page_is_editable(self):
         layout = self.layout(ROTATED_PAGE)
         self.assertEqual((layout['width'], layout['height']), (842, 595))

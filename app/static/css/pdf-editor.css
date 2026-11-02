@@ -83,6 +83,49 @@ body.pe-open { overflow: hidden; }
 .pe-img:not([src]) { visibility: hidden; }
 .pe-layer { position: absolute; inset: 0; }
 .pe-live { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.pe-page[data-rotate]::after {
+    content: '↻ ' attr(data-rotate) '°';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    color: #fff;
+    background: rgba(37, 99, 235, 0.9);
+    pointer-events: none;
+}
+
+.pe-page[hidden] { display: none; }
+
+.pe-panel {
+    position: absolute;
+    top: 56px;
+    bottom: 0;
+    left: 0;
+    width: min(200px, 46vw);
+    z-index: 12;
+    overflow-y: auto;
+    background: var(--surface-solid);
+    border-right: 1px solid var(--border-strong);
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.2);
+}
+
+.pe-panel.hidden { display: none; }
+.pe-thumbs { display: flex; flex-direction: column; gap: 14px; padding: 14px; }
+.pe-thumb { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: grab; }
+.pe-thumb.current .pe-thumb-frame { outline: 2px solid #2563eb; outline-offset: 2px; }
+.pe-thumb-frame { width: 100%; display: flex; align-items: center; justify-content: center; aspect-ratio: 1; }
+.pe-thumb-page { background: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); overflow: hidden; max-width: 100%; max-height: 100%; transition: transform 0.2s ease; }
+.pe-thumb-page img { display: block; width: 100%; height: 100%; object-fit: fill; }
+.pe-thumb-bar { display: flex; align-items: center; gap: 2px; font-size: var(--text-xs); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.pe-thumb-bar .pe-icon-btn { width: 26px; height: 26px; }
+.pe-thumb-bar .pe-icon-btn svg { width: 15px; height: 15px; }
+.pe-thumb-ghost { opacity: 0.35; }
+
+.pe-guide { stroke: #ec4899; stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.pe-marquee { fill: rgba(37, 99, 235, 0.08); stroke: #2563eb; stroke-width: 1; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
+.pe-count { padding: 0 8px; font-size: var(--text-sm); color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 .pe-spinner {
     position: absolute;

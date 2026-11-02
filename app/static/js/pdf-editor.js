@@ -20,7 +20,12 @@ const PdfEditor = (() => {
         larger: '<path d="M4 18l4-10 4 10M5.5 14h5M15 13h5M17.5 10.5v5"/>',
         trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
         replace: '<path d="M4 7h11l-3-3M20 17H9l3 3"/>',
+        rotate: '<path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/>',
+        plus: '<path d="M12 5v14M5 12h14"/>',
+        duplicate: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 00-1-1H5a1 1 0 00-1 1v10a1 1 0 001 1h3"/>',
         check: '<path d="M5 12l5 5 9-10"/>',
+        warning: '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/>',
+        close: '<path d="M18 6L6 18M6 6l12 12"/>',
         eyedropper: '<path d="M14.5 4.5l5 5M12 7l5 5-8.5 8.5H4v-4.5z"/><path d="M15 3.5a2.1 2.1 0 013 0l2.5 2.5a2.1 2.1 0 010 3L18 11.5"/>'
     };
     const INK = ['#111111', '#e11d48', '#f97316', '#16a34a', '#2563eb', '#7c3aed'];
@@ -35,6 +40,9 @@ const PdfEditor = (() => {
         serif: "'Times New Roman', Times, serif",
         mono: "Consolas, 'Courier New', monospace"
     };
+    const KEEPALIVE_MS = 4 * 60 * 1000;
+    const SNAP_PX = 6;
+    const NUDGE_MERGE_MS = 1500;
     const MIN_ZOOM = 0.4;
     const MAX_ZOOM = 5;
 
@@ -43,6 +51,7 @@ const PdfEditor = (() => {
     const round = v => Math.round(v * 100) / 100;
     let els = null;
     let s = null;
+    let committedDigest = null;
 
     function icon(name) {
         return `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -87,7 +96,8 @@ const PdfEditor = (() => {
             root: $('pdfEditor'), title: $('peTitle'), status: $('peStatus'), close: $('peClose'),
             undo: $('peUndo'), redo: $('peRedo'), zoomIn: $('peZoomIn'), zoomOut: $('peZoomOut'), zoomValue: $('peZoomValue'),
             save: $('peSave'), scroll: $('peScroll'), pages: $('pePages'), dock: $('peDock'), pill: $('pePagePill'),
-            context: $('peContext'), tools: $('peTools'), imageInput: $('peImageInput'), notice: $('peNotice')
+            context: $('peContext'), tools: $('peTools'), imageInput: $('peImageInput'), notice: $('peNotice'),
+            pagesBtn: $('pePagesBtn'), panel: $('pePanel'), thumbs: $('peThumbs')
         };
         els.tools.innerHTML = TOOLS.map(tool => `
             <button type="button" class="pe-tool" data-tool="${tool}">
@@ -110,6 +120,17 @@ const PdfEditor = (() => {
         });
         els.context.addEventListener('click', onContextClick);
         els.notice.addEventListener('click', onNoticeClick);
+        els.pagesBtn.addEventListener('click', () => togglePanel());
+        els.thumbs.addEventListener('click', onThumbClick);
+        if (window.Sortable) {
+            Sortable.create(els.thumbs, {
+                animation: 150, ghostClass: 'pe-thumb-ghost', filter: 'button', preventOnFilter: false, forceFallback: true,
+                onEnd: e => {
+                    if (!s || e.oldIndex === e.newIndex) return;
+                    pushOp({ type: 'page', action: 'move', page: Number(e.item.dataset.id), to: e.newIndex });
+                }
+            });
+        }
         els.context.addEventListener('change', onContextChange);
         els.pages.addEventListener('pointerdown', onPointerDown);
         els.pages.addEventListener('click', onClick);
@@ -130,7 +151,7 @@ const PdfEditor = (() => {
         window.visualViewport?.addEventListener('resize', updateKeyboard);
         window.visualViewport?.addEventListener('scroll', updateKeyboard);
         document.addEventListener('keydown', onKeyDown);
-        document.addEventListener('languagechange', () => s && (renderContext(), updateStatus()));
+        document.addEventListener('languagechange', () => s && (renderContext(), updateStatus(), renderBanner()));
     }
 
     async function open(file, { onSave, ops } = {}) {
@@ -138,22 +159,95 @@ const PdfEditor = (() => {
         s = {
             fileId: file.file_id, ops: Array.isArray(ops) ? ops.slice() : [], redo: [], zoom: 1, tool: 'edit', pages: [], selection: null, editor: null,
             drag: null, gesture: null, reselect: null, imageTarget: null, note: null, fonts: {}, onSave,
-            overflowOp: null, dismissed: new WeakSet(),
+            banner: null, dismissed: new WeakSet(), digest: null, draftTimer: 0, keepalive: 0, restoring: false,
+            group: 0, nudge: null, clipboard: null, pasteCount: 0, current: 0, suppressClick: false,
             opts: { ink: INK[1], mark: MARKS[0], width: WIDTHS[1], markup: 'highlight', shape: 'rect', textColor: INK[0], textSize: 12 }
         };
         els.title.textContent = file.filename;
+        togglePanel(false);
         els.pages.innerHTML = '';
         els.root.classList.remove('hidden');
         document.body.classList.add('pe-open');
         setTool('edit');
         updateHistory();
+        const session = s;
         try {
             const { body } = await postJson('/api/pdf/edit/pages', { file_id: s.fileId });
             if (!body.success) throw new Error(errorText(body, 'pdf_err_failed'));
+            if (s !== session) return;
+            s.digest = body.data.digest;
             buildPages(body.data.pages);
+            s.keepalive = setInterval(keepAlive, KEEPALIVE_MS);
+            if (s.ops.length) storeDraft();
+            else offerDraft();
         } catch (err) {
             Toast.error(escapeHtml(err.message));
             close(true);
+        }
+    }
+
+    function keepAlive() {
+        if (!s) return;
+        postJson('/api/pdf/edit/keepalive', { file_id: s.fileId, images: PdfDrafts.imageIds(s.ops) }).catch(() => null);
+    }
+
+    function storeDraft() {
+        if (!s?.digest || s.restoring) return;
+        clearTimeout(s.draftTimer);
+        const { digest, ops } = s;
+        s.draftTimer = setTimeout(() => PdfDrafts.write(digest, ops), 300);
+    }
+
+    function offerDraft() {
+        PdfDrafts.prune();
+        const draft = PdfDrafts.read(s.digest);
+        if (!draft) return;
+        const time = new Date(draft.savedAt).toLocaleString(i18n.currentLang, { dateStyle: 'short', timeStyle: 'short' });
+        showBanner({
+            key: 'pe_draft_found', params: { time },
+            actions: [
+                { key: 'pe_restore', primary: true, run: () => restoreDraft(draft) },
+                { key: 'pe_discard', run: () => PdfDrafts.remove(s.digest) }
+            ]
+        });
+    }
+
+    async function restoreDraft(draft) {
+        const session = s;
+        s.restoring = true;
+        const uploads = new Map();
+        let missing = 0;
+        const ops = [];
+        for (const op of draft.ops) {
+            if (op.type !== 'image' || !op.file_id) {
+                ops.push(op);
+                continue;
+            }
+            if (!uploads.has(op.file_id)) uploads.set(op.file_id, reupload(op.file_id));
+            const fileId = await uploads.get(op.file_id);
+            if (fileId) ops.push({ ...op, file_id: fileId });
+            else missing++;
+        }
+        if (s !== session) return;
+        s.restoring = false;
+        s.ops = ops;
+        s.redo = [];
+        s.group = Math.max(0, ...ops.map(op => op.g || 0));
+        applyStructure();
+        contentPages(ops).forEach(touch);
+        updateHistory();
+        if (missing) Toast.warning(escapeHtml(t('pe_restore_partial')));
+    }
+
+    async function reupload(fileId) {
+        const blob = await PdfDrafts.getImage(fileId);
+        if (!blob) return null;
+        try {
+            const id = await uploadImage(new File([blob], blob.name || 'image.png', { type: blob.type || 'image/png' }));
+            await PdfDrafts.putImage(id, blob);
+            return id;
+        } catch (err) {
+            return null;
         }
     }
 
@@ -166,10 +260,15 @@ const PdfEditor = (() => {
 
     function close(force) {
         if (!s) return;
-        if (!force && (s.ops.length || editorChanged(s.editor)) && !confirm(t('pe_discard_confirm'))) return;
+        if (!force && (s.ops.length || editorChanged(s.editor))) {
+            if (!confirm(t('pe_discard_confirm'))) return;
+            if (s.digest) PdfDrafts.remove(s.digest);
+            clearTimeout(s.draftTimer);
+        }
         finishText(false);
         clearTimeout(s.zoomTimer);
-        hideNotice();
+        clearInterval(s.keepalive);
+        hideBanner();
         s = null;
         els.pages.innerHTML = '';
         els.root.classList.add('hidden');
@@ -181,36 +280,147 @@ const PdfEditor = (() => {
         finishText(true);
         const ops = s.ops.slice();
         const onSave = s.onSave;
+        committedDigest = s.digest;
         if (!ops.length) return close(true);
         close(true);
         onSave?.(ops);
     }
 
+    function makePage(i, w, h) {
+        const el = document.createElement('div');
+        el.className = 'pe-page';
+        el.dataset.page = i;
+        el.innerHTML = `<img class="pe-img" alt=""><div class="pe-layer"></div><svg class="pe-live" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"></svg><span class="pe-spinner"></span>`;
+        els.pages.appendChild(el);
+        return { i, w, h, el, img: el.querySelector('.pe-img'), layer: el.querySelector('.pe-layer'), svg: el.querySelector('.pe-live'), data: null, rev: 0, loadedRev: -1, loadedWidth: 0, token: 0, visible: false };
+    }
+
     function buildPages(sizes) {
-        s.pages = sizes.map(([w, h], i) => {
-            const el = document.createElement('div');
-            el.className = 'pe-page';
-            el.dataset.page = i;
-            el.innerHTML = `<img class="pe-img" alt=""><div class="pe-layer"></div><svg class="pe-live" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"></svg><span class="pe-spinner"></span>`;
-            els.pages.appendChild(el);
-            return { i, w, h, el, img: el.querySelector('.pe-img'), layer: el.querySelector('.pe-layer'), svg: el.querySelector('.pe-live'), data: null, rev: 0, loadedRev: -1, loadedWidth: 0, token: 0, visible: false };
-        });
-        layoutPages();
+        s.base = sizes.length;
+        s.pages = sizes.map(([w, h], i) => makePage(i, w, h));
+        applyStructure();
         requestAnimationFrame(onScroll);
+    }
+
+    function structure() {
+        const order = s.pages.slice(0, s.base).map(page => page.i);
+        const rotation = {};
+        const blanks = {};
+        s.ops.forEach(op => {
+            if (op.type !== 'page') return;
+            const at = order.indexOf(op.page);
+            if (op.action === 'insert' && at < 0 && op.page === s.base + Object.keys(blanks).length) {
+                blanks[op.page] = op.size;
+                order.splice(clamp(op.to, 0, order.length), 0, op.page);
+            } else if (at < 0) {
+                return;
+            } else if (op.action === 'delete' && order.length > 1) {
+                order.splice(at, 1);
+            } else if (op.action === 'move') {
+                order.splice(at, 1);
+                order.splice(clamp(op.to, 0, order.length), 0, op.page);
+            } else if (op.action === 'rotate') {
+                rotation[op.page] = ((rotation[op.page] || 0) + (op.angle || 90)) % 360;
+            }
+        });
+        return { order, rotation, blanks };
+    }
+
+    function applyStructure() {
+        const { order, rotation, blanks } = structure();
+        Object.entries(blanks).forEach(([id, [w, h]]) => {
+            const page = s.pages[id];
+            if (page && page.w === w && page.h === h) return;
+            if (page) page.el.remove();
+            s.pages[id] = makePage(Number(id), w, h);
+        });
+        s.order = order;
+        const shown = new Set(order);
+        s.pages.forEach(page => {
+            page.el.hidden = !shown.has(page.i);
+            if (rotation[page.i]) page.el.dataset.rotate = rotation[page.i];
+            else delete page.el.dataset.rotate;
+        });
+        order.forEach(id => els.pages.appendChild(s.pages[id].el));
+        if (s.selection && !shown.has(s.selection.page.i)) clearSelection();
+        layoutPages();
+        renderThumbs();
+    }
+
+    function togglePanel(open = els.panel.classList.contains('hidden')) {
+        els.panel.classList.toggle('hidden', !open);
+        els.pagesBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+        els.root.classList.toggle('panel-open', open);
+        if (open) renderThumbs();
+    }
+
+    function thumbSrc(page) {
+        if (page.img.getAttribute('src')) return page.img.src;
+        return page.i < s.base ? `/api/pdf/page/${encodeURIComponent(s.fileId)}/${page.i}?w=200` : '';
+    }
+
+    function renderThumbs() {
+        if (!s?.order || els.panel.classList.contains('hidden')) return;
+        const { rotation } = structure();
+        const single = s.order.length < 2;
+        els.thumbs.innerHTML = s.order.map((id, position) => {
+            const page = s.pages[id];
+            const angle = rotation[id] || 0;
+            const turned = angle % 180 !== 0;
+            const ratio = turned ? page.h / page.w : page.w / page.h;
+            const size = ratio >= 1 ? 'width:100%' : `height:100%;width:${ratio * 100}%`;
+            const src = thumbSrc(page);
+            return `<div class="pe-thumb ${id === s.current ? 'current' : ''}" data-id="${id}">
+                <div class="pe-thumb-frame" data-thumb="go">
+                    <div class="pe-thumb-page" style="${size};aspect-ratio:${page.w} / ${page.h};transform:rotate(${angle}deg) ${turned ? `scale(${Math.min(ratio, 1 / ratio)})` : ''}">${src ? `<img src="${escapeHtml(src)}" alt="" loading="lazy">` : ''}</div>
+                </div>
+                <div class="pe-thumb-bar">
+                    <span>${position + 1}</span>
+                    <button type="button" class="pe-icon-btn" data-thumb="rotate" title="${escapeHtml(t('pe_rotate_page'))}" aria-label="${escapeHtml(t('pe_rotate_page'))}">${icon('rotate')}</button>
+                    <button type="button" class="pe-icon-btn" data-thumb="insert" title="${escapeHtml(t('pe_insert_blank'))}" aria-label="${escapeHtml(t('pe_insert_blank'))}">${icon('plus')}</button>
+                    <button type="button" class="pe-icon-btn" data-thumb="delete" title="${escapeHtml(t('pe_delete_page'))}" aria-label="${escapeHtml(t('pe_delete_page'))}" ${single ? 'disabled' : ''}>${icon('trash')}</button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function onThumbClick(e) {
+        const action = e.target.closest('[data-thumb]')?.dataset.thumb;
+        const thumb = e.target.closest('.pe-thumb');
+        if (!s || !action || !thumb) return;
+        const id = Number(thumb.dataset.id);
+        const position = s.order.indexOf(id);
+        if (action === 'go') {
+            s.pages[id].el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else if (action === 'rotate') {
+            pushOp({ type: 'page', action: 'rotate', page: id, angle: 90 });
+        } else if (action === 'delete' && s.order.length > 1) {
+            pushOp({ type: 'page', action: 'delete', page: id });
+        } else if (action === 'insert') {
+            const page = s.pages[id];
+            const blank = s.base + s.ops.filter(op => op.type === 'page' && op.action === 'insert').length;
+            pushOp({ type: 'page', action: 'insert', page: blank, to: position + 1, size: [page.w, page.h] });
+        }
     }
 
     function onScroll() {
         if (!s || !s.pages.length) return;
         const view = els.scroll.getBoundingClientRect();
-        let current = 0;
-        s.pages.forEach(page => {
+        const order = s.order || [];
+        let current = order[0] ?? 0;
+        order.forEach(id => {
+            const page = s.pages[id];
             const r = page.el.getBoundingClientRect();
             if (r.top <= view.top + view.height / 2) current = page.i;
             page.visible = r.bottom > view.top - 800 && r.top < view.bottom + 800;
             if (page.visible) ensure(page);
             else if ((r.bottom < view.top - 3000 || r.top > view.bottom + 3000) && page.img.hasAttribute('src') && s.editor?.page !== page) unload(page);
         });
-        els.pill.textContent = `${current + 1} / ${s.pages.length}`;
+        if (current !== s.current) {
+            s.current = current;
+            els.thumbs.querySelectorAll('.pe-thumb').forEach(el => el.classList.toggle('current', Number(el.dataset.id) === current));
+        }
+        els.pill.textContent = `${order.indexOf(current) + 1} / ${order.length}`;
     }
 
     function unload(page) {
@@ -302,37 +512,57 @@ const PdfEditor = (() => {
         page.el.classList.toggle('stale', page.loadedRev !== page.rev);
         page.svg.innerHTML = '';
         renderLayer(page);
+        const thumb = els.thumbs.querySelector(`.pe-thumb[data-id="${page.i}"] .pe-thumb-page`);
+        if (thumb) thumb.innerHTML = `<img src="${escapeHtml(data.image)}" alt="">`;
         Object.keys(data.overflow || {}).forEach(i => {
             const op = sent[Number(i)];
-            if (op && !op.fit && !s.dismissed.has(op) && s.ops.includes(op)) showNotice(op);
+            if (op && !op.fit && !s.dismissed.has(op) && s.ops.includes(op)) offerFit(op);
         });
     }
 
-    function showNotice(op) {
-        s.overflowOp = op;
-        els.notice.classList.remove('hidden');
+    function offerFit(op) {
+        showBanner({
+            key: 'pe_overflow', op,
+            actions: [{ key: 'pe_fit', primary: true, run: () => { op.fit = true; touch(op.page); storeDraft(); } }],
+            dismiss: () => s.dismissed.add(op)
+        });
     }
 
-    function hideNotice() {
-        if (s) s.overflowOp = null;
+    function showBanner(banner) {
+        s.banner = banner;
+        renderBanner();
+    }
+
+    function renderBanner() {
+        const banner = s?.banner;
+        els.notice.classList.toggle('hidden', !banner);
+        if (!banner) return;
+        els.notice.innerHTML = `${icon('warning')}<span>${escapeHtml(t(banner.key, banner.params))}</span>${banner.actions.map((action, i) => `
+            <button type="button" class="pe-chip ${action.primary ? 'active' : ''}" data-notice="${i}">${escapeHtml(t(action.key))}</button>
+        `).join('')}<button type="button" class="pe-icon-btn" data-notice="dismiss" aria-label="${escapeHtml(t('close'))}" title="${escapeHtml(t('close'))}">${icon('close')}</button>`;
+    }
+
+    function hideBanner() {
+        if (s) s.banner = null;
         els.notice.classList.add('hidden');
+        els.notice.innerHTML = '';
     }
 
     function onNoticeClick(e) {
         const action = e.target.closest('[data-notice]')?.dataset.notice;
-        const op = s?.overflowOp;
-        if (!action || !op) return;
-        if (action === 'fit') {
-            op.fit = true;
-            touch(op.page);
-        } else {
-            s.dismissed.add(op);
-        }
-        hideNotice();
+        const banner = s?.banner;
+        if (!action || !banner) return;
+        hideBanner();
+        if (action === 'dismiss') banner.dismiss?.();
+        else banner.actions[Number(action)]?.run();
     }
 
     function opsFor(index) {
-        return s.ops.filter(op => op.page === index);
+        return s.ops.filter(op => op.page === index || (op.type === 'page' && op.action === 'insert'));
+    }
+
+    function contentPages(ops) {
+        return new Set(ops.filter(op => op.type !== 'page' || op.action === 'insert').map(op => op.page));
     }
 
     function touch(index) {
@@ -343,44 +573,69 @@ const PdfEditor = (() => {
         if (page.visible) ensure(page);
     }
 
-    function pushOp(op) {
-        s.ops.push(op);
+    function pushOps(ops) {
+        if (!ops.length) return;
+        const g = ++s.group;
+        ops.forEach(op => {
+            op.g = g;
+            s.ops.push(op);
+        });
         s.redo = [];
-        touch(op.page);
+        if (ops.some(op => op.type === 'page')) applyStructure();
+        contentPages(ops).forEach(touch);
         updateHistory();
+    }
+
+    function pushOp(op) {
+        pushOps([op]);
+    }
+
+    function takeGroup(list) {
+        const last = list[list.length - 1];
+        if (!last) return [];
+        let start = list.length - 1;
+        while (last.g !== undefined && start > 0 && list[start - 1].g === last.g) start--;
+        return list.splice(start);
     }
 
     function undo() {
         if (!s) return;
         finishText(false);
-        const op = s.ops.pop();
-        if (!op) return;
-        s.redo.push(op);
+        const group = takeGroup(s.ops);
+        if (!group.length) return;
+        s.redo.push(group);
         clearSelection();
-        touch(op.page);
+        if (group.some(op => op.type === 'page')) applyStructure();
+        contentPages(group).forEach(touch);
         updateHistory();
     }
 
     function redo() {
         if (!s) return;
         finishText(false);
-        const op = s.redo.pop();
-        if (!op) return;
-        s.ops.push(op);
+        const group = s.redo.pop();
+        if (!group) return;
+        s.ops.push(...group);
         clearSelection();
-        touch(op.page);
+        if (group.some(op => op.type === 'page')) applyStructure();
+        contentPages(group).forEach(touch);
         updateHistory();
     }
 
+    function changeCount() {
+        return new Set(s.ops.map((op, i) => op.g ?? `op${i}`)).size;
+    }
+
     function updateHistory() {
-        if (s.overflowOp && !s.ops.includes(s.overflowOp)) hideNotice();
+        if (s.banner?.op && !s.ops.includes(s.banner.op)) hideBanner();
+        storeDraft();
         els.undo.disabled = !s.ops.length;
         els.redo.disabled = !s.redo.length;
         updateStatus();
     }
 
     function updateStatus() {
-        if (s.ops.length) i18n.set(els.status, 'pe_changes', { count: s.ops.length });
+        if (s.ops.length) i18n.set(els.status, 'pe_changes', { count: changeCount() });
         else i18n.set(els.status, 'pe_no_changes');
     }
 
@@ -412,9 +667,12 @@ const PdfEditor = (() => {
         if (s.reselect?.page === page.i) {
             const target = s.reselect;
             s.reselect = null;
-            const list = target.kind === 'image' ? data.images.map(x => x.bbox) : data.annots.map(x => x.rect);
-            const index = list.findIndex(r => r.every((v, k) => Math.abs(v - target.rect[k]) < 3));
-            if (index >= 0) select(page, target.kind, index);
+            const items = target.items.map(({ kind, rect }) => {
+                const list = kind === 'image' ? data.images.map(x => x.bbox) : data.annots.map(x => x.rect);
+                return { kind, index: list.findIndex(r => sameRect(r, rect)) };
+            }).filter(item => item.index >= 0);
+            select(page, items);
+            if (target.nudge && s.nudge === target.nudge) s.nudge.selection = s.selection;
         } else if (s.selection?.page === page) {
             clearSelection();
         }
@@ -506,13 +764,16 @@ const PdfEditor = (() => {
                 ${chip('delete-text', icon('trash'), { title: 'pe_delete' })}
             `;
         } else if (s.selection) {
-            const sel = s.selection;
-            if (sel.kind === 'image') {
-                html = `${chip('replace-image', icon('replace') + label('pe_replace'))}${chip('delete-object', icon('trash') + label('pe_delete'))}`;
+            const { page, items } = s.selection;
+            const actions = `${chip('duplicate', icon('duplicate'), { title: 'pe_duplicate' })}${chip('delete-object', icon('trash') + label('pe_delete'))}`;
+            if (items.length > 1) {
+                html = `<span class="pe-count">${escapeHtml(t('pe_selected', { count: items.length }))}</span>${actions}`;
+            } else if (items[0].kind === 'image') {
+                html = `${chip('replace-image', icon('replace') + label('pe_replace'))}${actions}`;
             } else {
-                const annot = sel.page.data.annots[sel.index];
+                const annot = itemData(page, items[0]);
                 const text = annot.text ? `<p class="pe-note-text">${escapeHtml(annot.text)}</p>` : '';
-                html = `${text}${chip('delete-object', icon('trash') + label('pe_delete'))}`;
+                html = `${text}${actions}`;
             }
         } else if (s.tool === 'markup') {
             html = MARKUP_KINDS.map(k => chip('markup', label(`pe_markup_${k}`), { value: k, active: o.markup === k })).join('') + swatches('mark', MARKS, o.mark);
@@ -566,48 +827,255 @@ const PdfEditor = (() => {
                 finishText(true);
                 return;
             case 'done': finishText(true); return;
-            case 'replace-image':
-                s.imageTarget = { replace: s.selection };
+            case 'replace-image': {
+                const { page, items } = s.selection;
+                s.imageTarget = { replace: { page, index: items[0].index } };
                 els.imageInput.click();
                 return;
+            }
+            case 'duplicate': duplicateSelection(); return;
             case 'delete-object': deleteSelection(); return;
         }
         renderContext();
     }
 
-    function select(page, kind, index) {
-        clearSelection();
-        const el = page.layer.querySelector(kind === 'image' ? `[data-img="${index}"]` : `[data-an="${index}"]`);
-        if (!el) return;
-        el.classList.add('selected');
-        if (kind === 'image' && page.data.images[index].movable !== false) el.insertAdjacentHTML('beforeend', '<span class="pe-handle"></span>');
-        s.selection = { page, kind, index, el };
+    function sameRect(a, b, tolerance = 3) {
+        return a.every((v, k) => Math.abs(v - b[k]) < tolerance);
+    }
+
+    function shiftRect([x0, y0, x1, y1], dx, dy) {
+        return [x0 + dx, y0 + dy, x1 + dx, y1 + dy].map(round);
+    }
+
+    function bounds(rects) {
+        return rects.reduce((a, r) => [Math.min(a[0], r[0]), Math.min(a[1], r[1]), Math.max(a[2], r[2]), Math.max(a[3], r[3])]);
+    }
+
+    function itemData(page, item) {
+        return item.kind === 'image' ? page.data.images[item.index] : page.data.annots[item.index];
+    }
+
+    function itemRect(page, item) {
+        const data = itemData(page, item);
+        return item.kind === 'image' ? data.bbox : data.rect;
+    }
+
+    function itemMovable(page, item) {
+        const data = itemData(page, item);
+        return item.kind === 'image' ? data.movable !== false : !!data.movable;
+    }
+
+    function objectEl(page, { kind, index }) {
+        return page.layer.querySelector(kind === 'image' ? `[data-img="${index}"]` : `[data-an="${index}"]`);
+    }
+
+    function ready(page) {
+        return page.data && page.loadedRev === page.rev;
+    }
+
+    function select(page, items, mode = 'replace') {
+        const keep = mode !== 'replace' && s.selection?.page === page ? s.selection.items.map(({ kind, index }) => ({ kind, index })) : [];
+        let next = keep;
+        items.forEach(item => {
+            const at = next.findIndex(x => x.kind === item.kind && x.index === item.index);
+            if (at >= 0 && mode === 'toggle') next = next.filter((_, i) => i !== at);
+            else if (at < 0) next = [...next, { kind: item.kind, index: item.index }];
+        });
+        clearSelection(true);
+        const resolved = next.map(item => ({ ...item, el: objectEl(page, item) })).filter(item => item.el);
+        resolved.forEach(item => item.el.classList.add('selected'));
+        if (resolved.length === 1 && resolved[0].kind === 'image' && itemMovable(page, resolved[0])) {
+            resolved[0].el.insertAdjacentHTML('beforeend', '<span class="pe-handle"></span>');
+        }
+        s.selection = resolved.length ? { page, items: resolved } : null;
         renderContext();
     }
 
-    function clearSelection() {
+    function clearSelection(silent) {
         if (!s?.selection) return;
-        const el = s.selection.el;
-        el.classList.remove('selected');
-        el.querySelector('.pe-handle')?.remove();
+        s.selection.items.forEach(({ el }) => {
+            el.classList.remove('selected');
+            el.querySelector('.pe-handle')?.remove();
+        });
         s.selection = null;
-        renderContext();
+        if (!silent) renderContext();
+    }
+
+    function selectAll() {
+        const page = s.pages[s.current];
+        if (!page?.data) return;
+        select(page, [
+            ...page.data.images.map((_, index) => ({ kind: 'image', index })),
+            ...page.data.annots.map((_, index) => ({ kind: 'annot', index }))
+        ]);
+    }
+
+    function deleteOp(page, item) {
+        const data = itemData(page, item);
+        if (item.kind === 'image') return { type: 'image', page: page.i, xref: data.xref, remove: data.bbox };
+        return { type: 'annot_edit', page: page.i, target: data.rect, delete: true };
+    }
+
+    function moveOp(page, item, origin, rect) {
+        if (item.kind === 'image') return { type: 'image', page: page.i, xref: itemData(page, item).xref, remove: origin, rect };
+        return { type: 'annot_edit', page: page.i, target: origin, rect };
     }
 
     function deleteSelection() {
         const sel = s.selection;
-        if (!sel) return;
+        if (!sel || !ready(sel.page)) return;
         clearSelection();
-        if (sel.kind === 'image') {
-            const image = sel.page.data.images[sel.index];
-            pushOp({ type: 'image', page: sel.page.i, xref: image.xref, remove: image.bbox });
-        } else {
-            pushOp({ type: 'annot_edit', page: sel.page.i, target: sel.page.data.annots[sel.index].rect, delete: true });
+        pushOps(sel.items.map(item => deleteOp(sel.page, item)));
+    }
+
+    function nudge(dx, dy) {
+        const sel = s.selection;
+        if (!sel) return;
+        const page = sel.page;
+        const last = s.nudge;
+        if (last && last.selection === sel && Date.now() - last.at < NUDGE_MERGE_MS && s.ops.includes(last.ops[0])) {
+            last.ops.forEach((op, i) => {
+                op.rect = shiftRect(op.rect, dx, dy);
+                if (sel.items[i]) sel.items[i].el.setAttribute('style', pct(page, op.rect));
+            });
+            last.at = Date.now();
+            s.redo = [];
+            s.reselect = { page: page.i, items: last.ops.map((op, i) => ({ kind: last.kinds[i], rect: op.rect })), nudge: last };
+            touch(page.i);
+            updateHistory();
+            return;
+        }
+        if (!ready(page)) return;
+        const items = sel.items.filter(item => itemMovable(page, item));
+        if (!items.length) return;
+        const ops = items.map(item => {
+            const origin = itemRect(page, item).slice();
+            return moveOp(page, item, origin, shiftRect(origin, dx, dy));
+        });
+        items.forEach((item, i) => item.el.setAttribute('style', pct(page, ops[i].rect)));
+        s.nudge = { selection: sel, at: Date.now(), ops, kinds: items.map(item => item.kind) };
+        s.reselect = { page: page.i, items: ops.map((op, i) => ({ kind: items[i].kind, rect: op.rect })), nudge: s.nudge };
+        pushOps(ops);
+    }
+
+    function insertedImage(page, rect) {
+        let current = rect;
+        for (let i = s.ops.length - 1; i >= 0; i--) {
+            const op = s.ops[i];
+            if (op.type !== 'image' || op.page !== page.i || !op.rect || !sameRect(op.rect, current, 1.5)) continue;
+            if (op.file_id) return op.file_id;
+            if (op.source || !op.remove) return null;
+            current = op.remove;
+        }
+        return null;
+    }
+
+    function copySelection() {
+        const sel = s.selection;
+        if (!sel || !ready(sel.page)) return false;
+        s.clipboard = sel.items.map(item => {
+            const data = itemData(sel.page, item);
+            const rect = itemRect(sel.page, item).slice();
+            if (item.kind === 'annot') return { kind: 'annot', rect, page: sel.page.i };
+            const fileId = insertedImage(sel.page, rect);
+            if (fileId) return { kind: 'image', rect, file_id: fileId, page: sel.page.i };
+            return { kind: 'image', rect, xref: data.stable ? data.xref : 0, page: sel.page.i };
+        });
+        s.pasteCount = 0;
+        return true;
+    }
+
+    function paste() {
+        const page = s.pages[s.current];
+        if (!s.clipboard?.length || !page || !ready(page)) return;
+        const offset = s.clipboard.every(c => c.page === page.i) ? 12 * ++s.pasteCount : 0;
+        const ops = s.clipboard.map(c => {
+            const rect = shiftRect(c.rect, offset, offset);
+            if (c.kind === 'image') {
+                if (c.file_id) return { type: 'image', page: page.i, rect, file_id: c.file_id };
+                if (c.xref) return { type: 'image', page: page.i, rect, source: { xref: c.xref } };
+                if (c.page === page.i) return { type: 'image', page: page.i, rect, source: { bbox: c.rect } };
+                return null;
+            }
+            if (c.page === page.i) return { type: 'annot_edit', page: page.i, target: c.rect, copy: [offset, offset] };
+            return null;
+        });
+        const usable = ops.filter(Boolean);
+        if (usable.length < ops.length) Toast.info(escapeHtml(t('pe_paste_partial')));
+        if (!usable.length) return;
+        s.reselect = { page: page.i, items: usable.map(op => ({ kind: op.type === 'image' ? 'image' : 'annot', rect: op.rect || shiftRect(op.target, offset, offset) })) };
+        clearSelection();
+        pushOps(usable);
+    }
+
+    function duplicateSelection() {
+        const sel = s.selection;
+        if (!sel) return;
+        const previous = s.clipboard;
+        const count = s.pasteCount;
+        s.current = sel.page.i;
+        if (copySelection()) paste();
+        if (previous) {
+            s.clipboard = previous;
+            s.pasteCount = count;
         }
     }
 
+    function snapTargets(page, skip) {
+        const xs = [0, page.w / 2, page.w];
+        const ys = [0, page.h / 2, page.h];
+        const add = ([x0, y0, x1, y1]) => {
+            xs.push(x0, (x0 + x1) / 2, x1);
+            ys.push(y0, (y0 + y1) / 2, y1);
+        };
+        page.data.images.forEach((image, i) => skip.has(`image:${i}`) || add(image.bbox));
+        page.data.annots.forEach((annot, i) => skip.has(`annot:${i}`) || add(annot.rect));
+        page.data.blocks.forEach(block => add(block.bbox));
+        return { xs, ys };
+    }
+
+    function snapAxis(values, targets, tolerance) {
+        let best = null;
+        values.forEach(v => targets.forEach(target => {
+            const delta = target - v;
+            if (Math.abs(delta) <= tolerance && (!best || Math.abs(delta) < Math.abs(best.delta))) best = { delta, at: target };
+        }));
+        return best;
+    }
+
+    function showGuides(page, guides) {
+        page.svg.querySelectorAll('.pe-guide').forEach(el => el.remove());
+        const ns = 'http://www.w3.org/2000/svg';
+        guides.forEach(([x1, y1, x2, y2]) => {
+            const line = document.createElementNS(ns, 'line');
+            line.setAttribute('class', 'pe-guide');
+            Object.entries({ x1, y1, x2, y2 }).forEach(([k, v]) => line.setAttribute(k, v));
+            page.svg.appendChild(line);
+        });
+    }
+
+    function snapMove(d, dx, dy, free) {
+        const box = shiftRect(bounds(d.items.map(item => item.origin)), dx, dy);
+        if (free) {
+            showGuides(d.page, []);
+            return [dx, dy];
+        }
+        const tolerance = SNAP_PX / (d.page.el.clientWidth / d.page.w);
+        const sx = snapAxis([box[0], (box[0] + box[2]) / 2, box[2]], d.targets.xs, tolerance);
+        const sy = snapAxis([box[1], (box[1] + box[3]) / 2, box[3]], d.targets.ys, tolerance);
+        const guides = [];
+        if (sx) guides.push([sx.at, 0, sx.at, d.page.h]);
+        if (sy) guides.push([0, sy.at, d.page.w, sy.at]);
+        showGuides(d.page, guides);
+        return [dx + (sx?.delta || 0), dy + (sy?.delta || 0)];
+    }
+
     function onClick(e) {
-        if (!s || s.tool !== 'edit' || s.gesture) return;
+        if (s?.suppressClick) {
+            s.suppressClick = false;
+            return;
+        }
+        if (!s || s.tool !== 'edit' || s.gesture || e.shiftKey) return;
         const blockEl = e.target.closest?.('.pe-block');
         if (!blockEl) return;
         const page = pageOf(blockEl);
@@ -631,14 +1099,29 @@ const PdfEditor = (() => {
         if (s.tool === 'edit') {
             const obj = e.target.closest('.pe-obj');
             if (e.target.closest('.pe-widget')) return clearSelection();
-            if (!obj) return clearSelection();
+            if (!obj) {
+                const ns = 'http://www.w3.org/2000/svg';
+                const el = document.createElementNS(ns, 'rect');
+                el.setAttribute('class', 'pe-marquee');
+                page.svg.appendChild(el);
+                s.drag = { type: 'marquee', page, start: p, end: p, el, additive: e.shiftKey, moved: false };
+                return;
+            }
             const kind = obj.classList.contains('pe-image') ? 'image' : 'annot';
-            const index = Number(kind === 'image' ? obj.dataset.img : obj.dataset.an);
-            if (s.selection?.el !== obj) select(page, kind, index);
-            const movable = kind === 'image' ? page.data.images[index].movable !== false : page.data.annots[index].movable;
-            if (!movable) return;
-            const rect = (kind === 'image' ? page.data.images[index].bbox : page.data.annots[index].rect).slice();
-            s.drag = { type: e.target.closest('.pe-handle') ? 'resize' : 'move', page, el: obj, kind, index, start: p, origin: rect, rect, moved: false };
+            const item = { kind, index: Number(kind === 'image' ? obj.dataset.img : obj.dataset.an) };
+            const selected = s.selection?.page === page && s.selection.items.some(x => x.el === obj);
+            if (e.shiftKey) {
+                select(page, [item], 'toggle');
+                e.preventDefault();
+                return;
+            }
+            if (!selected) select(page, [item]);
+            if (!ready(page)) return;
+            const items = s.selection.items.filter(x => itemMovable(page, x)).map(x => ({ ...x, origin: itemRect(page, x).slice() }));
+            if (!items.length) return;
+            const resize = !!e.target.closest('.pe-handle');
+            const skip = new Set(items.map(x => `${x.kind}:${x.index}`));
+            s.drag = { type: resize ? 'resize' : 'move', page, items: resize ? items.filter(x => x.el === obj) : items, start: p, moved: false, targets: snapTargets(page, skip) };
             e.preventDefault();
             return;
         }
@@ -666,13 +1149,26 @@ const PdfEditor = (() => {
             const dy = p[1] - d.start[1];
             if (!d.moved && Math.hypot(dx, dy) < 2) return;
             d.moved = true;
-            const [x0, y0, x1, y1] = d.origin;
-            if (d.type === 'move') d.rect = [x0 + dx, y0 + dy, x1 + dx, y1 + dy];
-            else {
+            if (d.type === 'move') {
+                const [sx, sy] = snapMove(d, dx, dy, e.altKey);
+                d.items.forEach(item => {
+                    item.rect = shiftRect(item.origin, sx, sy);
+                    item.el.setAttribute('style', pct(d.page, item.rect));
+                });
+            } else {
+                const item = d.items[0];
+                const [x0, y0, x1, y1] = item.origin;
                 const w = Math.max(8, x1 - x0 + dx);
-                d.rect = [x0, y0, x0 + w, y0 + w * (y1 - y0) / (x1 - x0)];
+                item.rect = [x0, y0, x0 + w, y0 + w * (y1 - y0) / (x1 - x0)];
+                item.el.setAttribute('style', pct(d.page, item.rect));
             }
-            d.el.setAttribute('style', pct(d.page, d.rect));
+            return;
+        }
+        if (d.type === 'marquee') {
+            d.end = p;
+            d.moved ||= Math.hypot(p[0] - d.start[0], p[1] - d.start[1]) > 3;
+            const [x0, y0, x1, y1] = normRect(d.start, d.end);
+            Object.entries({ x: x0, y: y0, width: x1 - x0, height: y1 - y0 }).forEach(([k, v]) => d.el.setAttribute(k, v));
             return;
         }
         if (d.type === 'textmove') {
@@ -696,11 +1192,27 @@ const PdfEditor = (() => {
         s.drag = null;
         const page = d.page;
         if (d.type === 'move' || d.type === 'resize') {
+            showGuides(page, []);
             if (!d.moved) return;
-            const rect = d.rect.map(round);
-            s.reselect = { page: page.i, kind: d.kind, rect };
-            if (d.kind === 'image') pushOp({ type: 'image', page: page.i, xref: page.data.images[d.index].xref, remove: d.origin, rect });
-            else pushOp({ type: 'annot_edit', page: page.i, target: d.origin, rect });
+            const ops = d.items.map(item => moveOp(page, item, item.origin, item.rect.map(round)));
+            s.reselect = { page: page.i, items: d.items.map((item, i) => ({ kind: item.kind, rect: ops[i].rect })) };
+            pushOps(ops);
+            return;
+        }
+        if (d.type === 'marquee') {
+            d.el.remove();
+            if (!d.moved) {
+                if (!d.additive) clearSelection();
+                return;
+            }
+            s.suppressClick = true;
+            const area = normRect(d.start, d.end);
+            const inside = r => r[0] < area[2] && r[2] > area[0] && r[1] < area[3] && r[3] > area[1];
+            const items = [
+                ...page.data.images.map((image, index) => ({ kind: 'image', index, rect: image.bbox })),
+                ...page.data.annots.map((annot, index) => ({ kind: 'annot', index, rect: annot.rect }))
+            ].filter(item => inside(item.rect));
+            if (items.length || !d.additive) select(page, items, d.additive ? 'add' : 'replace');
             return;
         }
         if (d.type === 'textmove') return;
@@ -726,8 +1238,12 @@ const PdfEditor = (() => {
 
     function cancelDrag() {
         if (!s?.drag) return;
-        if (s.drag.el && s.drag.el.ownerSVGElement) s.drag.el.remove();
-        if (s.drag.type === 'move' || s.drag.type === 'resize') s.drag.el.setAttribute('style', pct(s.drag.page, s.drag.origin));
+        const d = s.drag;
+        if (d.el?.ownerSVGElement) d.el.remove();
+        if (d.type === 'move' || d.type === 'resize') {
+            d.items.forEach(item => item.el.setAttribute('style', pct(d.page, item.origin)));
+            showGuides(d.page, []);
+        }
         s.drag = null;
     }
 
@@ -1115,7 +1631,7 @@ const PdfEditor = (() => {
                 const { page, index } = target.replace;
                 const image = page.data.images[index];
                 const rect = fitInto(image.bbox, size);
-                s.reselect = { page: page.i, kind: 'image', rect };
+                s.reselect = { page: page.i, items: [{ kind: 'image', rect }] };
                 clearSelection();
                 pushOp({ type: 'image', page: page.i, xref: image.xref, remove: image.bbox, rect, file_id: fileId });
             } else {
@@ -1125,7 +1641,7 @@ const PdfEditor = (() => {
                 const x0 = clamp(at[0] - width / 2, 0, page.w - width);
                 const y0 = clamp(at[1] - height / 2, 0, page.h - height);
                 const rect = [x0, y0, x0 + width, y0 + height].map(round);
-                s.reselect = { page: page.i, kind: 'image', rect };
+                s.reselect = { page: page.i, items: [{ kind: 'image', rect }] };
                 pushOp({ type: 'image', page: page.i, rect, file_id: fileId });
                 setTool('edit');
             }
@@ -1149,6 +1665,7 @@ const PdfEditor = (() => {
         const res = await fetch('/api/upload', { method: 'POST', body: form });
         const body = await res.json().catch(() => ({}));
         if (!body.success) throw new Error(body.error?.message || t('err_upload_failed'));
+        PdfDrafts.putImage(body.data.file_id, file);
         return body.data.file_id;
     }
 
@@ -1207,6 +1724,34 @@ const PdfEditor = (() => {
             return;
         }
         if (typing) return;
+        const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+        if (arrows[e.key] && s.selection) {
+            e.preventDefault();
+            const step = e.shiftKey ? 10 : 1;
+            nudge(arrows[e.key][0] * step, arrows[e.key][1] * step);
+            return;
+        }
+        const key = e.key.toLowerCase();
+        if (mod && key === 'c' && s.selection) {
+            e.preventDefault();
+            copySelection();
+            return;
+        }
+        if (mod && key === 'v' && s.clipboard) {
+            e.preventDefault();
+            paste();
+            return;
+        }
+        if (mod && key === 'd' && s.selection) {
+            e.preventDefault();
+            duplicateSelection();
+            return;
+        }
+        if (mod && key === 'a' && s.tool === 'edit') {
+            e.preventDefault();
+            selectAll();
+            return;
+        }
         if (mod && e.key.toLowerCase() === 'z') {
             e.preventDefault();
             e.shiftKey ? redo() : undo();
@@ -1228,5 +1773,10 @@ const PdfEditor = (() => {
         }
     }
 
-    return { open, isOpen: () => !!s };
+    function committed() {
+        if (committedDigest) PdfDrafts.remove(committedDigest);
+        committedDigest = null;
+    }
+
+    return { open, committed, isOpen: () => !!s };
 })();

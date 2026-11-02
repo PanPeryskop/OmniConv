@@ -1,3 +1,4 @@
+import hashlib
 import io
 import os
 import re
@@ -45,6 +46,16 @@ def get_pdf_job(file_id):
     if not job['original_filename'].lower().endswith('.pdf'):
         return None, (api_response(error={'type': 'UnsupportedError', 'message': 'Not a PDF file'}, success=False), 400)
     return job, None
+
+
+def file_digest(job):
+    if not job.get('digest'):
+        sha = hashlib.sha256()
+        with open(job['input_path'], 'rb') as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b''):
+                sha.update(chunk)
+        job['digest'] = sha.hexdigest()
+    return job['digest']
 
 
 def resolve_edit_ops(ops):
@@ -114,7 +125,21 @@ def pdf_edit_pages():
     except Exception:
         return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_damaged', 'message': 'The PDF could not be opened'}, success=False), 400
     touch_file(data.get('file_id'))
-    return api_response(data={'pages': sizes})
+    return api_response(data={'pages': sizes, 'digest': file_digest(job)})
+
+
+@pdf_bp.route('/pdf/edit/keepalive', methods=['POST'])
+def pdf_edit_keepalive():
+    data = request.get_json(silent=True) or {}
+    job, error = get_pdf_job(data.get('file_id'))
+    if error:
+        return error
+    touch_file(data.get('file_id'))
+    images = data.get('images') if isinstance(data.get('images'), list) else []
+    alive = [image_id for image_id in images if conversion_jobs.owned(image_id)]
+    for image_id in alive:
+        touch_file(image_id)
+    return api_response(data={'images': alive})
 
 
 @pdf_bp.route('/pdf/edit/font/<file_id>/<int:xref>', methods=['GET'])
@@ -139,6 +164,7 @@ def pdf_edit_page():
     ops, error = resolve_edit_ops(data.get('ops') or [])
     if error:
         return error
+    touch_file(data.get('file_id'))
     try:
         page = int(data.get('page', 0))
         width = min(3000, max(100, int(data.get('width', 800))))

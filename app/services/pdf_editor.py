@@ -1,8 +1,11 @@
 import base64
 import hashlib
+import json
+import os
 import re
 import statistics
-from collections import Counter
+import threading
+from collections import Counter, OrderedDict
 
 import fitz
 import pymupdf.mupdf as mupdf
@@ -348,7 +351,10 @@ def page_layout(page, ctx=None):
     for image in page_images(page):
         bbox = image['bbox'] & page.rect
         if bbox.width > 4 and bbox.height > 4:
-            images.append({'xref': image['xref'], 'bbox': [round(v, 2) for v in image['bbox']], 'movable': image['movable']})
+            images.append({
+                'xref': image['xref'], 'bbox': [round(v, 2) for v in image['bbox']], 'movable': image['movable'],
+                'stable': 0 < image['xref'] < ctx.original_xrefs,
+            })
     annots = []
     for annot in page.annots():
         kind = annot.type[1]
@@ -713,7 +719,7 @@ def rect_distance(a, b):
     return abs(a.x0 - b.x0) + abs(a.y0 - b.y0) + abs(a.x1 - b.x1) + abs(a.y1 - b.y1)
 
 
-def image_draws(page, drop=None):
+def image_draws(page, drop=None, capture=None):
     pdfpage = fitz._as_pdf_page(page)
     page_matrix = mupdf.FzMatrix()
     mupdf.pdf_page_transform(pdfpage, mupdf.FzRect(), page_matrix)
@@ -734,8 +740,9 @@ def image_draws(page, drop=None):
                 'upright': abs(ctm.b) < 1e-6 and abs(ctm.c) < 1e-6 and ctm.a > 0 and ctm.d > 0,
                 'mask': bool(image.imagemask),
             })
-            if len(draws) - 1 == drop:
+            if len(draws) - 1 in (drop, capture):
                 dropped.append(mupdf.FzImage(mupdf.ll_fz_keep_image(image)))
+            if len(draws) - 1 == drop:
                 return None
             return mupdf.ll_fz_keep_image(image)
 
@@ -770,9 +777,25 @@ def decoded_pixmap(image):
     return pix
 
 
+def copy_image(ctx, page, rect, source):
+    xref = int(source.get('xref') or 0)
+    if 0 < xref < ctx.original_xrefs:
+        page.insert_image(rect, xref=xref, keep_proportion=False)
+    elif source.get('bbox'):
+        images = page_images(page)
+        index = find_image(images, xref, source['bbox'])
+        if index >= 0:
+            _draws, decoded = image_draws(page, capture=index)
+            if decoded is not None:
+                page.insert_image(rect, pixmap=decoded_pixmap(decoded), keep_proportion=False)
+    return page
+
+
 def op_image(ctx, page, op):
     rect = rect_of(op['rect']) if op.get('rect') else None
     path = op.get('path')
+    if rect and isinstance(op.get('source'), dict) and not path:
+        return copy_image(ctx, page, rect, op['source'])
     if op.get('remove'):
         images = page_images(page)
         index = find_image(images, int(op.get('xref') or 0), op['remove'])
@@ -849,11 +872,46 @@ def find_annot(page, rect):
     return best
 
 
+def shifted(points, dx, dy):
+    return [(x + dx, y + dy) for x, y in points]
+
+
+def clone_annot(page, annot, dx, dy):
+    kind = annot.type[1]
+    colors = annot.colors
+    rect = annot.rect + (dx, dy, dx, dy)
+    vertices = annot.vertices or []
+    if kind in ('Square', 'Circle'):
+        copy = page.add_rect_annot(rect) if kind == 'Square' else page.add_circle_annot(rect)
+    elif kind == 'Ink':
+        copy = page.add_ink_annot([shifted(stroke, dx, dy) for stroke in vertices])
+    elif kind == 'Line' and len(vertices) >= 2:
+        copy = page.add_line_annot(*shifted(vertices[:2], dx, dy))
+        copy.set_line_ends(*annot.line_ends)
+    elif kind in ('Highlight', 'Underline', 'StrikeOut', 'Squiggly') and len(vertices) >= 4:
+        points = shifted(vertices, dx, dy)
+        quads = [fitz.Quad(*points[i:i + 4]) for i in range(0, len(points) - 3, 4)]
+        copy = getattr(page, f'add_{kind.lower()}_annot')(quads)
+    elif kind == 'Text':
+        copy = page.add_text_annot(rect.tl, annot.info.get('content', ''), icon='Comment')
+    else:
+        return
+    copy.set_colors(stroke=colors.get('stroke'), fill=colors.get('fill'))
+    if annot.border.get('width') is not None and kind not in ('Highlight', 'Underline', 'StrikeOut', 'Squiggly', 'Text'):
+        copy.set_border(width=annot.border['width'])
+    copy.set_opacity(annot.opacity if annot.opacity >= 0 else 1)
+    copy.set_info(annot.info)
+    copy.update()
+
+
 def op_annot_edit(ctx, page, op):
     annot = find_annot(page, op['target'])
     if not annot:
         return page
-    if op.get('delete'):
+    if isinstance(op.get('copy'), list):
+        dx, dy = [float(v) for v in op['copy'][:2]]
+        clone_annot(page, annot, dx, dy)
+    elif op.get('delete'):
         page.delete_annot(annot)
     elif op.get('rect') and annot.type[1] in MOVABLE_ANNOTS:
         annot.set_rect(rect_of(op['rect']))
@@ -913,9 +971,14 @@ def apply_page_ops(ctx, page, ops):
     return page
 
 
+PAGE_SIZE_LIMIT = (36, 14400)
+
+
 def group_ops(ops, page_count):
     pages = {}
     for op in ops or []:
+        if op.get('type') == 'page':
+            continue
         try:
             index = int(op.get('page'))
         except (TypeError, ValueError):
@@ -925,17 +988,114 @@ def group_ops(ops, page_count):
     return pages
 
 
+def blank_size(op):
+    try:
+        width, height = [float(v) for v in op.get('size')[:2]]
+    except (TypeError, ValueError, IndexError):
+        return 595.0, 842.0
+    low, high = PAGE_SIZE_LIMIT
+    return max(low, min(high, width)), max(low, min(high, height))
+
+
+def page_structure(ops, count):
+    order = list(range(count))
+    rotation = {}
+    blanks = {}
+    for op in ops or []:
+        if op.get('type') != 'page':
+            continue
+        try:
+            pid = int(op.get('page'))
+            target = int(op.get('to') or 0)
+        except (TypeError, ValueError):
+            continue
+        action = op.get('action')
+        if action == 'insert' and pid == count + len(blanks) and pid not in order:
+            blanks[pid] = blank_size(op)
+            order.insert(max(0, min(len(order), target)), pid)
+        elif pid not in order:
+            continue
+        elif action == 'delete' and len(order) > 1:
+            order.remove(pid)
+        elif action == 'move':
+            order.remove(pid)
+            order.insert(max(0, min(len(order), target)), pid)
+        elif action == 'rotate':
+            rotation[pid] = (rotation.get(pid, 0) + int(op.get('angle') or 90)) % 360
+    return order, rotation, blanks
+
+
+def add_blanks(doc, blanks, upto=None):
+    for pid in sorted(blanks):
+        if upto is not None and pid > upto:
+            break
+        width, height = blanks[pid]
+        doc.new_page(width=width, height=height)
+
+
 def apply_ops(doc, ops):
     ctx = EditContext(doc)
+    count = doc.page_count
+    order, rotation, blanks = page_structure(ops, count)
+    add_blanks(doc, blanks)
     for index, page_ops in sorted(group_ops(ops, doc.page_count).items()):
         apply_page_ops(ctx, doc[index], page_ops)
+    for pid, angle in rotation.items():
+        page = doc[pid]
+        page.set_rotation((page.rotation + angle) % 360)
+    if order != list(range(doc.page_count)):
+        doc.select(order)
+
+
+class PreviewCache:
+    def __init__(self, limit=48):
+        self.limit = limit
+        self.items = OrderedDict()
+        self.lock = threading.Lock()
+
+    def key(self, path, index, ops, width):
+        stat = os.stat(path)
+        payload = json.dumps(ops, sort_keys=True, separators=(',', ':'), default=str)
+        return (path, stat.st_mtime_ns, stat.st_size, index, width, hashlib.blake2b(payload.encode(), digest_size=16).digest())
+
+    def get(self, key):
+        with self.lock:
+            if key in self.items:
+                self.items.move_to_end(key)
+                return self.items[key]
+        return None
+
+    def put(self, key, value):
+        with self.lock:
+            self.items[key] = value
+            self.items.move_to_end(key)
+            while len(self.items) > self.limit:
+                self.items.popitem(last=False)
+
+
+PREVIEWS = PreviewCache()
 
 
 def render_preview(path, index, ops, width):
+    key = PREVIEWS.key(path, index, ops, width)
+    cached = PREVIEWS.get(key)
+    if cached is None:
+        cached = build_preview(path, index, ops, width)
+        if cached is not None:
+            PREVIEWS.put(key, cached)
+    return dict(cached) if cached is not None else None
+
+
+def build_preview(path, index, ops, width):
     with fitz.open(path) as doc:
-        if doc.needs_pass or index < 0 or index >= doc.page_count:
+        if doc.needs_pass or index < 0:
             return None
         ctx = EditContext(doc)
+        _order, _rotation, blanks = page_structure(ops, doc.page_count)
+        if index >= doc.page_count:
+            if index not in blanks:
+                return None
+            add_blanks(doc, blanks, index)
         page = apply_page_ops(ctx, doc[index], group_ops(ops, doc.page_count).get(index, []))
         layout = page_layout(page, ctx)
         layout['overflow'] = {str(i): by for (number, i), by in ctx.overflow.items() if number == index}
