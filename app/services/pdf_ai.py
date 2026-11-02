@@ -103,3 +103,12 @@ def translate_page(layout, page, language, batch=12):
         for block, text in zip(chunk, translate_many([block_text(b) for b in chunk], language), strict=True):
             ops.append(block_op(page, block, text))
     return ops
+
+
+def fix_text(text, language=None):
+    if not language:
+        return rewrite(text, 'fix')
+    text = (text or '')[:MAX_TEXT]
+    if not text.strip():
+        return text
+    return ask(f'You edit text taken from a PDF document written in {language}. {MODES["fix"]} {RULES}', text)
