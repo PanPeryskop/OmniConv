@@ -9,6 +9,8 @@ from .api_common import conversion_jobs, api_response, unique_output_base, touch
 from ..utils.file_handler import generate_file_id
 from ..services.pdf_tools import PdfTools, PdfToolError
 from ..services import pdf_ai, pdf_editor
+from ..services.editor_tasks import TASKS
+from ..services.font_match import FontLibrary
 from ..services.pdf_sign import CERTIFICATES, MAX_CERT_BYTES, SignError
 from .websocket import emit_progress, emit_complete, emit_error
 from ..services.job_registry import registry
@@ -178,13 +180,37 @@ def pdf_edit_ai_status():
     return api_response(data={'status': pdf_ai.status()})
 
 
+def task_failed(task, code, message):
+    TASKS.finish(task.id, 'cancelled' if code == 'err_cancelled' else 'failed', {'code': code, 'message': message})
+
+
+def cancel_point(task):
+    if task.cancelled:
+        raise PdfToolError('err_cancelled', 'Cancelled')
+
+
+@pdf_bp.route('/pdf/edit/fonts/status', methods=['GET'])
+def pdf_edit_fonts_status():
+    library = FontLibrary.shared()
+    done, total = library.progress
+    return api_response(data={'ready': library.ready.is_set(), 'done': done, 'total': total})
+
+
 @pdf_bp.route('/pdf/edit/ai', methods=['POST'])
 def pdf_edit_ai():
     data = request.get_json(silent=True) or {}
+    file_id = data.get('file_id') if isinstance(data.get('file_id'), str) else None
+    task = TASKS.create(client_id(), 'ai', file_id)
+    TASKS.update(task.id, status='running')
     try:
         text = pdf_ai.rewrite(str(data.get('text') or ''), data.get('mode'), str(data.get('language') or '')[:40])
     except pdf_ai.AiError as e:
+        task_failed(task, e.code, str(e))
         return ai_error_response(e)
+    except Exception as e:
+        task_failed(task, 'err_ai_failed', str(e))
+        raise
+    TASKS.finish(task.id)
     return api_response(data={'text': text})
 
 
@@ -200,17 +226,37 @@ def pdf_edit_translate():
     language = str(data.get('language') or '')[:40]
     try:
         page = int(data.get('page', 0))
-        layout = pdf_editor.render_preview(job['input_path'], page, ops, 100)
-        if layout is None:
-            return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_ranges', 'message': 'Page out of range'}, success=False), 400
-        if layout.get('ocr_pending'):
-            return api_response(error={'type': 'PdfToolError', 'code': 'err_ocr_pending', 'message': 'Text recognition is still running'}, success=False), 409
-        result = pdf_ai.translate_page(layout, page, language)
     except (TypeError, ValueError):
         return api_response(error={'type': 'InvalidRequestError', 'message': 'Invalid page'}, success=False), 400
+    task = TASKS.create(client_id(), 'translate', data.get('file_id'), page)
+    try:
+        TASKS.update(task.id, status='running', stage='layout', progress=0.0)
+        layout = pdf_editor.render_preview(job['input_path'], page, ops, 100)
+        if layout is None:
+            task_failed(task, 'err_pdf_ranges', 'Page out of range')
+            return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_ranges', 'message': 'Page out of range'}, success=False), 400
+        if layout.get('ocr_pending'):
+            task_failed(task, 'err_ocr_pending', 'Text recognition is still running')
+            return api_response(error={'type': 'PdfToolError', 'code': 'err_ocr_pending', 'message': 'Text recognition is still running'}, success=False), 409
+        cancel_point(task)
+        TASKS.update(task.id, stage='translate', progress=0.2, detail={'blocks': len(layout.get('blocks') or [])})
+        result = pdf_ai.translate_page(layout, page, language)
+        cancel_point(task)
+        TASKS.update(task.id, stage='ops', progress=0.9, detail={'blocks': len(layout.get('blocks') or []), 'ops': len(result)})
+    except (TypeError, ValueError):
+        task_failed(task, 'err_pdf_edit', 'Invalid page')
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'Invalid page'}, success=False), 400
+    except PdfToolError as e:
+        task_failed(task, e.code, str(e))
+        return tool_error_response(e)
     except pdf_ai.AiError as e:
+        task_failed(task, e.code, str(e))
         return ai_error_response(e)
+    except Exception as e:
+        task_failed(task, 'err_ai_failed', str(e))
+        raise
     touch_file(data.get('file_id'))
+    TASKS.finish(task.id)
     return api_response(data={'ops': result})
 
 
@@ -227,11 +273,24 @@ def pdf_edit_search():
     query = str(data.get('query') or '')[:200]
     if not query.strip() and not kinds:
         return api_response(data={'matches': [], 'truncated': False})
+    task = TASKS.create(client_id(), 'search', data.get('file_id'))
+    TASKS.update(task.id, status='running')
+
+    def progress(done, total):
+        cancel_point(task)
+        TASKS.update(task.id, progress=done / total if total else None, detail={'done': done, 'total': total})
+
     try:
-        matches, truncated = pdf_editor.search_document(job['input_path'], ops, query, kinds, bool(data.get('whole_word')))
+        matches, truncated = pdf_editor.search_document(job['input_path'], ops, query, kinds, bool(data.get('whole_word')), progress)
+    except PdfToolError as e:
+        task_failed(task, e.code, str(e))
+        return tool_error_response(e)
     except Exception as e:
+        task_failed(task, 'err_pdf_edit', str(e))
         return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_edit', 'message': str(e)}, success=False), 400
     touch_file(data.get('file_id'))
+    TASKS.update(task.id, detail={**task.detail, 'matches': len(matches)})
+    TASKS.finish(task.id)
     return api_response(data={'matches': matches, 'truncated': truncated})
 
 

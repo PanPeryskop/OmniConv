@@ -310,6 +310,7 @@ class FontLibrary:
         self.coverage = {}
         self.ready = threading.Event()
         self.build_lock = threading.Lock()
+        self.progress = (0, 0)
 
     @classmethod
     def shared(cls):
@@ -355,7 +356,9 @@ class FontLibrary:
             cached = self.read_cache() if self.cache_path else {}
             files = {}
             changed = False
-            for path in self.files():
+            paths = list(self.files())
+            for done, path in enumerate(paths):
+                self.progress = (done, len(paths))
                 try:
                     stat = os.stat(path)
                 except OSError:
@@ -369,6 +372,7 @@ class FontLibrary:
                     changed = True
             if self.cache_path and (changed or len(files) != len(cached)):
                 self.write_cache(files)
+            self.progress = (len(paths), len(paths))
             self.entries = [face for item in files.values() for face in item['faces']]
             self.by_key = {}
             for entry in self.entries:
