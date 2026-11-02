@@ -8,6 +8,13 @@
             <p class="pe-status" id="peStatus"></p>
         </div>
         <div class="pe-top-actions">
+            <button type="button" class="pe-icon-btn pe-activity-btn" id="peActivityBtn" aria-label="Activity" data-i18n-aria="pe_activity" data-i18n-title="pe_activity" title="Activity" hidden>
+                <svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
+                <span class="pe-badge" hidden></span>
+            </button>
+            <button type="button" class="pe-icon-btn" id="peAgentBtn" aria-label="AI assistant" data-i18n-aria="pe_agent" data-i18n-title="pe_agent" title="AI assistant" aria-pressed="false" hidden>
+                <svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2 2.2.8-2.2.8L19 21l-.8-2.2-2.2-.8 2.2-.8z"/></svg>
+            </button>
             <button type="button" class="pe-icon-btn" id="peMoreBtn" aria-label="More" data-i18n-aria="pe_more" data-i18n-title="pe_more" title="More">
                 <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
             </button>
@@ -44,6 +51,7 @@
         </div>
         <div class="pe-thumbs" id="peThumbs"></div>
     </aside>
+    <aside class="pe-side hidden" id="peSide" aria-label="AI assistant" data-i18n-aria="pe_agent"></aside>
     <div class="pe-scroll" id="peScroll">
         <div class="pe-pages" id="pePages"></div>
     </div>

@@ -453,3 +453,54 @@ Dopiski per WP:
 - Centrum aktywności pokazuje OCR, tłumaczenie, wyszukiwanie, zapis/podpis, AI i indeks czcionek.
 - Wszystko działa w en/pl/de, w ciemnym i jasnym motywie, na desktopie, iPadzie, telefonie w pionie i w poziomie.
 - Testy unit + e2e zielone; brak komentarzy w kodzie; bez nowych CDN-ów.
+
+## 11. Stan po WP0 (obowiązuje zamiast wcześniejszych zapisów, jeśli się różnią)
+
+WP0 jest zrobione i scalone na branchu bazowym. Ustalenia wiążące dla WP1–WP7:
+
+- **Kolejność skryptów:** `pdf.html` ładuje moduły edytora **przed** `translations.js` / `i18n.js` z `base.html`.
+  W czasie ładowania modułu nie istnieją `t`, `I18n`, `escapeHtml`, `i18n`. Tłumaczenia rejestruje się przez
+  `PdfEditor.bridge.translations({ en: {…}, pl: {…}, de: {…} })` (odkłada do `DOMContentLoaded`), a helpery woła się
+  dopiero w handlerach/funkcjach. `I18n.extend(lang, dict)` istnieje i wywołuje `i18n.apply()`.
+- **Globalne obiekty modułów:** `const PdfProgress`, `const PdfOcrView`, `const PdfActivityHooks`, `const PdfAgent`
+  (top-level `const`, nie właściwości `window`; w Playwright używaj `typeof X !== 'undefined'`).
+- **`PdfEditor.bridge`** (zaimplementowany): `session()`, `ops()`, `opsForPage(id)` (ścisły filtr `op.page === id`),
+  `layout(id)` (Promise; świeży podgląd albo `POST /api/pdf/edit/page` z `width: 200`), `apply(ops, {label})` (jedna
+  grupa cofania, zwraca `g`; `label` trafia do opów), `focus(id, rects, tone)`, `clearFocus()`, `selection()`,
+  `on/off(event, fn)`, `sheetSlot()`, `side(open?)`, `button('agent' | 'activity')`, `addMenuItem({id, icon, labelKey, run})`,
+  `compact()`, `translations(dicts)`, `t`, `escapeHtml`, `icon(name)`, `postJson(url, body)`.
+  Zdarzenia: `open`, `close`, `ops` (`{ops}`), `page` (`{pageId}`), `preview` (`{pageId, layout}`), `side` (`{open}`).
+- **`selection()`** zwraca `{ page, block_indexes: [int], text }` albo `null` (indeksy w `layout.blocks`). Serwer
+  zamienia je na `block_id` z 4.4, więc w żądaniu `messages` pole `selection` ma ten kształt.
+- **Przyciski w nagłówku:** `#peAgentBtn` i `#peActivityBtn` (z `<span class="pe-badge">`) są w szablonie z atrybutem
+  `hidden`. Moduł właściciela zdejmuje `hidden` i podpina obsługę przez `bridge.button(...)`. Na telefonie wejście do
+  agenta i aktywności idzie przez `bridge.addMenuItem` (menu „⋯”).
+- **Panel boczny:** `#peSide` (`bridge.sheetSlot()`), CSS układu (desktop 360 px po prawej, przesuwa strony i dock,
+  telefon pełny ekran) jest w `pdf-editor.css`. Zawartość panelu i jej style należą do WP6
+  (`pdf-editor-agent.css`).
+- **Podświetlenia:** `.pe-focus` z tonami `proposal` / `applied` / `error` w `pdf-editor.css`, przetrwa odświeżenie
+  warstwy strony.
+- **`PdfProgress` (stub WP0, implementuje WP1):** `onTask(kind | '*', fn)`, `track(taskId)`, `get(taskId)`,
+  `local(kind, {titleKey, total, page, cancel})` zwraca `{ task, update(fields), done(), fail(code), cancelled() }`.
+  WP2/WP3 kodują przeciw temu API już teraz.
+- **Backend:** `editor_tasks.py` ma działający minimalny `TaskRegistry` z `subscribe(listener)` (WP1 dokłada throttling,
+  emit do pokojów i UI, nie zmienia sygnatur). `agent_providers.py` ma `ToolCall`, `AgentStep`, `AgentProvider`,
+  działający `FakeProvider` (`AGENT_PROVIDER=fake`, kroki w `AGENT_FAKE_STEPS`) i puste klasy LM Studio/Anthropic
+  (WP4). `pdf_agent_tools.py` ma `ToolContext`, `ToolResult`, `ToolSpec`, `block_id`, `page_base`, `make_proposal`,
+  `register`, `tool_specs` (WP5 rejestruje narzędzia). `pdf_agent.py` ma `AgentSession`, `AgentSessionStore`,
+  stałe limitów i stub `run_turn(session, text, ctx, provider, emit)` (WP4). Trasy agenta zwracają 501, trasy zadań
+  działają (`GET /api/pdf/edit/tasks`, `POST …/cancel`).
+- **Socket.IO:** pokoje (`editor_join`) i emit `editor_task` robi WP1 w `websocket.py`, podłączając się do
+  `TASKS.subscribe`.
+- **Testy e2e:** `tests/e2e/helpers.js` (`startApp`, `startFakeLm({rules})`, `openEditor`, `check`),
+  `tests/e2e/run.sh [nazwa]`, pliki `tests/e2e/<nazwa>.e2e.js` (Node + globalny Playwright). Port aplikacji z
+  `E2E_PORT` (domyślnie 5099; **każdy WP używa innego portu**: WP1 5101, WP2 5102, WP3 5103, WP4 5104, WP5 5105,
+  WP6 5106). Fake LM: port z `FAKE_LM_PORT` (WP1 1301 … WP6 1306); `startFakeLm()` zwraca `env` z
+  `LMSTUDIO_API_URL`, który trzeba przekazać do `startApp({ env })` (LLMService czyta adres z tej zmiennej).
+  W worktree bez `.venv` ustaw `E2E_PYTHON=/home/user/OmniConv/.venv/bin/python`.
+- **`tests/fakes/fake_lm.py`:** `/api/v1/models`, `/api/v1/chat` (tłumaczenie segmentów `<<n>>`, tryb `fix` poprawia
+  „wykladu/Zazolc/teskt”), `/v1/chat/completions` z `tools` (stream i bez), sterowany regułami
+  `[{match, steps:[{text, tool_calls:[{name, args}]}]}]` z pliku `FAKE_LM_RULES`; krok = liczba odpowiedzi asystenta od
+  ostatniej wiadomości użytkownika.
+- **Branche:** subagenci pracują w izolowanych worktree na lokalnych branchach i **nie pushują**. Scalanie robi
+  prowadzący do `claude/exciting-sagan-psmedl`.

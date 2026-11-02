@@ -62,6 +62,8 @@ const PdfEditor = (() => {
     const round = v => Math.round(v * 100) / 100;
     let els = null;
     let s = null;
+    const listeners = {};
+    const menuItems = [];
     let committedDigest = null;
 
     function icon(name) {
@@ -120,7 +122,8 @@ const PdfEditor = (() => {
             save: $('peSave'), scroll: $('peScroll'), pages: $('pePages'), dock: $('peDock'), pill: $('pePagePill'),
             context: $('peContext'), tools: $('peTools'), imageInput: $('peImageInput'), notice: $('peNotice'),
             pagesBtn: $('pePagesBtn'), panel: $('pePanel'), thumbs: $('peThumbs'), sheet: $('peSheet'), translateBtn: $('peTranslateBtn'),
-            backdrop: $('peBackdrop'), panelClose: $('pePanelClose'), moreBtn: $('peMoreBtn')
+            backdrop: $('peBackdrop'), panelClose: $('pePanelClose'), moreBtn: $('peMoreBtn'),
+            side: $('peSide'), agentBtn: $('peAgentBtn'), activityBtn: $('peActivityBtn')
         };
         els.tools.innerHTML = TOOLS.map(tool => `
             <button type="button" class="pe-tool" data-tool="${tool}">
@@ -223,6 +226,7 @@ const PdfEditor = (() => {
             if (s !== session) return;
             s.digest = body.data.digest;
             buildPages(body.data.pages);
+            emit('open', bridge.session());
             s.keepalive = setInterval(keepAlive, KEEPALIVE_MS);
             if (s.ops.length) storeDraft();
             else offerDraft();
@@ -316,7 +320,9 @@ const PdfEditor = (() => {
         clearInterval(s.keepalive);
         hideBanner();
         closeSheet();
+        side(false);
         s = null;
+        emit('close');
         els.pages.innerHTML = '';
         els.root.classList.add('hidden');
         document.body.classList.remove('pe-open');
@@ -514,6 +520,7 @@ const PdfEditor = (() => {
         });
         if (current !== s.current) {
             s.current = current;
+            emit('page', { pageId: current });
             els.thumbs.querySelectorAll('.pe-thumb').forEach(el => el.classList.toggle('current', Number(el.dataset.id) === current));
         }
         els.pill.textContent = `${order.indexOf(current) + 1} / ${order.length}`;
@@ -614,6 +621,7 @@ const PdfEditor = (() => {
         page.el.classList.toggle('stale', page.loadedRev !== page.rev);
         page.svg.innerHTML = '';
         renderLayer(page);
+        emit('preview', { pageId: page.i, layout: data });
         const thumb = els.thumbs.querySelector(`.pe-thumb[data-id="${page.i}"] .pe-thumb-page`);
         if (thumb) thumb.innerHTML = `<img src="${escapeHtml(data.image)}" alt="">`;
         if (data.scanned && !s.banner && !s.scansDismissed.has(page.i) && !s.ops.some(op => op.type === 'ocr' && op.page === page.i)) offerOcr(page);
@@ -744,6 +752,7 @@ const PdfEditor = (() => {
     function updateHistory() {
         if (s.banner?.op && !s.ops.includes(s.banner.op)) hideBanner();
         storeDraft();
+        emit('ops', { ops: bridge.ops() });
         els.undo.disabled = !s.ops.length;
         els.redo.disabled = !s.redo.length;
         updateStatus();
@@ -781,6 +790,7 @@ const PdfEditor = (() => {
         });
         renderHits(page);
         renderDigital(page);
+        renderFocus(page);
         if (s.reselect?.page === page.i) {
             const target = s.reselect;
             s.reselect = null;
@@ -1135,6 +1145,7 @@ const PdfEditor = (() => {
         return `<div class="pe-grabber" data-grab></div><div class="pe-menu" data-grab>
             ${item('pages', els.pagesBtn.innerHTML, 'pe_pages')}
             ${item('translate', els.translateBtn.innerHTML, 'pe_translate')}
+            ${menuItems.map(entry => item(`ext:${entry.id}`, entry.icon, entry.labelKey)).join('')}
         </div>`;
     }
 
@@ -1375,6 +1386,7 @@ const PdfEditor = (() => {
         const menu = e.target.closest('[data-menu]')?.dataset.menu;
         if (menu) {
             closeSheet();
+            if (menu.startsWith('ext:')) return menuItems.find(entry => `ext:${entry.id}` === menu)?.run();
             return menu === 'pages' ? togglePanel(true) : toggleSheet('translate');
         }
         const certButton = e.target.closest('button[data-cert="sign"]');
@@ -2395,5 +2407,104 @@ const PdfEditor = (() => {
         committedDigest = null;
     }
 
-    return { open, committed, isOpen: () => !!s };
+    function emit(event, payload) {
+        (listeners[event] || []).slice().forEach(fn => {
+            try {
+                fn(payload);
+            } catch (err) {
+                console.error(err);
+            }
+        });
+    }
+
+    function side(open) {
+        if (!els) return false;
+        const show = open ?? els.side.classList.contains('hidden');
+        els.side.classList.toggle('hidden', !show);
+        els.root.classList.toggle('side-open', show);
+        if (s) layoutPages();
+        emit('side', { open: show });
+        return show;
+    }
+
+    function renderFocus(page) {
+        if (!page?.layer) return;
+        page.layer.querySelectorAll('.pe-focus').forEach(el => el.remove());
+        const focus = s?.focus;
+        if (focus?.pageId !== page.i) return;
+        page.layer.insertAdjacentHTML('beforeend', focus.rects.map(rect => `<div class="pe-focus ${escapeHtml(focus.tone || 'proposal')}" style="${pct(page, rect)}"></div>`).join(''));
+    }
+
+    function focusRects(pageId, rects, tone = 'proposal') {
+        const page = s?.pages[pageId];
+        if (!page) return;
+        const previous = s.focus?.pageId;
+        s.focus = { pageId, rects: rects || [], tone };
+        if (previous !== undefined && previous !== pageId) renderFocus(s.pages[previous]);
+        renderFocus(page);
+        const first = page.layer.querySelector('.pe-focus');
+        (first || page.el).scrollIntoView({ behavior: compact() ? 'auto' : 'smooth', block: 'center' });
+    }
+
+    function clearFocus() {
+        if (!s?.focus) return;
+        const page = s.pages[s.focus.pageId];
+        s.focus = null;
+        renderFocus(page);
+    }
+
+    async function pageLayout(pageId) {
+        const page = s?.pages[pageId];
+        if (!page) return null;
+        if (page.data && page.loadedRev === page.rev) return page.data;
+        const { body } = await postJson('/api/pdf/edit/page', { file_id: s.fileId, page: pageId, ops: opsFor(pageId), width: 200 });
+        return body.success ? body.data : null;
+    }
+
+    function currentSelection() {
+        const ed = s?.editor;
+        if (!ed?.block) return null;
+        return { page: ed.page.i, block_indexes: [ed.page.data.blocks.indexOf(ed.block)], text: serialize(ed).map(run => run.t).join('') };
+    }
+
+    const clone = value => JSON.parse(JSON.stringify(value));
+
+    const bridge = {
+        session: () => (s ? { fileId: s.fileId, digest: s.digest, order: (s.order || []).slice(), current: s.current, base: s.base } : null),
+        ops: () => (s ? clone(s.ops) : []),
+        opsForPage: pageId => (s ? clone(s.ops.filter(op => op.page === pageId)) : []),
+        layout: pageLayout,
+        apply(ops, { label } = {}) {
+            if (!s || !ops?.length) return null;
+            pushOps(clone(ops).map(op => (label ? { ...op, label } : op)));
+            return s.group;
+        },
+        focus: focusRects,
+        clearFocus,
+        selection: currentSelection,
+        on(event, fn) {
+            (listeners[event] ||= []).push(fn);
+        },
+        off(event, fn) {
+            listeners[event] = (listeners[event] || []).filter(item => item !== fn);
+        },
+        sheetSlot: () => (init(), els.side),
+        side,
+        button: name => (init(), { agent: els.agentBtn, activity: els.activityBtn }[name] || null),
+        addMenuItem(entry) {
+            if (!menuItems.some(item => item.id === entry.id)) menuItems.push(entry);
+        },
+        compact,
+        translations(dicts) {
+            const apply = () => Object.entries(dicts).forEach(([lang, dict]) => I18n.extend(lang, dict));
+            if (typeof I18n !== 'undefined') apply();
+            else document.addEventListener('DOMContentLoaded', apply, { once: true });
+        },
+        t: (key, vars) => t(key, vars),
+        escapeHtml: value => escapeHtml(value),
+        icon,
+        postJson
+    };
+
+    return { open, committed, isOpen: () => !!s, bridge };
 })();
