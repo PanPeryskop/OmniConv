@@ -870,7 +870,7 @@ const PdfEditor = (() => {
             const align = box.style.textAlign || 'left';
             html = `
                 ${chip('done', icon('check') + label('pe_done'), { active: true })}
-                <select class="pe-select" data-act="family" data-native aria-label="${escapeHtml(t('pe_font'))}">
+                <select class="pe-select" data-act="family" aria-label="${escapeHtml(t('pe_font'))}">
                     ${FAMILIES.map(f => `<option value="${f}" ${box.dataset.family === f ? 'selected' : ''} data-i18n="pe_font_${f}">${escapeHtml(t(`pe_font_${f}`))}</option>`).join('')}
                 </select>
                 ${chip('bold', icon('bold'), { title: 'pe_bold' })}
@@ -1034,7 +1034,7 @@ const PdfEditor = (() => {
     }
 
     function languageSelect(action) {
-        return `<select data-native data-${action}="language" aria-label="${escapeHtml(t('pe_ai_translate'))}">${LANGUAGES.map(code =>
+        return `<select class="pe-select pe-lang" data-${action}="language" aria-label="${escapeHtml(t('pe_ai_translate'))}">${LANGUAGES.map(code =>
             `<option value="${code}" ${code === s.ai.language ? 'selected' : ''}>${escapeHtml(languageName(code, i18n.currentLang))}</option>`).join('')}</select>`;
     }
 
