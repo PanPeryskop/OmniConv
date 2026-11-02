@@ -8,6 +8,9 @@
             <p class="pe-status" id="peStatus"></p>
         </div>
         <div class="pe-top-actions">
+            <button type="button" class="pe-icon-btn" id="peMoreBtn" aria-label="More" data-i18n-aria="pe_more" data-i18n-title="pe_more" title="More">
+                <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+            </button>
             <button type="button" class="pe-icon-btn" id="peTranslateBtn" aria-label="Translate" data-i18n-aria="pe_translate" data-i18n-title="pe_translate" title="Translate">
                 <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg>
             </button>
@@ -33,11 +36,18 @@
         </div>
     </header>
     <aside class="pe-panel hidden" id="pePanel" aria-label="Pages" data-i18n-aria="pe_pages">
+        <div class="pe-panel-head">
+            <span data-i18n="pe_pages">Pages</span>
+            <button type="button" class="pe-icon-btn" id="pePanelClose" aria-label="Close" data-i18n-aria="close" data-i18n-title="close" title="Close">
+                <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
         <div class="pe-thumbs" id="peThumbs"></div>
     </aside>
     <div class="pe-scroll" id="peScroll">
         <div class="pe-pages" id="pePages"></div>
     </div>
+    <div class="pe-backdrop hidden" id="peBackdrop"></div>
     <div class="pe-dock" id="peDock">
         <span class="pe-page-pill" id="pePagePill"></span>
         <div class="pe-notice hidden" id="peNotice" role="status"></div>

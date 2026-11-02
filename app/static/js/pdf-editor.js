@@ -96,6 +96,17 @@ const PdfEditor = (() => {
         return body?.error?.message || t(fallback);
     }
 
+    function fullBleed(on) {
+        const meta = document.querySelector('meta[name="viewport"]');
+        if (!meta) return;
+        meta.dataset.original ??= meta.content;
+        meta.content = on ? `${meta.dataset.original}, viewport-fit=cover` : meta.dataset.original;
+    }
+
+    function compact() {
+        return window.matchMedia('(max-width: 760px)').matches;
+    }
+
     function postJson(url, body) {
         return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
             .then(async res => ({ status: res.status, body: await res.json().catch(() => ({})) }));
@@ -108,7 +119,8 @@ const PdfEditor = (() => {
             undo: $('peUndo'), redo: $('peRedo'), zoomIn: $('peZoomIn'), zoomOut: $('peZoomOut'), zoomValue: $('peZoomValue'),
             save: $('peSave'), scroll: $('peScroll'), pages: $('pePages'), dock: $('peDock'), pill: $('pePagePill'),
             context: $('peContext'), tools: $('peTools'), imageInput: $('peImageInput'), notice: $('peNotice'),
-            pagesBtn: $('pePagesBtn'), panel: $('pePanel'), thumbs: $('peThumbs'), sheet: $('peSheet'), translateBtn: $('peTranslateBtn')
+            pagesBtn: $('pePagesBtn'), panel: $('pePanel'), thumbs: $('peThumbs'), sheet: $('peSheet'), translateBtn: $('peTranslateBtn'),
+            backdrop: $('peBackdrop'), panelClose: $('pePanelClose'), moreBtn: $('peMoreBtn')
         };
         els.tools.innerHTML = TOOLS.map(tool => `
             <button type="button" class="pe-tool" data-tool="${tool}">
@@ -132,6 +144,10 @@ const PdfEditor = (() => {
         els.context.addEventListener('click', onContextClick);
         els.notice.addEventListener('click', onNoticeClick);
         els.pagesBtn.addEventListener('click', () => togglePanel());
+        els.panelClose.addEventListener('click', () => togglePanel(false));
+        els.moreBtn.addEventListener('click', () => s && toggleSheet('menu'));
+        els.backdrop.addEventListener('click', () => closeSheet());
+        els.sheet.addEventListener('pointerdown', onSheetGrab);
         els.translateBtn.addEventListener('click', () => s && toggleSheet('translate'));
         els.sheet.addEventListener('click', onSheetClick);
         els.sheet.addEventListener('change', onSheetChange);
@@ -197,6 +213,7 @@ const PdfEditor = (() => {
         els.pages.innerHTML = '';
         els.root.classList.remove('hidden');
         document.body.classList.add('pe-open');
+        fullBleed(true);
         setTool('edit');
         updateHistory();
         const session = s;
@@ -303,6 +320,7 @@ const PdfEditor = (() => {
         els.pages.innerHTML = '';
         els.root.classList.add('hidden');
         document.body.classList.remove('pe-open');
+        fullBleed(false);
     }
 
     function digitalOp() {
@@ -468,7 +486,8 @@ const PdfEditor = (() => {
         const id = Number(thumb.dataset.id);
         const position = s.order.indexOf(id);
         if (action === 'go') {
-            s.pages[id].el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (compact()) togglePanel(false);
+            s.pages[id].el.scrollIntoView({ behavior: compact() ? 'auto' : 'smooth', block: 'start' });
         } else if (action === 'rotate') {
             pushOp({ type: 'page', action: 'rotate', page: id, angle: 90 });
         } else if (action === 'delete' && s.order.length > 1) {
@@ -973,7 +992,10 @@ const PdfEditor = (() => {
         const wasFind = s.sheet === 'find';
         s.sheet = null;
         els.sheet.classList.add('hidden');
+        els.sheet.style.transform = '';
         els.sheet.innerHTML = '';
+        els.backdrop.classList.add('hidden');
+        els.root.classList.remove('sheet-open');
         if (wasFind) {
             s.find.matches = null;
             s.pages.forEach(renderHits);
@@ -984,7 +1006,9 @@ const PdfEditor = (() => {
     function renderSheet() {
         if (!s?.sheet) return;
         els.sheet.classList.remove('hidden');
-        const views = { find: findSheet, sanitize: sanitizeSheet, sign: signSheet, ai: aiSheet, translate: translateSheet, certificate: certificateSheet };
+        els.backdrop.classList.remove('hidden');
+        els.root.classList.add('sheet-open');
+        const views = { find: findSheet, sanitize: sanitizeSheet, sign: signSheet, ai: aiSheet, translate: translateSheet, certificate: certificateSheet, menu: menuSheet };
         els.sheet.innerHTML = views[s.sheet]();
         if (s.sheet === 'sign' && s.sign.tab === 'draw') s.sign.pad = PdfSign.pad(els.sheet.querySelector('.pe-sigpad'), () => s.sign.color);
     }
@@ -1003,7 +1027,7 @@ const PdfEditor = (() => {
     }
 
     function languageSelect(action) {
-        return `<select data-${action}="language" aria-label="${escapeHtml(t('pe_ai_translate'))}">${LANGUAGES.map(code =>
+        return `<select data-native data-${action}="language" aria-label="${escapeHtml(t('pe_ai_translate'))}">${LANGUAGES.map(code =>
             `<option value="${code}" ${code === s.ai.language ? 'selected' : ''}>${escapeHtml(languageName(code, i18n.currentLang))}</option>`).join('')}</select>`;
     }
 
@@ -1097,6 +1121,14 @@ const PdfEditor = (() => {
             Toast.success(escapeHtml(t('pe_translate_done')));
         }
         if (s.sheet === 'translate') closeSheet();
+    }
+
+    function menuSheet() {
+        const item = (action, iconSvg, key) => `<button type="button" class="pe-menu-item" data-menu="${action}">${iconSvg}<span>${escapeHtml(t(key))}</span></button>`;
+        return `<div class="pe-grabber" data-grab></div><div class="pe-menu" data-grab>
+            ${item('pages', els.pagesBtn.innerHTML, 'pe_pages')}
+            ${item('translate', els.translateBtn.innerHTML, 'pe_translate')}
+        </div>`;
     }
 
     function signSheet() {
@@ -1203,7 +1235,7 @@ const PdfEditor = (() => {
     }
 
     function sheetHead(key) {
-        return `<div class="pe-sheet-head"><span>${escapeHtml(t(key))}</span><button type="button" class="pe-icon-btn" data-sheet="close" aria-label="${escapeHtml(t('close'))}" title="${escapeHtml(t('close'))}">${icon('close')}</button></div>`;
+        return `<div class="pe-grabber" data-grab></div><div class="pe-sheet-head" data-grab><span>${escapeHtml(t(key))}</span><button type="button" class="pe-icon-btn" data-sheet="close" aria-label="${escapeHtml(t('close'))}" title="${escapeHtml(t('close'))}">${icon('close')}</button></div>`;
     }
 
     function findSheet() {
@@ -1294,6 +1326,30 @@ const PdfEditor = (() => {
         closeSheet();
     }
 
+    function onSheetGrab(e) {
+        if (!compact() || !e.target.closest('[data-grab]') || e.target.closest('button, input, select')) return;
+        const sheet = els.sheet;
+        const startY = e.clientY;
+        let dy = 0;
+        sheet.setPointerCapture(e.pointerId);
+        sheet.style.transition = 'none';
+        const move = ev => {
+            dy = Math.max(0, ev.clientY - startY);
+            sheet.style.transform = `translateY(${dy}px)`;
+        };
+        const end = () => {
+            sheet.removeEventListener('pointermove', move);
+            sheet.removeEventListener('pointerup', end);
+            sheet.removeEventListener('pointercancel', end);
+            sheet.style.transition = '';
+            if (dy > 90) closeSheet();
+            else sheet.style.transform = '';
+        };
+        sheet.addEventListener('pointermove', move);
+        sheet.addEventListener('pointerup', end);
+        sheet.addEventListener('pointercancel', end);
+    }
+
     function onSheetClick(e) {
         if (!s) return;
         if (e.target.closest('[data-sheet="close"]')) return closeSheet();
@@ -1308,6 +1364,11 @@ const PdfEditor = (() => {
             if (s.sign.tab === 'type') renderSheet();
             else els.sheet.querySelectorAll('[data-act="sig-color"]').forEach(el => el.classList.toggle('active', el === color));
             return;
+        }
+        const menu = e.target.closest('[data-menu]')?.dataset.menu;
+        if (menu) {
+            closeSheet();
+            return menu === 'pages' ? togglePanel(true) : toggleSheet('translate');
         }
         const certButton = e.target.closest('button[data-cert="sign"]');
         if (certButton) return signAndSave(certButton);
