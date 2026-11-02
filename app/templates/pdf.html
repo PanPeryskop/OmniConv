@@ -1476,9 +1476,9 @@ document.addEventListener('DOMContentLoaded', () => {
         state.tool = 'edit';
         PdfEditor.open(file(), {
             ops,
-            onSave: saved => {
+            onSave: (saved, extra = {}) => {
                 state.editOps = saved;
-                startJob('edit', { options: { ops: saved } });
+                startJob('edit', { options: { ops: saved, ...extra } });
             }
         });
     }

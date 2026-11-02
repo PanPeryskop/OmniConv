@@ -8,6 +8,7 @@ from typing import Optional, Callable, Dict, Any, List
 import fitz
 
 from .pdf_editor import apply_ops
+from .pdf_sign import SignError, sign_pdf
 
 
 class PdfToolError(Exception):
@@ -488,11 +489,29 @@ class PdfTools:
 
     def tool_edit(self, paths, out_base, options):
         out_path = out_base + '.pdf'
+        certificate = options.get('certificate')
         with self.open(paths[0]) as doc:
             self.report_progress(20)
-            apply_ops(doc, options.get('ops') or [])
-            self.report_progress(80)
+            info = apply_ops(doc, options.get('ops') or [])
+            self.report_progress(70)
+            try:
+                doc.subset_fonts()
+            except Exception:
+                pass
+            self.report_progress(85)
             self.save(doc, out_path)
+        if certificate and info['signature']:
+            unsigned = out_base + '_unsigned.pdf'
+            os.replace(out_path, unsigned)
+            try:
+                sign_pdf(unsigned, out_path, certificate, info['signature'])
+            except SignError as e:
+                raise PdfToolError(e.code, str(e)) from e
+            except Exception as e:
+                raise PdfToolError('err_cert_sign', str(e)) from e
+            finally:
+                if os.path.exists(unsigned):
+                    os.remove(unsigned)
         return out_path
 
     def tool_metadata(self, paths, out_base, options):

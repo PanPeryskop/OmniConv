@@ -30,6 +30,7 @@ dependencies = [
     "pystray==0.19.5",
     "fonttools==4.68.0",
     "uharfbuzz==0.51.1",
+    "pyhanko==0.29.1",
 ]
 
 [tool.uv]

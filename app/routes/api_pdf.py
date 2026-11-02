@@ -9,6 +9,7 @@ from .api_common import conversion_jobs, api_response, unique_output_base, touch
 from ..utils.file_handler import generate_file_id
 from ..services.pdf_tools import PdfTools, PdfToolError
 from ..services import pdf_ai, pdf_editor
+from ..services.pdf_sign import CERTIFICATES, MAX_CERT_BYTES, SignError
 from .websocket import emit_progress, emit_complete, emit_error
 from ..services.job_registry import registry
 from ..utils.client import client_id
@@ -155,6 +156,19 @@ def pdf_edit_font(file_id, xref):
     return response
 
 
+@pdf_bp.route('/pdf/edit/certificate', methods=['POST'])
+def pdf_edit_certificate():
+    upload = request.files.get('file')
+    if not upload:
+        return api_response(error={'type': 'InvalidRequestError', 'code': 'err_cert_invalid', 'message': 'Certificate file required'}, success=False), 400
+    data = upload.read(MAX_CERT_BYTES + 1)
+    try:
+        cert_id, info = CERTIFICATES.put(client_id(), data, request.form.get('password', ''))
+    except SignError as e:
+        return api_response(error={'type': 'SignError', 'code': e.code, 'message': str(e)}, success=False), 400
+    return api_response(data={'cert_id': cert_id, **info})
+
+
 def ai_error_response(e):
     return api_response(error={'type': 'AiError', 'code': e.code, 'message': str(e)}, success=False), 400
 
@@ -280,6 +294,12 @@ def pdf_process():
         options['ops'], error = resolve_edit_ops(options.get('ops'))
         if error:
             return error
+        cert_id = options.pop('cert_id', None)
+        options.pop('certificate', None)
+        if cert_id:
+            options['certificate'] = CERTIFICATES.take(cert_id, client_id())
+            if not options['certificate']:
+                return api_response(error={'type': 'SignError', 'code': 'err_cert_missing', 'message': 'Load the certificate again'}, success=False), 400
         if not options['ops']:
             return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_edit_empty', 'message': 'Nothing to save'}, success=False), 400
 

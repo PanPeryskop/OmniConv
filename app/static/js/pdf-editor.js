@@ -3,6 +3,7 @@ const PdfEditor = (() => {
     const ICONS = {
         edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
         text: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>',
+        shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
         sparkles: '<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2 2.2.8-2.2.8L19 21l-.8-2.2-2.2-.8 2.2-.8z"/>',
         sign: '<path d="M3 17c2-1 3-6 5-6s1 5 3 5 2-3 4-3 2 2 3 2"/><path d="M3 21h18"/><path d="M15 4l5 5-6 6h-5v-5z"/>',
         date: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
@@ -304,15 +305,62 @@ const PdfEditor = (() => {
         document.body.classList.remove('pe-open');
     }
 
+    function digitalOp() {
+        return [...s.ops].reverse().find(op => op.type === 'digital_sign') || null;
+    }
+
+    function renderDigital(page) {
+        if (!page?.layer) return;
+        page.layer.querySelectorAll('.pe-dsig').forEach(el => el.remove());
+        const op = digitalOp();
+        if (op?.page === page.i) page.layer.insertAdjacentHTML('beforeend', `<div class="pe-dsig" style="${pct(page, op.rect)}">${escapeHtml(t('pe_digital_sign'))}</div>`);
+    }
+
     function save() {
         if (!s) return;
         finishText(true);
+        if (digitalOp() && s.order.includes(digitalOp().page)) return toggleSheet('certificate');
+        commit();
+    }
+
+    function commit(extra) {
         const ops = s.ops.slice();
         const onSave = s.onSave;
         committedDigest = s.digest;
         if (!ops.length) return close(true);
         close(true);
-        onSave?.(ops);
+        onSave?.(ops, extra);
+    }
+
+    function certificateSheet() {
+        const op = digitalOp();
+        return `${sheetHead('pe_cert_title')}
+            <label>${escapeHtml(t('pe_cert_file'))}</label>
+            <input type="file" data-cert="file" accept=".p12,.pfx,application/x-pkcs12">
+            <input type="password" data-cert="password" autocomplete="off" placeholder="${escapeHtml(t('pe_cert_password'))}" aria-label="${escapeHtml(t('pe_cert_password'))}">
+            <input type="text" data-cert="reason" value="${escapeHtml(op?.reason || '')}" placeholder="${escapeHtml(t('pe_cert_reason'))}" aria-label="${escapeHtml(t('pe_cert_reason'))}">
+            <input type="text" data-cert="location" value="${escapeHtml(op?.location || '')}" placeholder="${escapeHtml(t('pe_cert_location'))}" aria-label="${escapeHtml(t('pe_cert_location'))}">
+            <p class="pe-muted">${escapeHtml(t('pe_cert_note'))}</p>
+            <div class="pe-sheet-row"><button type="button" class="btn btn-primary btn-small" data-cert="sign">${icon('shield')} ${escapeHtml(t('pe_cert_sign'))}</button></div>`;
+    }
+
+    async function signAndSave(button) {
+        const file = els.sheet.querySelector('[data-cert="file"]').files[0];
+        if (!file) return;
+        const form = new FormData();
+        form.append('file', file);
+        form.append('password', els.sheet.querySelector('[data-cert="password"]').value);
+        button.disabled = true;
+        const session = s;
+        const body = await fetch('/api/pdf/edit/certificate', { method: 'POST', body: form }).then(r => r.json()).catch(() => ({}));
+        if (s !== session) return;
+        button.disabled = false;
+        if (!body.success) return Toast.error(escapeHtml(errorText(body, 'err_cert_invalid')));
+        const op = digitalOp();
+        op.reason = els.sheet.querySelector('[data-cert="reason"]').value.trim();
+        op.location = els.sheet.querySelector('[data-cert="location"]').value.trim();
+        closeSheet();
+        commit({ cert_id: body.data.cert_id });
     }
 
     function makePage(i, w, h) {
@@ -706,6 +754,7 @@ const PdfEditor = (() => {
             else input.value = widget.value ?? '';
         });
         renderHits(page);
+        renderDigital(page);
         if (s.reselect?.page === page.i) {
             const target = s.reselect;
             s.reselect = null;
@@ -829,11 +878,12 @@ const PdfEditor = (() => {
         } else if (s.tool === 'sign') {
             const active = key => s.place?.key === key;
             const saved = PdfSign.list().map(item => chip('place', `<img src="${escapeHtml(item.url)}" alt="">`, { value: `sig:${item.id}`, active: active(`sig:${item.id}`) })).join('');
-            html = hint(s.place ? 'pe_hint_place' : 'pe_hint_sign') + saved
+            html = hint(s.place?.key === 'digital' ? 'pe_hint_digital' : s.place ? 'pe_hint_place' : 'pe_hint_sign') + saved
                 + chip('new-signature', icon('plus') + label('pe_new_signature'), { active: s.sheet === 'sign' })
                 + chip('place', icon('date'), { value: 'date', active: active('date'), title: 'pe_date' })
                 + chip('place', icon('check'), { value: 'check', active: active('check'), title: 'pe_check' })
-                + chip('place', icon('cross'), { value: 'cross', active: active('cross'), title: 'pe_cross' });
+                + chip('place', icon('cross'), { value: 'cross', active: active('cross'), title: 'pe_cross' })
+                + chip('place', icon('shield') + label('pe_digital_sign'), { value: 'digital', active: active('digital') });
         } else if (s.tool === 'redact') {
             const cleanup = sanitizeOp();
             html = hint('pe_hint_redact') + chip('open-find', label('pe_find_redact'), { active: s.sheet === 'find' })
@@ -934,7 +984,7 @@ const PdfEditor = (() => {
     function renderSheet() {
         if (!s?.sheet) return;
         els.sheet.classList.remove('hidden');
-        const views = { find: findSheet, sanitize: sanitizeSheet, sign: signSheet, ai: aiSheet, translate: translateSheet };
+        const views = { find: findSheet, sanitize: sanitizeSheet, sign: signSheet, ai: aiSheet, translate: translateSheet, certificate: certificateSheet };
         els.sheet.innerHTML = views[s.sheet]();
         if (s.sheet === 'sign' && s.sign.tab === 'draw') s.sign.pad = PdfSign.pad(els.sheet.querySelector('.pe-sigpad'), () => s.sign.color);
     }
@@ -1259,6 +1309,8 @@ const PdfEditor = (() => {
             else els.sheet.querySelectorAll('[data-act="sig-color"]').forEach(el => el.classList.toggle('active', el === color));
             return;
         }
+        const certButton = e.target.closest('button[data-cert="sign"]');
+        if (certButton) return signAndSave(certButton);
         const aiAction = e.target.closest('button[data-ai]')?.dataset.ai;
         if (aiAction === 'apply') return applyAi();
         if (aiAction) return runAi(aiAction);
@@ -1616,7 +1668,7 @@ const PdfEditor = (() => {
         if (s.tool === 'text') return beginText(page, null, e);
         if (s.tool === 'sign') {
             if (!s.place) return toggleSheet('sign');
-            return placeItem(page, p, e);
+            if (s.place.key !== 'digital') return placeItem(page, p, e);
         }
         if (s.tool === 'image') {
             s.imageTarget = { page, at: p };
@@ -1627,7 +1679,7 @@ const PdfEditor = (() => {
         const ns = 'http://www.w3.org/2000/svg';
         const shape = document.createElementNS(ns, s.tool === 'draw' ? 'polyline' : 'g');
         page.svg.appendChild(shape);
-        s.drag = { type: s.tool, page, start: p, end: p, points: [p], el: shape, word: s.tool === 'markup' ? nearestWord(page, p) : -1 };
+        s.drag = { type: s.tool === 'sign' ? 'digital' : s.tool, page, start: p, end: p, points: [p], el: shape, word: s.tool === 'markup' ? nearestWord(page, p) : -1 };
         drawLive();
     }
 
@@ -1722,6 +1774,10 @@ const PdfEditor = (() => {
             pushOp({ type: 'annot', page: page.i, kind, rect: r, color: s.opts.ink, width: s.opts.width });
         } else if ((d.type === 'whiteout' || d.type === 'redact') && big) {
             pushOp({ type: d.type, page: page.i, rect });
+        } else if (d.type === 'digital' && rect[2] - rect[0] > 20 && rect[3] - rect[1] > 12) {
+            d.el.remove();
+            pushOp({ type: 'digital_sign', page: page.i, rect });
+            setTool('edit');
         } else {
             d.el.remove();
         }
@@ -1758,7 +1814,7 @@ const PdfEditor = (() => {
             else if (o.shape === 'ellipse') d.el.innerHTML = `<ellipse cx="${(x0 + x1) / 2}" cy="${(y0 + y1) / 2}" rx="${(x1 - x0) / 2}" ry="${(y1 - y0) / 2}" style="${style}"/>`;
             else d.el.innerHTML = `<line x1="${d.start[0]}" y1="${d.start[1]}" x2="${d.end[0]}" y2="${d.end[1]}" style="${style};stroke-linecap:round"/>`;
         } else {
-            const fill = d.type === 'redact' ? '#000' : '#fff';
+            const fill = d.type === 'redact' ? '#000' : d.type === 'digital' ? 'rgba(37,99,235,0.08)' : '#fff';
             d.el.innerHTML = `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="${fill}" stroke="#2563eb" stroke-width="0.6" stroke-dasharray="3 2"/>`;
         }
     }

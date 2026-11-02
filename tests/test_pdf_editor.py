@@ -359,3 +359,83 @@ class AiTest(unittest.TestCase):
             with self.assertRaises(pdf_ai.AiError) as caught:
                 pdf_ai.rewrite('Tekst', 'shorter')
         self.assertEqual(caught.exception.code, 'err_ai_llm_offline')
+
+
+def self_signed_p12(password='tajne'):
+    import datetime
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives.serialization import pkcs12
+    from cryptography.x509.oid import NameOID
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, 'Jan Kowalski')])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+            .serial_number(x509.random_serial_number()).not_valid_before(now - datetime.timedelta(days=1))
+            .not_valid_after(now + datetime.timedelta(days=30)).sign(key, hashes.SHA256()))
+    return pkcs12.serialize_key_and_certificates(b'jan', key, cert, None, serialization.BestAvailableEncryption(password.encode()))
+
+
+class DigitalSignatureTest(unittest.TestCase):
+    def test_wrong_password_is_rejected(self):
+        from app.services.pdf_sign import CertificateStore, SignError
+        with self.assertRaises(SignError) as caught:
+            CertificateStore().put('me', self_signed_p12(), 'zle')
+        self.assertEqual(caught.exception.code, 'err_cert_password')
+
+    def test_certificate_is_single_use_and_owned(self):
+        from app.services.pdf_sign import CertificateStore
+        store = CertificateStore()
+        cert_id, info = store.put('me', self_signed_p12(), 'tajne')
+        self.assertEqual(info['name'], 'Jan Kowalski')
+        self.assertIsNone(store.take(cert_id, 'someone else'))
+        self.assertIsNotNone(store.take(cert_id, 'me'))
+        self.assertIsNone(store.take(cert_id, 'me'))
+
+    def test_edit_job_signs_with_pades_after_edits(self):
+        from app.services.pdf_tools import PdfTools
+        folder = tempfile.mkdtemp()
+        path = build(os.path.join(folder, 'pe.pdf'))
+        ops = [
+            {'type': 'whiteout', 'page': TEXT_PAGE, 'rect': [60, 420, 300, 450]},
+            {'type': 'page', 'action': 'move', 'page': FORM_PAGE, 'to': 0},
+            {'type': 'digital_sign', 'page': FORM_PAGE, 'rect': [300, 700, 520, 760], 'reason': 'Akceptacja'},
+        ]
+        out = PdfTools(lambda _p: None).run('edit', [path], os.path.join(folder, 'out'), {'ops': ops, 'certificate': (self_signed_p12(), 'tajne')})
+        with fitz.open(out) as doc:
+            widgets = [w for w in doc[0].widgets() if w.field_type == fitz.PDF_WIDGET_TYPE_SIGNATURE]
+            self.assertEqual(len(widgets), 1)
+            self.assertAlmostEqual(widgets[0].rect.y0, 700, delta=1)
+        from pyhanko.pdf_utils.reader import PdfFileReader
+        from pyhanko.sign.validation import validate_pdf_signature
+        with open(out, 'rb') as handle:
+            reader = PdfFileReader(handle)
+            signature = reader.embedded_signatures[0]
+            status = validate_pdf_signature(signature)
+            self.assertTrue(status.intact and status.valid)
+            self.assertEqual(signature.sig_object['/SubFilter'], '/ETSI.CAdES.detached')
+
+
+class ShapingTest(unittest.TestCase):
+    def library_font(self, family):
+        library = fm.FontLibrary.shared().load()
+        entry = library.styled(fm.family_key(family), False, False)
+        if not entry:
+            self.skipTest(f'{family} is not installed')
+        return library.font(entry)
+
+    def test_kerning_changes_advance(self):
+        from app.services import shaping
+        font = self.library_font('Liberation Sans')
+        glyphs = shaping.SHAPER.shape(font, 'AVATAR')
+        self.assertLess(shaping.advance(glyphs, 20), font.text_length('AVATAR', fontsize=20))
+
+    def test_rtl_paragraph_is_written_right_aligned_and_extractable(self):
+        self.library_font('DejaVu Sans')
+        path = build(os.path.join(tempfile.mkdtemp(), 'pe.pdf'))
+        block = pe.render_preview(path, TEXT_PAGE, [], 100)['blocks'][4]
+        with saved(path, [text_op(TEXT_PAGE, block, 'שלום עולם', align='left')]) as doc:
+            line = next(l for b in doc[TEXT_PAGE].get_text('dict')['blocks'] if b['type'] == 0 for l in b['lines']
+                        if 'שלום' in ''.join(s['text'] for s in l['spans']))
+        self.assertGreater(line['bbox'][2], block['bbox'][0] + 100)

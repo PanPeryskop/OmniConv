@@ -1069,7 +1069,7 @@ PAGE_SIZE_LIMIT = (36, 14400)
 def group_ops(ops, page_count):
     pages = {}
     for op in ops or []:
-        if op.get('type') in ('page', 'sanitize'):
+        if op.get('type') in ('page', 'sanitize', 'digital_sign'):
             continue
         try:
             index = int(op.get('page'))
@@ -1141,6 +1141,24 @@ def sanitize(doc, options):
     )
 
 
+def signature_placement(doc, ops, order):
+    op = next((o for o in reversed(ops or []) if o.get('type') == 'digital_sign'), None)
+    try:
+        pid = int(op['page']) if op else -1
+        rect = rect_of(op['rect']) if op else None
+    except (KeyError, TypeError, ValueError):
+        return None
+    if pid not in order or rect is None or rect.is_empty:
+        return None
+    page = doc[pid]
+    prepare_page(page)
+    box = (rect * ~page.transformation_matrix).normalize()
+    return {
+        'page': order.index(pid), 'box': tuple(round(v, 2) for v in box),
+        'reason': str(op.get('reason') or '')[:200], 'location': str(op.get('location') or '')[:200],
+    }
+
+
 def apply_ops(doc, ops):
     ctx = EditContext(doc)
     count = doc.page_count
@@ -1148,6 +1166,7 @@ def apply_ops(doc, ops):
     add_blanks(doc, blanks)
     for index, page_ops in sorted(group_ops(ops, doc.page_count).items()):
         apply_page_ops(ctx, doc[index], page_ops)
+    placement = signature_placement(doc, ops, order)
     for pid, angle in rotation.items():
         page = doc[pid]
         page.set_rotation((page.rotation + angle) % 360)
@@ -1156,6 +1175,7 @@ def apply_ops(doc, ops):
         sanitize(doc, cleanup['options'])
     if order != list(range(doc.page_count)):
         doc.select(order)
+    return {'signature': placement}
 
 
 def search_document(path, ops, query, kinds, whole_word=False):

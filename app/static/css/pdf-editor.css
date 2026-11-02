@@ -415,6 +415,18 @@ textarea.pe-widget { padding-top: 0.15em; }
 .pe-sig-item button svg { width: 12px; height: 12px; }
 .pe-chip img { height: 22px; max-width: 90px; background: #fff; border-radius: 4px; padding: 1px 4px; display: block; }
 
+.pe-dsig { position: absolute; display: flex; align-items: center; justify-content: center; border: 1.5px dashed #2563eb; background: rgba(37, 99, 235, 0.07); color: #2563eb; font-size: 12px; pointer-events: none; text-align: center; }
+.pe-sheet input[type="password"], .pe-sheet input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface-glass);
+    color: var(--text-primary);
+    font: inherit;
+}
+
 .pe-hit { position: absolute; background: rgba(239, 68, 68, 0.28); outline: 1.5px solid rgba(239, 68, 68, 0.85); pointer-events: none; }
 .pe-hit.off { background: none; outline-style: dashed; outline-color: rgba(120, 120, 120, 0.7); }
 .pe-hit.flash { animation: pe-flash 0.9s ease 2; }
