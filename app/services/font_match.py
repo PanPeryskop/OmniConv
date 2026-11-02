@@ -24,7 +24,9 @@ BOLD_WORDS = ('bold', 'black', 'heavy', 'semibold', 'demibold', 'extrabold', 'ul
 ITALIC_WORDS = ('italic', 'oblique')
 FONT_EXTENSIONS = ('.ttf', '.otf', '.ttc', '.otc')
 PROBE_CHARS = 'ąęłńóśźżĄĘŁŃÓŚŹŻ'
-INDEX_VERSION = 3
+INDEX_VERSION = 4
+COVERAGE_ORDER = ('notosans', 'dejavusans', 'liberationsans', 'arial', 'segoeui', 'arialunicodems', 'tahoma', 'freesans',
+                  'notoserif', 'dejavuserif', 'liberationserif', 'timesnewroman', 'freeserif')
 
 METRIC_GROUPS = [
     ('sans', ['Arial', 'Helvetica', 'Liberation Sans', 'Arimo', 'Nimbus Sans', 'Nimbus Sans L', 'FreeSans', 'TeX Gyre Heros']),
@@ -242,6 +244,7 @@ def scan_face(path, number):
         profile = sfnt_profile(font)
         cmap = font.getBestCmap() or {}
         profile['latin_ext'] = all(ord(c) in cmap for c in PROBE_CHARS)
+        profile['blocks'] = sorted({cp >> 7 for cp in cmap})
     profile['path'] = str(path)
     profile['number'] = number
     profile['key'] = family_key(profile['family'])
@@ -285,6 +288,15 @@ def profile_distance(entry, profile):
     return score
 
 
+BUILTIN = {}
+
+
+def builtin_font():
+    if 'cjk' not in BUILTIN:
+        BUILTIN['cjk'] = fitz.Font('cjk')
+    return BUILTIN['cjk']
+
+
 class FontLibrary:
     _shared = None
     _lock = threading.Lock()
@@ -295,6 +307,7 @@ class FontLibrary:
         self.entries = None
         self.by_key = {}
         self.fonts = {}
+        self.coverage = {}
         self.ready = threading.Event()
         self.build_lock = threading.Lock()
 
@@ -386,6 +399,27 @@ class FontLibrary:
         if not pool:
             return None, None
         return min(pool, key=lambda e: profile_distance(e, profile)), 'similar'
+
+    def cover(self, char, kind='sans'):
+        self.load()
+        cp = ord(char)
+        key = (cp, kind)
+        if key not in self.coverage:
+            block = cp >> 7
+            rank = {name: i for i, name in enumerate(COVERAGE_ORDER)}
+            pool = [e for e in self.entries if block in (e.get('blocks') or ()) and not e['bold'] and not e['italic']]
+            pool.sort(key=lambda e: (e['kind'] != kind, rank.get(e['key'], len(rank)), e['family']))
+            found = None
+            for entry in pool:
+                font = self.font(entry)
+                if font and font.has_glyph(cp):
+                    found = font
+                    break
+            if found is None:
+                builtin = builtin_font()
+                found = builtin if builtin.has_glyph(cp) else None
+            self.coverage[key] = found
+        return self.coverage[key]
 
     def font(self, entry):
         key = (entry['path'], entry['number'])

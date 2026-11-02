@@ -11,7 +11,7 @@ import fitz
 import pymupdf.mupdf as mupdf
 from pymupdf import _make_PdfFilterOptions
 
-from . import pdf_scan
+from . import pdf_scan, shaping
 from .font_match import FontLibrary, family_key, pdf_font_profile
 from .pdf_search import MAX_MATCHES, search_page
 from .web_fonts import web_font_bytes
@@ -510,15 +510,29 @@ def space_width(font, size, mono):
     return size * 0.25
 
 
-def split_pieces(text, sources, fallback):
+def split_pieces(text, sources, fallback, cover):
     pieces = []
     for char in text:
         font, source = next(((f, xref) for f, xref, has in sources if has(char)), (fallback, 0))
+        if font is fallback and not char.isspace() and not fallback.has_glyph(ord(char)):
+            font = cover(char) or fallback
         if pieces and pieces[-1][1] is font:
             pieces[-1][0] += char
         else:
             pieces.append([char, font, source])
     return pieces
+
+
+def shaped(piece):
+    text, font, source = piece
+    return [text, font, source, shaping.SHAPER.shape(font, text)]
+
+
+def piece_width(piece, size, spacing):
+    text, font, _source, glyphs = piece
+    if glyphs is not None:
+        return shaping.advance(glyphs, size, spacing)
+    return font.text_length(text, fontsize=size) + spacing * len(text)
 
 
 def layout_runs(op, picker):
@@ -544,11 +558,11 @@ def layout_runs(op, picker):
             if part.isspace():
                 font, source = (sources[0][0], sources[0][1]) if sources else (fallback, 0)
                 width = (space_width(font, size, kind == 'mono') + spacing) * len(part)
-                pieces = [[part, font, source]] if font.has_glyph(32) else []
+                pieces = [[part, font, source, None]] if font.has_glyph(32) else []
                 tokens.append(dict(base, pieces=pieces, space=True, width=width))
                 continue
-            pieces = split_pieces(part, sources, fallback)
-            width = sum(font.text_length(text, fontsize=size) for text, font, _source in pieces) + spacing * len(part)
+            pieces = [shaped(piece) for piece in split_pieces(part, sources, fallback, lambda c: picker.ctx.library.cover(c, kind))]
+            width = sum(piece_width(piece, size, spacing) for piece in pieces)
             tokens.append(dict(base, pieces=pieces, space=False, width=width))
     return tokens
 
@@ -634,10 +648,14 @@ def fitted(page, op, tokens):
     return best
 
 
-def draw_layout(page, layout, align, ctx):
+def draw_layout(page, layout, align, ctx, rtl=False):
     rect, width = layout['rect'], layout['width']
     writers = {}
+    if rtl and align == 'left':
+        align = 'right'
     for line, last, baseline in layout['lines']:
+        if rtl:
+            line = line[::-1]
         used = sum(t['width'] for t in line)
         x = rect.x0
         gap_extra = 0.0
@@ -652,13 +670,17 @@ def draw_layout(page, layout, align, ctx):
             color = token['run'].get('c') or '#000000'
             y = baseline - token['rise']
             if token['space']:
-                for text, font, source in token['pieces']:
+                for text, font, source, _glyphs in token['pieces']:
                     writer = writers.setdefault((color, source), fitz.TextWriter(page.rect))
                     writer.append((x, y), text, font=font, fontsize=token['size'])
                 x += token['width'] + gap_extra
                 continue
-            for text, font, source in token['pieces']:
+            pieces = token['pieces'][::-1] if rtl and any(shaping.is_rtl(p[0]) for p in token['pieces']) else token['pieces']
+            for text, font, source, glyphs in pieces:
                 writer = writers.setdefault((color, source), fitz.TextWriter(page.rect))
+                if glyphs is not None:
+                    x += shaping.append(writer, (x, y), font, token['size'], glyphs, token['cs'])
+                    continue
                 for chunk in (text if token['cs'] else [text]):
                     writer.append((x, y), chunk, font=font, fontsize=token['size'])
                     x += font.text_length(chunk, fontsize=token['size']) + token['cs'] * len(chunk)
@@ -675,7 +697,8 @@ def write_text(page, op, picker, ctx):
     if not any(t and not t['space'] for t in tokens):
         return 0.0
     layout = fitted(page, op, tokens)
-    draw_layout(page, layout, op.get('align') or 'left', ctx)
+    text = ''.join(str(run.get('t') or '') for run in op.get('runs') or [])
+    draw_layout(page, layout, op.get('align') or 'left', ctx, shaping.mostly_rtl(text))
     overflow = layout['bottom'] - layout['rect'].y1
     return overflow if overflow > layout['size'] * 0.35 else 0.0
 
