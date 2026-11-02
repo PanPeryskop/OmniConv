@@ -8,6 +8,9 @@ import fitz
 import pymupdf.mupdf as mupdf
 from pymupdf import _make_PdfFilterOptions
 
+from .font_match import FontLibrary, pdf_font_profile
+from .web_fonts import web_font_bytes
+
 GENERIC_FONTS = {
     'sans': ('helv', 'hebo', 'heit', 'hebi'),
     'serif': ('tiro', 'tibo', 'tiit', 'tibi'),
@@ -63,20 +66,69 @@ def kind_of(name, flags=0):
     lower = bare_name(name).lower()
     if flags & 8 or any(w in lower for w in ('mono', 'courier', 'consol', 'code')):
         return 'mono'
+    if 'sans' in lower:
+        return 'sans'
     if flags & 4 or any(w in lower for w in ('times', 'serif', 'georgia', 'garamond', 'cambria', 'roman', 'book')) and 'sans' not in lower:
         return 'serif'
     return 'sans'
 
 
 class EditContext:
-    def __init__(self, doc):
+    def __init__(self, doc, library=None):
         self.doc = doc
+        self.library = library or FontLibrary.shared()
         self.original_xrefs = doc.xref_length()
         self.origins = {}
         self.chars = {}
+        self.profiles = {}
+        self.matches = {}
+        self.overflow = {}
+        self.current = None
+        self.programs = {}
+
+    def program(self, xref):
+        if xref not in self.programs:
+            self.programs[xref] = (None, None)
+            try:
+                _name, ext, _type, buffer = self.doc.extract_font(xref)
+                if buffer and ext != 'n/a':
+                    self.programs[xref] = (fitz.Font(fontbuffer=buffer), hashlib.blake2b(buffer, digest_size=16).digest())
+            except Exception:
+                pass
+        return self.programs[xref]
+
+    def profile(self, xref):
+        if xref not in self.profiles:
+            try:
+                self.profiles[xref] = pdf_font_profile(self.doc, xref)
+            except Exception:
+                self.profiles[xref] = None
+        return self.profiles[xref]
+
+    def match(self, xref, bold, italic, need=''):
+        profile = self.profile(xref)
+        if not profile:
+            return None, None
+        polish = any(ord(c) > 0xFF for c in need)
+        key = (xref, bold, italic, polish)
+        if key not in self.matches:
+            styled = dict(profile, bold=bold, italic=italic, weight=700 if bold else 400)
+            self.matches[key] = self.library.match(styled, need)
+        return self.matches[key]
+
+    def web_names(self, xref):
+        profile = self.profile(xref)
+        if not profile:
+            return []
+        names = [profile.get('family'), profile.get('name_family')]
+        if self.library.ready.is_set():
+            entry, _quality = self.match(xref, profile['bold'], profile['italic'])
+            if entry:
+                names.append(entry['family'])
+        return [n for n in dict.fromkeys(names) if n]
 
     def picker(self, page):
-        return FontPicker(self.doc, page, self.chars.get(page.number), self)
+        return FontPicker(self, page)
 
     def stable_font(self, xref):
         if not xref:
@@ -96,7 +148,7 @@ def page_fonts(page):
 
 
 def font_key(name):
-    return re.sub(r'[^a-z0-9]', '', bare_name(name).lower())
+    return re.sub(r'(?<=.)regular$', '', re.sub(r'[^a-z0-9]', '', bare_name(name).lower()))
 
 
 def font_lookup(fonts):
@@ -137,13 +189,32 @@ def guess_align(lines, bbox, page_width):
     return 'left'
 
 
+def collapse_tracking(span):
+    chars = span['chars']
+    text = ''.join(c['c'] for c in chars)
+    letters = [c for c in text if not c.isspace()]
+    if len(letters) < 4 or not re.fullmatch(r'(?:\S {1,3})+\S? *', text):
+        span['text'] = text
+        return
+    kept = []
+    for i, char in enumerate(chars):
+        if char['c'] != ' ':
+            kept.append(char)
+        elif i + 1 < len(chars) and chars[i + 1]['c'] == ' ' and (not kept or kept[-1]['c'] != ' '):
+            kept.append(char)
+    span['chars'] = kept
+    span['text'] = ''.join(c['c'] for c in kept)
+
+
 def raw_lines(page):
     blocks = []
-    for block in page.get_text('dict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']:
+    for block in page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']:
         if block['type'] != 0:
             continue
         lines = []
         for line in block['lines']:
+            for span in line['spans']:
+                collapse_tracking(span)
             spans = [s for s in line['spans'] if s['text']]
             if not spans or not ''.join(s['text'] for s in spans).strip() or tuple(line['dir']) != (1.0, 0.0):
                 continue
@@ -203,28 +274,55 @@ def absorb_shadows(blocks):
     return kept
 
 
-def text_blocks(page, fonts, ctx=None):
-    lookup = font_lookup(fonts)
-    if ctx:
-        lookup = {name: ctx.stable_font(xref) for name, xref in lookup.items()}
+def line_baseline(line):
+    return max(line['spans'], key=lambda s: s['size'])['origin'][1]
+
+
+def letter_spacing(span, font):
+    chars = span['chars']
+    if not font or len(chars) < 3:
+        return 0.0
+    gaps = []
+    for char, following in zip(chars, chars[1:]):
+        if char['c'].isspace() or following['c'].isspace() or not font.has_glyph(ord(char['c'])):
+            continue
+        gaps.append(following['origin'][0] - char['origin'][0] - font.glyph_advance(ord(char['c'])) * span['size'])
+    if len(gaps) < 2:
+        return 0.0
+    spacing = statistics.median(gaps)
+    return round(spacing, 3) if abs(spacing) > span['size'] * 0.02 else 0.0
+
+
+def text_blocks(page, fonts, ctx):
+    lookup = {name: ctx.stable_font(xref) for name, xref in font_lookup(fonts).items()}
+    kinds, names = {}, {}
+    for xref in set(lookup.values()) - {0}:
+        profile = ctx.profile(xref)
+        kinds[xref] = profile['kind'] if profile else None
+        names[xref] = ctx.web_names(xref)
     result = []
     for lines in group_paragraphs(raw_lines(page)):
         bbox = fitz.Rect(lines[0]['bbox'])
         for line in lines[1:]:
             bbox |= fitz.Rect(line['bbox'])
-        baselines = [l['spans'][0]['origin'][1] for l in lines]
+        baselines = [line_baseline(l) for l in lines]
         size = statistics.median(s['size'] for l in lines for s in l['spans'])
         deltas = [b - a for a, b in zip(baselines, baselines[1:]) if b - a > size * 0.5]
         scan = all(s.get('alpha', 255) == 0 for l in lines for s in l['spans'])
+        align = guess_align(lines, bbox, page.rect.width)
         out_lines = []
         for i, line in enumerate(lines):
             spans = []
             for s in line['spans']:
                 bold, italic = style_of(s['font'], s['flags'])
+                xref = 0 if scan else lookup.get(font_key(s['font']), 0)
+                rise = baselines[i] - s['origin'][1]
                 spans.append({
                     't': s['text'], 's': round(size if scan else s['size'], 2), 'c': '#000000' if scan else hex_color(s['color']),
-                    'b': bold and not scan, 'i': italic and not scan,
-                    'f': 0 if scan else lookup.get(font_key(s['font']), 0), 'k': 'serif' if scan else kind_of(s['font'], s['flags']),
+                    'b': bold and not scan, 'i': italic and not scan, 'f': xref,
+                    'k': 'serif' if scan else kinds.get(xref) or kind_of(s['font'], s['flags']), 'n': names.get(xref, []),
+                    'cs': 0.0 if scan or align == 'justify' else letter_spacing(s, ctx.program(xref)[0] if xref else None),
+                    'rise': round(rise, 2) if abs(rise) > 0.5 and not scan else 0.0,
                 })
             out_lines.append({
                 'bbox': [round(v, 2) for v in line['bbox']],
@@ -237,13 +335,14 @@ def text_blocks(page, fonts, ctx=None):
             'scan': scan,
             'baseline': round(baselines[0], 2),
             'lh': round(min(deltas) / size, 3) if deltas else 1.2,
-            'align': guess_align(lines, bbox, page.rect.width),
+            'align': align,
             'lines': out_lines,
         })
     return absorb_shadows(result)
 
 
 def page_layout(page, ctx=None):
+    ctx = ctx or EditContext(page.parent)
     fonts = page_fonts(page)
     images = []
     for image in page_images(page):
@@ -305,27 +404,21 @@ def used_chars(page):
 
 
 class FontPicker:
-    def __init__(self, doc, page, chars=None, ctx=None):
-        self.doc = doc
+    def __init__(self, ctx, page):
+        self.ctx = ctx
         self.cache = {}
         self.digests = {}
-        limit = ctx.original_xrefs if ctx else doc.xref_length()
-        self.fonts = [f for f in page_fonts(page) if f[1] < limit]
+        self.fonts = [f for f in page_fonts(page) if f[1] < ctx.original_xrefs]
         self.names = {xref: name for name, xref, _subset in self.fonts}
         self.subset = {xref for _name, xref, subset in self.fonts if subset}
+        chars = ctx.chars.get(page.number)
         self.chars = used_chars(page) if chars is None else chars
 
     def load(self, xref):
-        if xref not in self.cache:
-            self.cache[xref] = None
-            try:
-                _name, ext, _type, buffer = self.doc.extract_font(xref)
-                if buffer and ext != 'n/a':
-                    self.cache[xref] = fitz.Font(fontbuffer=buffer)
-                    self.digests[xref] = hashlib.blake2b(buffer, digest_size=16).digest()
-            except Exception:
-                pass
-        return self.cache[xref]
+        font, digest = self.ctx.program(xref)
+        if font:
+            self.digests[xref] = digest
+        return font
 
     def candidates(self, xref, bold, italic):
         family = family_of(self.names.get(xref, ''))
@@ -350,11 +443,32 @@ class FontPicker:
                 found.append((sum(1 for c in chars if self.has(font, xref, c)), len(found), font, xref))
         return [(font, xref) for _hits, _order, font, xref in sorted(found, key=lambda f: (-f[0], f[1]))]
 
+    def substitute(self, run):
+        entry, quality = self.ctx.match(int(run['f']), bool(run.get('b')), bool(run.get('i')), str(run.get('t') or ''))
+        font = self.ctx.library.font(entry) if entry else None
+        return (font, quality) if font else (None, None)
+
+    def sources(self, run):
+        if not run.get('f'):
+            return []
+        source = int(run['f'])
+        font, quality = self.substitute(run)
+        if quality == 'exact':
+            return [(font, source, covers(font))]
+        found = [(f, xref, lambda c, f=f, xref=xref: self.has(f, xref, c)) for f, xref in self.originals(run)]
+        if font:
+            found.append((font, source, covers(font)))
+        return found
+
     def generic(self, kind, bold, italic):
         code = GENERIC_FONTS[kind if kind in GENERIC_FONTS else 'sans'][int(bold) + 2 * int(italic)]
         if code not in self.cache:
             self.cache[code] = fitz.Font(code)
         return self.cache[code]
+
+
+def covers(font):
+    return lambda char: bool(font.has_glyph(ord(char)))
 
 
 def space_width(font, size, mono):
@@ -365,10 +479,10 @@ def space_width(font, size, mono):
     return size * 0.25
 
 
-def split_pieces(text, originals, fallback, picker):
+def split_pieces(text, sources, fallback):
     pieces = []
     for char in text:
-        font, source = next(((f, xref) for f, xref in originals if picker.has(f, xref, char)), (fallback, 0))
+        font, source = next(((f, xref) for f, xref, has in sources if has(char)), (fallback, 0))
         if pieces and pieces[-1][1] is font:
             pieces[-1][0] += char
         else:
@@ -385,21 +499,26 @@ def layout_runs(op, picker):
         bold, italic = bool(run.get('b')), bool(run.get('i'))
         kind = family if family in GENERIC_FONTS else run.get('k')
         fallback = picker.generic(kind, bold, italic)
-        originals = picker.originals(run) if family == 'original' else []
+        sources = picker.sources(run) if family == 'original' else []
         size = max(1.0, min(400.0, float(run.get('s') or 12)))
+        spacing = max(-size * 0.5, min(size * 2, float(run.get('cs') or 0)))
+        rise = max(-size, min(size, float(run.get('rise') or 0)))
         for part in re.split(r'(\n| +)', str(run['t'])):
             if not part:
                 continue
             if part == '\n':
                 tokens.append(None)
                 continue
+            base = {'run': run, 'size': size, 'cs': spacing, 'rise': rise}
             if part.isspace():
-                width = space_width(originals[0][0] if originals else fallback, size, kind == 'mono') * len(part)
-                tokens.append({'pieces': [], 'run': run, 'size': size, 'space': True, 'width': width})
+                font, source = (sources[0][0], sources[0][1]) if sources else (fallback, 0)
+                width = (space_width(font, size, kind == 'mono') + spacing) * len(part)
+                pieces = [[part, font, source]] if font.has_glyph(32) else []
+                tokens.append(dict(base, pieces=pieces, space=True, width=width))
                 continue
-            pieces = split_pieces(part, originals, fallback, picker)
-            width = sum(font.text_length(text, fontsize=size) for text, font, _source in pieces)
-            tokens.append({'pieces': pieces, 'run': run, 'size': size, 'space': False, 'width': width})
+            pieces = split_pieces(part, sources, fallback)
+            width = sum(font.text_length(text, fontsize=size) for text, font, _source in pieces) + spacing * len(part)
+            tokens.append(dict(base, pieces=pieces, space=False, width=width))
     return tokens
 
 
@@ -441,24 +560,53 @@ def text_rect(page, op):
     return rect
 
 
-def write_text(page, op, picker, ctx=None):
+def scaled(tokens, scale):
+    if scale == 1:
+        return tokens
+    return [t and dict(t, size=t['size'] * scale, width=t['width'] * scale, cs=t['cs'] * scale, rise=t['rise'] * scale) for t in tokens]
+
+
+def typeset(page, op, tokens, scale=1.0):
     rect = text_rect(page, op)
-    tokens = layout_runs(op, picker)
-    if not any(t and not t['space'] for t in tokens):
-        return
-    align = op.get('align') or 'left'
+    tokens = scaled(tokens, scale)
     lh = max(0.8, min(3.0, float(op.get('lh') or 1.2)))
     width = max(rect.width, 4)
-    lines = wrap_tokens(tokens, width)
     first = next(t for t in tokens if t and not t['space'])
-    baseline = float(op['baseline']) if op.get('baseline') is not None else rect.y0 + first['pieces'][0][1].ascender * first['size']
-    writers = {}
-    for index, (line, last) in enumerate(lines):
+    if op.get('baseline') is not None:
+        baseline = rect.y0 + (float(op['baseline']) - rect.y0) * scale
+    else:
+        baseline = rect.y0 + first['pieces'][0][1].ascender * first['size']
+    placed = []
+    size = first['size']
+    for index, (line, last) in enumerate(wrap_tokens(tokens, width)):
         while line and line[-1]['space']:
             line = line[:-1]
         size = max((t['size'] for t in line), default=first['size'])
         if index:
             baseline += lh * size
+        placed.append((line, last, baseline))
+    return {'rect': rect, 'width': width, 'lines': placed, 'bottom': baseline + size * 0.25, 'size': first['size']}
+
+
+def fitted(page, op, tokens):
+    layout = typeset(page, op, tokens)
+    if not op.get('fit') or layout['bottom'] <= layout['rect'].y1:
+        return layout
+    low, high, best = 0.5, 1.0, typeset(page, op, tokens, 0.5)
+    for _ in range(8):
+        middle = (low + high) / 2
+        candidate = typeset(page, op, tokens, middle)
+        if candidate['bottom'] <= candidate['rect'].y1:
+            low, best = middle, candidate
+        else:
+            high = middle
+    return best
+
+
+def draw_layout(page, layout, align, ctx):
+    rect, width = layout['rect'], layout['width']
+    writers = {}
+    for line, last, baseline in layout['lines']:
         used = sum(t['width'] for t in line)
         x = rect.x0
         gap_extra = 0.0
@@ -470,20 +618,35 @@ def write_text(page, op, picker, ctx=None):
             gaps = sum(1 for t in line if t['space'])
             gap_extra = (width - used) / gaps if gaps else 0.0
         for token in line:
+            color = token['run'].get('c') or '#000000'
+            y = baseline - token['rise']
             if token['space']:
+                for text, font, source in token['pieces']:
+                    writer = writers.setdefault((color, source), fitz.TextWriter(page.rect))
+                    writer.append((x, y), text, font=font, fontsize=token['size'])
                 x += token['width'] + gap_extra
                 continue
-            color = token['run'].get('c') or '#000000'
             for text, font, source in token['pieces']:
                 writer = writers.setdefault((color, source), fitz.TextWriter(page.rect))
-                writer.append((x, baseline), text, font=font, fontsize=token['size'])
-                x += font.text_length(text, fontsize=token['size'])
+                for chunk in (text if token['cs'] else [text]):
+                    writer.append((x, y), chunk, font=font, fontsize=token['size'])
+                    x += font.text_length(chunk, fontsize=token['size']) + token['cs'] * len(chunk)
     for (color, source), writer in writers.items():
         before = {f[0] for f in page.get_fonts()}
         writer.write_text(page, color=rgb(color))
-        if ctx and source:
+        if source:
             for xref in {f[0] for f in page.get_fonts()} - before:
                 ctx.origins[xref] = ctx.stable_font(source)
+
+
+def write_text(page, op, picker, ctx):
+    tokens = layout_runs(op, picker)
+    if not any(t and not t['space'] for t in tokens):
+        return 0.0
+    layout = fitted(page, op, tokens)
+    draw_layout(page, layout, op.get('align') or 'left', ctx)
+    overflow = layout['bottom'] - layout['rect'].y1
+    return overflow if overflow > layout['size'] * 0.35 else 0.0
 
 
 def shrink(rect):
@@ -540,7 +703,9 @@ def op_text(ctx, page, op):
         if cover:
             page.draw_rect(area, color=None, fill=cover, overlay=True)
     if op.get('runs') and op.get('rect'):
-        write_text(page, op, ctx.picker(page), ctx)
+        overflow = write_text(page, op, ctx.picker(page), ctx)
+        if overflow:
+            ctx.overflow[ctx.current] = round(overflow, 2)
     return page
 
 
@@ -737,10 +902,11 @@ RELOAD_AFTER = {'text', 'image', 'redact'}
 def apply_page_ops(ctx, page, ops):
     prepare_page(page)
     ctx.chars[page.number] = used_chars(page)
-    for op in ops:
+    for index, op in enumerate(ops):
         handler = OPS.get(op.get('type'))
         if not handler:
             continue
+        ctx.current = (page.number, index)
         page = handler(ctx, page, op)
         if op.get('type') in RELOAD_AFTER:
             page = ctx.doc.reload_page(page)
@@ -772,6 +938,7 @@ def render_preview(path, index, ops, width):
         ctx = EditContext(doc)
         page = apply_page_ops(ctx, doc[index], group_ops(ops, doc.page_count).get(index, []))
         layout = page_layout(page, ctx)
+        layout['overflow'] = {str(i): by for (number, i), by in ctx.overflow.items() if number == index}
         zoom = max(0.05, min(5.0, width / max(1.0, page.rect.width)))
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
         layout['image'] = 'data:image/jpeg;base64,' + base64.b64encode(pix.tobytes(output='jpeg', jpg_quality=85)).decode()
@@ -783,10 +950,13 @@ def web_font(path, xref):
         if xref <= 0 or xref >= doc.xref_length():
             return None
         try:
-            _name, ext, _type, buffer = doc.extract_font(xref)
+            name, ext, _type, buffer = doc.extract_font(xref)
         except Exception:
             return None
-        return (ext, buffer) if ext in ('ttf', 'otf') and buffer else None
+        if not buffer:
+            return None
+        data = web_font_bytes(buffer, ext, bare_name(name) or 'Embedded')
+        return ('otf' if ext in ('cff', 'cid', 'otf') else 'ttf', data) if data else None
 
 
 def page_sizes(path):

@@ -3,9 +3,14 @@ import shutil
 import tempfile
 import unittest
 
-import fitz
+import io
 
+import fitz
+from fontTools.ttLib import TTFont
+
+from app.services import font_match as fm
 from app.services import pdf_editor as pe
+from app.services.web_fonts import web_font_bytes
 from tests.fixtures.build_fixtures import build
 
 TEXT_PAGE, IMAGE_PAGE, ANNOT_PAGE, FORM_PAGE, ROTATED_PAGE = range(5)
@@ -140,6 +145,54 @@ class PdfEditorTest(unittest.TestCase):
         after = [w['value'] for w in self.layout(FORM_PAGE, ops)['widgets'] if w['kind'] == 'radio']
         self.assertEqual(after, [False, False, True])
 
+    def block_with(self, page, needle, ops=()):
+        return next(b for b in self.layout(page, ops)['blocks'] if line_fonts([b], needle))
+
+    def test_letter_spacing_survives_edit(self):
+        block = self.block_with(TEXT_PAGE, 'ROZSTRZELONY')
+        self.assertEqual(block['lines'][0]['spans'][0]['t'].strip(), 'ROZSTRZELONY NAGŁÓWEK')
+        self.assertAlmostEqual(block['lines'][0]['spans'][0]['cs'], 3, delta=0.1)
+        edited = self.block_with(TEXT_PAGE, 'NOWY', [text_op(TEXT_PAGE, block, 'NOWY NAGŁÓWEK')])
+        self.assertAlmostEqual(edited['lines'][0]['spans'][0]['cs'], 3, delta=0.1)
+
+    def test_superscript_and_subscript_keep_their_offset(self):
+        block = self.block_with(TEXT_PAGE, 'Energia')
+        spans = block['lines'][0]['spans']
+        self.assertEqual([round(s['rise']) for s in spans], [0, 5, 0, -3, 0])
+        op = text_op(TEXT_PAGE, block, '')
+        op['runs'] = [dict(spans[0], t='Moc E = mc'), *spans[1:]]
+        edited = self.block_with(TEXT_PAGE, 'Moc', [op])
+        self.assertEqual([round(s['rise']) for s in edited['lines'][0]['spans'] if s['t'] == '2'], [5, -3])
+        self.assertTrue(all(s['rise'] == 0 for s in edited['lines'][0]['spans'] if s['t'] != '2'))
+
+    def test_overflow_is_reported_and_fit_shrinks_text(self):
+        block = self.layout(TEXT_PAGE)['blocks'][1]
+        op = text_op(TEXT_PAGE, block, ' '.join(['Bardzo długi tekst, który nie zmieści się w ramce.'] * 8))
+        self.assertIn('0', self.layout(TEXT_PAGE, [op])['overflow'])
+        fitted = self.layout(TEXT_PAGE, [dict(op, fit=True)])
+        self.assertEqual(fitted['overflow'], {})
+        written = self.block_with(TEXT_PAGE, 'Bardzo', [dict(op, fit=True)])
+        self.assertLessEqual(written['bbox'][3], block['bbox'][3] + 0.5)
+
+    def test_missing_glyph_uses_metric_compatible_font(self):
+        library = fm.FontLibrary.shared().load()
+        if not library.by_key.get('liberationsans'):
+            self.skipTest('Liberation Sans is not installed')
+        block = self.layout(TEXT_PAGE)['blocks'][1]
+        with saved(self.path, [text_op(TEXT_PAGE, block, 'Źdźbło QWERTY')]) as doc:
+            fonts = {s['font'] for b in doc[TEXT_PAGE].get_text('dict')['blocks'] if b['type'] == 0
+                     for line in b['lines'] for s in line['spans'] if s['text'].strip() in ('Ź', 'Q', 'QWERTY', 'Ź', 'W')}
+        self.assertTrue(any('Liberation' in f for f in fonts), fonts)
+
+    def test_embedded_cff_font_becomes_web_font_with_real_glyphs_only(self):
+        with fitz.open(self.path) as doc:
+            xref = next(x for x, ext, _type, name, *_ in doc[TEXT_PAGE].get_fonts() if ext == 'cid' and 'Sans Regular' in name)
+            name, ext, _type, buffer = doc.extract_font(xref)
+        data = web_font_bytes(buffer, ext, 'Test')
+        cmap = TTFont(io.BytesIO(data)).getBestCmap()
+        self.assertIn(ord('ż'), cmap)
+        self.assertNotIn(ord('Q'), cmap)
+
     def test_rotated_page_is_editable(self):
         layout = self.layout(ROTATED_PAGE)
         self.assertEqual((layout['width'], layout['height']), (842, 595))
@@ -148,3 +201,27 @@ class PdfEditorTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class FontMatchTest(unittest.TestCase):
+    def test_parses_pdf_font_names(self):
+        self.assertEqual(fm.parse_name('Arial-BoldMT'), ('Arial', True, False))
+        self.assertEqual(fm.parse_name('ABCDEF+Calibri,BoldItalic'), ('Calibri', True, True))
+        self.assertEqual(fm.parse_name('Times New Roman'), ('Times New Roman', False, False))
+        self.assertEqual(fm.family_key('TimesNewRomanPSMT'), 'timesnewroman')
+
+    def test_prefers_exact_then_metric_alias(self):
+        faces = [
+            {'family': 'Carlito', 'key': 'carlito', 'bold': False, 'italic': False, 'weight': 400, 'kind': 'sans', 'latin_ext': True},
+            {'family': 'Liberation Serif', 'key': 'liberationserif', 'bold': True, 'italic': False, 'weight': 700, 'kind': 'serif', 'latin_ext': True},
+        ]
+        library = fm.FontLibrary(dirs=[])
+        library.load()
+        library.entries = faces
+        library.by_key = {f['key']: [f] for f in faces}
+        calibri = {'family': 'Calibri', 'name_family': 'Calibri', 'bold': False, 'italic': False, 'weight': 400, 'kind': 'sans'}
+        self.assertEqual(library.match(calibri)[1], 'metric')
+        times = {'family': 'Times New Roman', 'name_family': 'TimesNewRomanPS', 'bold': True, 'italic': False, 'weight': 700, 'kind': 'serif'}
+        self.assertEqual(library.match(times)[0]['family'], 'Liberation Serif')
+        carlito = dict(calibri, family='Carlito', name_family='Carlito')
+        self.assertEqual(library.match(carlito)[1], 'exact')

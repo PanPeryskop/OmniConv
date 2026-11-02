@@ -31,6 +31,14 @@
     </div>
     <div class="pe-dock" id="peDock">
         <span class="pe-page-pill" id="pePagePill"></span>
+        <div class="pe-notice hidden" id="peNotice" role="status">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <span data-i18n="pe_overflow">The text doesn't fit its box.</span>
+            <button type="button" class="pe-chip active" data-notice="fit" data-i18n="pe_fit">Shrink to fit</button>
+            <button type="button" class="pe-icon-btn" data-notice="dismiss" aria-label="Close" data-i18n-aria="close" data-i18n-title="close" title="Close">
+                <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
         <div class="pe-context hidden" id="peContext"></div>
         <nav class="pe-tools" id="peTools" aria-label="Tools" data-i18n-aria="pe_tools"></nav>
     </div>

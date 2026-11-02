@@ -20,7 +20,8 @@ const PdfEditor = (() => {
         larger: '<path d="M4 18l4-10 4 10M5.5 14h5M15 13h5M17.5 10.5v5"/>',
         trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
         replace: '<path d="M4 7h11l-3-3M20 17H9l3 3"/>',
-        check: '<path d="M5 12l5 5 9-10"/>'
+        check: '<path d="M5 12l5 5 9-10"/>',
+        eyedropper: '<path d="M14.5 4.5l5 5M12 7l5 5-8.5 8.5H4v-4.5z"/><path d="M15 3.5a2.1 2.1 0 013 0l2.5 2.5a2.1 2.1 0 010 3L18 11.5"/>'
     };
     const INK = ['#111111', '#e11d48', '#f97316', '#16a34a', '#2563eb', '#7c3aed'];
     const MARKS = ['#ffd400', '#86efac', '#7dd3fc', '#f9a8d4', '#fca5a5'];
@@ -86,7 +87,7 @@ const PdfEditor = (() => {
             root: $('pdfEditor'), title: $('peTitle'), status: $('peStatus'), close: $('peClose'),
             undo: $('peUndo'), redo: $('peRedo'), zoomIn: $('peZoomIn'), zoomOut: $('peZoomOut'), zoomValue: $('peZoomValue'),
             save: $('peSave'), scroll: $('peScroll'), pages: $('pePages'), dock: $('peDock'), pill: $('pePagePill'),
-            context: $('peContext'), tools: $('peTools'), imageInput: $('peImageInput')
+            context: $('peContext'), tools: $('peTools'), imageInput: $('peImageInput'), notice: $('peNotice')
         };
         els.tools.innerHTML = TOOLS.map(tool => `
             <button type="button" class="pe-tool" data-tool="${tool}">
@@ -108,6 +109,7 @@ const PdfEditor = (() => {
             if (!(e.target instanceof Element) || !e.target.closest('select, input, textarea')) e.preventDefault();
         });
         els.context.addEventListener('click', onContextClick);
+        els.notice.addEventListener('click', onNoticeClick);
         els.context.addEventListener('change', onContextChange);
         els.pages.addEventListener('pointerdown', onPointerDown);
         els.pages.addEventListener('click', onClick);
@@ -136,6 +138,7 @@ const PdfEditor = (() => {
         s = {
             fileId: file.file_id, ops: Array.isArray(ops) ? ops.slice() : [], redo: [], zoom: 1, tool: 'edit', pages: [], selection: null, editor: null,
             drag: null, gesture: null, reselect: null, imageTarget: null, note: null, fonts: {}, onSave,
+            overflowOp: null, dismissed: new WeakSet(),
             opts: { ink: INK[1], mark: MARKS[0], width: WIDTHS[1], markup: 'highlight', shape: 'rect', textColor: INK[0], textSize: 12 }
         };
         els.title.textContent = file.filename;
@@ -149,7 +152,7 @@ const PdfEditor = (() => {
             if (!body.success) throw new Error(errorText(body, 'pdf_err_failed'));
             buildPages(body.data.pages);
         } catch (err) {
-            Toast.error(err.message);
+            Toast.error(escapeHtml(err.message));
             close(true);
         }
     }
@@ -166,6 +169,7 @@ const PdfEditor = (() => {
         if (!force && (s.ops.length || editorChanged(s.editor)) && !confirm(t('pe_discard_confirm'))) return;
         finishText(false);
         clearTimeout(s.zoomTimer);
+        hideNotice();
         s = null;
         els.pages.innerHTML = '';
         els.root.classList.add('hidden');
@@ -266,11 +270,12 @@ const PdfEditor = (() => {
         const token = ++page.token;
         const rev = page.rev;
         const width = neededWidth(page);
+        const sent = opsFor(page.i);
         page.inflight = { rev, width };
         page.el.classList.add('loading');
         let result;
         try {
-            result = await postJson('/api/pdf/edit/page', { file_id: s.fileId, page: page.i, ops: opsFor(page.i), width });
+            result = await postJson('/api/pdf/edit/page', { file_id: s.fileId, page: page.i, ops: sent, width });
         } catch (err) {
             result = { status: 0, body: {} };
         }
@@ -280,7 +285,7 @@ const PdfEditor = (() => {
         if (!body.success) {
             page.el.classList.remove('loading');
             if (status === 404) Toast.error(t('pdf_expired'));
-            else Toast.error(errorText(body, 'err_connection'));
+            else Toast.error(escapeHtml(errorText(body, 'err_connection')));
             return;
         }
         const data = body.data;
@@ -297,6 +302,33 @@ const PdfEditor = (() => {
         page.el.classList.toggle('stale', page.loadedRev !== page.rev);
         page.svg.innerHTML = '';
         renderLayer(page);
+        Object.keys(data.overflow || {}).forEach(i => {
+            const op = sent[Number(i)];
+            if (op && !op.fit && !s.dismissed.has(op) && s.ops.includes(op)) showNotice(op);
+        });
+    }
+
+    function showNotice(op) {
+        s.overflowOp = op;
+        els.notice.classList.remove('hidden');
+    }
+
+    function hideNotice() {
+        if (s) s.overflowOp = null;
+        els.notice.classList.add('hidden');
+    }
+
+    function onNoticeClick(e) {
+        const action = e.target.closest('[data-notice]')?.dataset.notice;
+        const op = s?.overflowOp;
+        if (!action || !op) return;
+        if (action === 'fit') {
+            op.fit = true;
+            touch(op.page);
+        } else {
+            s.dismissed.add(op);
+        }
+        hideNotice();
     }
 
     function opsFor(index) {
@@ -341,6 +373,7 @@ const PdfEditor = (() => {
     }
 
     function updateHistory() {
+        if (s.overflowOp && !s.ops.includes(s.overflowOp)) hideNotice();
         els.undo.disabled = !s.ops.length;
         els.redo.disabled = !s.redo.length;
         updateStatus();
@@ -469,6 +502,7 @@ const PdfEditor = (() => {
                 ${chip('larger', icon('larger'), { title: 'pe_larger' })}
                 ${chip('align', icon(align), { title: 'pe_align' })}
                 ${swatches('fore', INK, null)}
+                ${window.EyeDropper ? chip('eyedropper', icon('eyedropper'), { title: 'pe_eyedropper' }) : ''}
                 ${chip('delete-text', icon('trash'), { title: 'pe_delete' })}
             `;
         } else if (s.selection) {
@@ -515,10 +549,11 @@ const PdfEditor = (() => {
             case 'mark': o.mark = value; break;
             case 'ink': o.ink = value; break;
             case 'width': o.width = Number(value); break;
-            case 'text-color': o.textColor = value; break;
+            case 'text-color': o.textColor = value; o.textColorPicked = true; break;
             case 'bold': formatBox(() => document.execCommand('bold')); return;
             case 'italic': formatBox(() => document.execCommand('italic')); return;
             case 'fore': formatBox(() => document.execCommand('foreColor', false, value)); return;
+            case 'eyedropper': pickColor(); return;
             case 'smaller': resizeBox(-1); return;
             case 'larger': resizeBox(1); return;
             case 'align': {
@@ -771,10 +806,18 @@ const PdfEditor = (() => {
         face.load().then(f => { document.fonts.add(f); s && (s.fonts[span.f] = true); }).catch(() => { s && (s.fonts[span.f] = false); });
     }
 
+    function familyCss(span) {
+        const names = (span.n || []).map(n => `"${String(n).replace(/["\\]/g, '')}"`);
+        return [span.f ? `"pef-${span.f}"` : '', ...names, FAMILY_CSS[span.k] || FAMILY_CSS.sans].filter(Boolean).join(', ');
+    }
+
     function spanHtml(span, text) {
         ensureFont(span);
-        const family = `${span.f ? `"pef-${span.f}", ` : ''}${FAMILY_CSS[span.k] || FAMILY_CSS.sans}`;
-        return `<span data-f="${span.f || 0}" data-k="${span.k || 'sans'}" data-s="${span.s}" style="font-size:calc(var(--pp) * ${span.s}px);font-weight:${span.b ? 700 : 400};font-style:${span.i ? 'italic' : 'normal'};color:${span.c};font-family:${escapeHtml(family)}">${escapeHtml(text)}</span>`;
+        const family = familyCss(span);
+        const cs = Number(span.cs) || 0;
+        const rise = Number(span.rise) || 0;
+        const extra = `${cs ? `letter-spacing:calc(var(--pp) * ${cs}px);` : ''}${rise ? `vertical-align:calc(var(--pp) * ${rise}px);` : ''}`;
+        return `<span data-f="${span.f || 0}" data-k="${span.k || 'sans'}" data-s="${span.s}" data-cs="${cs}" data-rise="${rise}" style="font-size:calc(var(--pp) * ${span.s}px);font-weight:${span.b ? 700 : 400};font-style:${span.i ? 'italic' : 'normal'};color:${span.c};font-family:${escapeHtml(family)};${extra}">${escapeHtml(text)}</span>`;
     }
 
     function blockHtml(block) {
@@ -817,11 +860,23 @@ const PdfEditor = (() => {
         }
     }
 
+    function nearestSpan(page, [x, y]) {
+        let best = null;
+        let score = Infinity;
+        (page.data?.blocks || []).forEach(block => {
+            const [x0, y0, x1, y1] = block.bbox;
+            const d = Math.hypot(Math.max(x0 - x, 0, x - x1), Math.max(y0 - y, 0, y - y1) * 1.5);
+            if (d < score) { score = d; best = block; }
+        });
+        return score < 160 ? best?.lines[0]?.spans[0] || null : null;
+    }
+
     function beginText(page, block, e) {
         finishText(true);
         clearSelection();
         const at = toPt(page, e);
-        const first = block?.lines[0]?.spans[0];
+        const inherited = block ? null : nearestSpan(page, at);
+        const first = block?.lines[0]?.spans[0] || inherited;
         const size = first?.s || s.opts.textSize;
         const lh = block?.lh || 1.2;
         const bbox = block ? block.bbox.slice() : [at[0], at[1] - size * 0.9, at[0] + size * 6, at[1] + size * 0.3];
@@ -832,13 +887,21 @@ const PdfEditor = (() => {
         const box = document.createElement('div');
         box.className = 'pe-text-box';
         box.contentEditable = 'true';
-        box.dataset.family = block ? 'original' : 'sans';
+        box.dataset.family = first ? 'original' : 'sans';
         box.dataset.s = size;
         box.style.fontSize = `calc(var(--pp) * ${size}px)`;
         box.style.lineHeight = lh;
         box.style.textAlign = block?.align || 'left';
-        box.style.color = block ? first.c : s.opts.textColor;
+        box.style.color = block || (inherited && !s.opts.textColorPicked) ? first.c : s.opts.textColor;
         box.innerHTML = block ? blockHtml(block) : '';
+        if (inherited) {
+            ensureFont(inherited);
+            Object.assign(box.dataset, { f: inherited.f || 0, k: inherited.k || 'sans', cs: inherited.cs || 0, rise: 0 });
+            Object.assign(box.style, {
+                fontFamily: familyCss(inherited), fontWeight: inherited.b ? 700 : 400, fontStyle: inherited.i ? 'italic' : 'normal',
+                letterSpacing: inherited.cs ? `calc(var(--pp) * ${inherited.cs}px)` : ''
+            });
+        }
         const bg = sampleBackground(page, bbox);
         box.style.background = bg;
         wrap.innerHTML = '<span class="pe-grip" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg></span>';
@@ -909,10 +972,11 @@ const PdfEditor = (() => {
             const run = {
                 t: text, s: round(parseFloat(cs.fontSize) / pp), c: hex(cs.color),
                 b: parseInt(cs.fontWeight, 10) >= 600, i: cs.fontStyle !== 'normal',
-                f: host ? Number(host.dataset.f) : 0, k: host?.dataset.k || 'sans'
+                f: host ? Number(host.dataset.f) : 0, k: host?.dataset.k || 'sans',
+                cs: Number(host?.dataset.cs) || 0, rise: Number(host?.dataset.rise) || 0
             };
             const prev = runs[runs.length - 1];
-            if (prev && ['s', 'c', 'b', 'i', 'f', 'k'].every(key => prev[key] === run[key])) prev.t += text;
+            if (prev && ['s', 'c', 'b', 'i', 'f', 'k', 'cs', 'rise'].every(key => prev[key] === run[key])) prev.t += text;
             else runs.push(run);
         };
         const walk = node => node.childNodes.forEach(child => {
@@ -947,6 +1011,20 @@ const PdfEditor = (() => {
         } else {
             command();
         }
+    }
+
+    function pickColor() {
+        const ed = s.editor;
+        const sel = window.getSelection();
+        const range = sel.rangeCount && ed?.box.contains(sel.anchorNode) ? sel.getRangeAt(0).cloneRange() : null;
+        new window.EyeDropper().open().then(({ sRGBHex }) => {
+            if (s?.editor !== ed) return;
+            if (range) {
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+            formatBox(() => document.execCommand('foreColor', false, sRGBHex));
+        }).catch(() => {});
     }
 
     function resizeBox(delta) {
@@ -1052,7 +1130,7 @@ const PdfEditor = (() => {
                 setTool('edit');
             }
         } catch (err) {
-            Toast.error(err.message || t('err_upload_failed'));
+            Toast.error(escapeHtml(err.message || t('err_upload_failed')));
         }
     }
 

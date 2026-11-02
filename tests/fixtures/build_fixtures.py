@@ -57,7 +57,24 @@ def text_page(doc, fonts):
         write(page, fitz.Rect(72, y, 90, y + 16), '•', fonts['regular'], 11)
         write(page, fitz.Rect(90, y, 535, y + 16), item, fonts['regular'], 11)
     write(page, fitz.Rect(60, 420, 535, 450), 'Right aligned footer line', fonts['italic'], 10, align=fitz.TEXT_ALIGN_RIGHT)
+    spaced(page, (60, 500), 'ROZSTRZELONY NAGŁÓWEK', fonts['bold'], 14, 3)
+    writer = fitz.TextWriter(page.rect)
+    writer.append((60, 560), 'Energia E = mc', font=fonts['regular'], fontsize=12)
+    writer.append((writer.last_point.x, 555), '2', font=fonts['regular'], fontsize=8)
+    writer.append((writer.last_point.x, 560), ' oraz wzór wody H', font=fonts['regular'], fontsize=12)
+    writer.append((writer.last_point.x, 563), '2', font=fonts['regular'], fontsize=8)
+    writer.append((writer.last_point.x, 560), 'O.', font=fonts['regular'], fontsize=12)
+    writer.write_text(page)
     return page
+
+
+def spaced(page, origin, text, font, size, spacing):
+    writer = fitz.TextWriter(page.rect)
+    x, y = origin
+    for char in text:
+        writer.append((x, y), char, font=font, fontsize=size)
+        x += font.text_length(char, fontsize=size) + spacing
+    writer.write_text(page)
 
 
 def image_page(doc, fonts):

@@ -280,6 +280,24 @@ textarea.pe-widget { padding-top: 0.15em; }
 .pe-context::-webkit-scrollbar, .pe-tools::-webkit-scrollbar { display: none; }
 .pe-context.hidden { display: none; }
 
+.pe-notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 6px 6px 12px;
+    max-width: 100%;
+    box-sizing: border-box;
+    border-radius: 14px;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    background: var(--surface-solid);
+    border: 1px solid rgba(245, 158, 11, 0.6);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+
+.pe-notice.hidden { display: none; }
+.pe-notice > svg { width: 18px; height: 18px; flex: none; fill: none; stroke: #f59e0b; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
 .pe-tool {
     display: flex;
     flex-direction: column;

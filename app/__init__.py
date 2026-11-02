@@ -40,6 +40,9 @@ def create_app(config_class=Config):
     from .utils.client import init_client_id
     init_client_id(app)
 
+    from .services.font_match import FontLibrary
+    FontLibrary.shared().warm()
+
     from .services.scheduler import start_cleanup_scheduler, run_cleanup
     run_cleanup(app)
     start_cleanup_scheduler(app)
