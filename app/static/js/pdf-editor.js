@@ -595,6 +595,12 @@ const PdfEditor = (() => {
             return;
         }
         const data = body.data;
+        if (data.ocr_pending) {
+            setTimeout(() => {
+                if (s && token === page.token && page.visible) request(page);
+            }, 2500);
+            return;
+        }
         const probe = new Image();
         probe.src = data.image;
         await Promise.race([probe.decode().catch(() => {}), new Promise(r => setTimeout(r, 1500))]);
@@ -666,7 +672,8 @@ const PdfEditor = (() => {
     }
 
     function opsFor(index) {
-        return s.ops.filter(op => op.page === index || (op.type === 'page' && op.action === 'insert'));
+        const blank = index >= s.base;
+        return s.ops.filter(op => op.page === index || (blank && op.type === 'page' && op.action === 'insert'));
     }
 
     function contentPages(ops) {
@@ -1597,7 +1604,7 @@ const PdfEditor = (() => {
                 if (c.page === page.i) return { type: 'image', page: page.i, rect, source: { bbox: c.rect } };
                 return null;
             }
-            if (c.page === page.i) return { type: 'annot_edit', page: page.i, target: c.rect, copy: [offset, offset] };
+            if (c.page === page.i && page.data.annots.some(a => sameRect(a.rect, c.rect))) return { type: 'annot_edit', page: page.i, target: c.rect, copy: [offset, offset] };
             return null;
         });
         const usable = ops.filter(Boolean);

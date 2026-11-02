@@ -3,7 +3,7 @@ import re
 DELIMITERS = b'()<>[]{}/%'
 WHITESPACE = b' \t\r\n\f\x00'
 TEXT_OPS = {b'Tj', b'TJ', b"'", b'"'}
-PAINT_OPS = {b'f', b'F', b'f*', b'B', b'B*', b'b', b'b*', b'S', b's', b'sh', b'Do', b'BI'}
+PAINT_OPS = {b'f', b'F', b'f*', b'B', b'B*', b'b', b'b*', b'S', b's', b'sh', b'Do', b'BI', b'BI?'}
 MCID_RE = re.compile(rb'/MCID\s+(\d+)')
 
 
@@ -24,9 +24,39 @@ def literal_end(data, i):
     return i
 
 
+COMPONENTS = {b'G': 1, b'DeviceGray': 1, b'RGB': 3, b'DeviceRGB': 3, b'CMYK': 4, b'DeviceCMYK': 4, b'I': 1, b'Indexed': 1}
+EI_RE = re.compile(rb'\sEI(?=\s|$)')
+
+
+def inline_value(header, *names):
+    for name in names:
+        match = re.search(rb'/' + name + rb'\s*(\[[^\]]*\]|/?[^\s/\[]+)', header)
+        if match:
+            return match.group(1).lstrip(b'/').strip(b'[]').split()[0] if match.group(1).startswith(b'[') else match.group(1).lstrip(b'/')
+    return None
+
+
 def inline_image_end(data, i):
-    match = re.compile(rb'\sEI(?=[\s]|$)').search(data, i)
-    return match.end() if match else len(data)
+    start = data.find(b'ID', i)
+    if start < 0:
+        return len(data), False
+    header = data[i:start]
+    body = start + 3
+    if inline_value(header, b'F', b'Filter') is None:
+        try:
+            width = int(inline_value(header, b'W', b'Width'))
+            height = int(inline_value(header, b'H', b'Height'))
+            mask = inline_value(header, b'IM', b'ImageMask') == b'true'
+            bits = 1 if mask else int(inline_value(header, b'BPC', b'BitsPerComponent') or 8)
+            components = 1 if mask else COMPONENTS.get(inline_value(header, b'CS', b'ColorSpace') or b'G')
+            if components:
+                match = EI_RE.match(data, body + height * ((width * components * bits + 7) // 8))
+                if match:
+                    return match.end(), True
+        except (TypeError, ValueError):
+            pass
+    match = EI_RE.search(data, body)
+    return (match.end() if match else len(data)), False
 
 
 def tokens(data):
@@ -61,8 +91,8 @@ def tokens(data):
             if c == 0x2F or re.fullmatch(rb'[+-]?(\d+\.?\d*|\.\d+)', word) or word in (b'true', b'false', b'null'):
                 yield 'operand', word, i
             elif word == b'BI':
-                end = inline_image_end(data, j)
-                yield 'operator', b'BI', i
+                end, exact = inline_image_end(data, j)
+                yield 'operator', b'BI' if exact else b'BI?', i
                 i = end
                 continue
             else:
@@ -98,6 +128,10 @@ def sequences(data):
     return found
 
 
+def reliable(data):
+    return all(value != b'BI?' for kind, value, _offset in tokens(data) if kind == 'operator')
+
+
 def text_ids(data):
     return {s['mcid']: s['tag'] for s in sequences(data) if s['text'] and s['mcid'] is not None}
 
@@ -125,7 +159,7 @@ def detach(page, before):
     page.clean_contents()
     xrefs, data = contents(page)
     removed = [m for m in before if m not in text_ids(data)]
-    if not removed or len(xrefs) != 1:
+    if not removed or len(xrefs) != 1 or not reliable(data):
         return None
     mcid = min(removed)
     cleaned = without_sequence(data, mcid)

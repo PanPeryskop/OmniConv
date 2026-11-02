@@ -79,8 +79,9 @@ def kind_of(name, flags=0):
 
 
 class EditContext:
-    def __init__(self, doc, library=None):
+    def __init__(self, doc, library=None, wait=True):
         self.doc = doc
+        self.wait = wait
         self.library = library or FontLibrary.shared()
         self.original_xrefs = doc.xref_length()
         self.origins = {}
@@ -92,10 +93,10 @@ class EditContext:
         self.programs = {}
         self.scan_fonts = {}
 
-    def scan_font(self, page):
+    def scan_font(self, page, pixels=None):
         if page.number not in self.scan_fonts:
             try:
-                self.scan_fonts[page.number] = pdf_scan.match_scan_font(page, page.get_text('words'), self.library)
+                self.scan_fonts[page.number] = pdf_scan.match_scan_font(page, page.get_text('words'), self.library, pixels)
             except Exception:
                 self.scan_fonts[page.number] = None
         return self.scan_fonts[page.number]
@@ -119,9 +120,15 @@ class EditContext:
                 self.profiles[xref] = None
         return self.profiles[xref]
 
+    def fonts_ready(self):
+        return self.wait or self.library.ready.is_set()
+
+    def cover(self, char, kind):
+        return self.library.cover(char, kind) if self.fonts_ready() else None
+
     def match(self, xref, bold, italic, need=''):
         profile = self.profile(xref)
-        if not profile:
+        if not profile or not self.fonts_ready():
             return None, None
         polish = any(ord(c) > 0xFF for c in need)
         key = (xref, bold, italic, polish)
@@ -320,7 +327,7 @@ def text_blocks(page, fonts, ctx):
     paragraphs = group_paragraphs(raw_lines(page))
     scanned = [all(s.get('alpha', 255) == 0 for l in lines for s in l['spans']) for lines in paragraphs]
     pixels = pdf_scan.raster(page) if any(scanned) else None
-    scan_font = ctx.scan_font(page) if pixels is not None else None
+    scan_font = ctx.scan_font(page, pixels) if pixels is not None else None
     for lines in paragraphs:
         bbox = fitz.Rect(lines[0]['bbox'])
         for line in lines[1:]:
@@ -479,7 +486,7 @@ class FontPicker:
 
     def sources(self, run):
         if not run.get('f'):
-            entry = self.ctx.library.styled(family_key(run.get('lib') or ''), bool(run.get('b')), bool(run.get('i'))) if run.get('lib') else None
+            entry = self.ctx.library.styled(family_key(run.get('lib') or ''), bool(run.get('b')), bool(run.get('i'))) if run.get('lib') and self.ctx.fonts_ready() else None
             font = self.ctx.library.font(entry) if entry else None
             return [(font, 0, covers(font))] if font else []
         source = int(run['f'])
@@ -561,7 +568,7 @@ def layout_runs(op, picker):
                 pieces = [[part, font, source, None]] if font.has_glyph(32) else []
                 tokens.append(dict(base, pieces=pieces, space=True, width=width))
                 continue
-            pieces = [shaped(piece) for piece in split_pieces(part, sources, fallback, lambda c: picker.ctx.library.cover(c, kind))]
+            pieces = [shaped(piece) for piece in split_pieces(part, sources, fallback, lambda c: picker.ctx.cover(c, kind))]
             width = sum(piece_width(piece, size, spacing) for piece in pieces)
             tokens.append(dict(base, pieces=pieces, space=False, width=width))
     return tokens
@@ -648,6 +655,31 @@ def fitted(page, op, tokens):
     return best
 
 
+def token_direction(token):
+    if token['space']:
+        return 'space'
+    return 'rtl' if any(shaping.is_rtl(piece[0]) for piece in token['pieces']) else 'ltr'
+
+
+def visual_order(line):
+    segments = []
+    for token in line:
+        kind = token_direction(token)
+        if segments and segments[-1][0] == 'ltr' and kind in ('ltr', 'space'):
+            segments[-1][1].append(token)
+        else:
+            segments.append([kind, [token]])
+    ordered = []
+    for kind, tokens in segments:
+        trailing = []
+        while kind == 'ltr' and tokens and tokens[-1]['space']:
+            trailing.insert(0, tokens.pop())
+        ordered.append(tokens)
+        if trailing:
+            ordered.append(trailing)
+    return [token for tokens in reversed(ordered) for token in tokens]
+
+
 def draw_layout(page, layout, align, ctx, rtl=False):
     rect, width = layout['rect'], layout['width']
     writers = {}
@@ -655,7 +687,7 @@ def draw_layout(page, layout, align, ctx, rtl=False):
         align = 'right'
     for line, last, baseline in layout['lines']:
         if rtl:
-            line = line[::-1]
+            line = visual_order(line)
         used = sum(t['width'] for t in line)
         x = rect.x0
         gap_extra = 0.0
@@ -977,7 +1009,7 @@ def op_annot_edit(ctx, page, op):
 
 def op_ocr(ctx, page, op):
     if not page.get_text('words'):
-        pdf_scan.recognize(page)
+        pdf_scan.recognize(page, ctx.wait)
     return page
 
 
@@ -987,7 +1019,8 @@ def op_whiteout(ctx, page, op):
 
 
 def without_ref(value, xref):
-    return '[' + ' '.join(re.findall(r'\d+ \d+ R', value.replace(f'{xref} 0 R', ''))) + ']'
+    refs = [ref for ref in re.findall(r'(\d+) (\d+) R', value) if int(ref[0]) != xref]
+    return '[' + ' '.join(f'{num} {gen} R' for num, gen in refs) + ']'
 
 
 def detach_field(doc, xref):
@@ -1183,24 +1216,25 @@ def apply_ops(doc, ops):
         sanitize(doc, cleanup['options'])
     if order != list(range(doc.page_count)):
         doc.select(order)
-    return {'signature': placement}
+    return {'signature': placement, 'fonts_added': bool(ctx.origins) or any(op.get('type') == 'text' and op.get('runs') for op in ops or [])}
 
 
 def search_document(path, ops, query, kinds, whole_word=False):
     with fitz.open(path) as doc:
         if doc.needs_pass:
             return [], False
-        ctx = EditContext(doc)
+        ctx = EditContext(doc, wait=False)
         order, _rotation, blanks = page_structure(ops, doc.page_count)
         add_blanks(doc, blanks)
         grouped = group_ops(ops, doc.page_count)
         results = []
         for index in order:
             page = doc[index]
-            if grouped.get(index):
-                page = apply_page_ops(ctx, page, grouped[index])
-            else:
-                prepare_page(page)
+            try:
+                page = apply_page_ops(ctx, page, grouped[index]) if grouped.get(index) else page
+            except pdf_scan.OcrPending:
+                page = doc.reload_page(page)
+            prepare_page(page)
             for match in search_page(page, query, kinds, whole_word):
                 results.append(dict(match, page=index))
                 if len(results) >= MAX_MATCHES:
@@ -1217,7 +1251,8 @@ class PreviewCache:
     def key(self, path, index, ops, width):
         stat = os.stat(path)
         payload = json.dumps(ops, sort_keys=True, separators=(',', ':'), default=str)
-        return (path, stat.st_mtime_ns, stat.st_size, index, width, hashlib.blake2b(payload.encode(), digest_size=16).digest())
+        ready = FontLibrary.shared().ready.is_set()
+        return (path, stat.st_mtime_ns, stat.st_size, index, width, ready, hashlib.blake2b(payload.encode(), digest_size=16).digest())
 
     def get(self, key):
         with self.lock:
@@ -1242,7 +1277,7 @@ def render_preview(path, index, ops, width):
     cached = PREVIEWS.get(key)
     if cached is None:
         cached = build_preview(path, index, ops, width)
-        if cached is not None:
+        if cached is not None and not cached.get('ocr_pending'):
             PREVIEWS.put(key, cached)
     return dict(cached) if cached is not None else None
 
@@ -1251,13 +1286,16 @@ def build_preview(path, index, ops, width):
     with fitz.open(path) as doc:
         if doc.needs_pass or index < 0:
             return None
-        ctx = EditContext(doc)
+        ctx = EditContext(doc, wait=False)
         _order, _rotation, blanks = page_structure(ops, doc.page_count)
         if index >= doc.page_count:
             if index not in blanks:
                 return None
             add_blanks(doc, blanks, index)
-        page = apply_page_ops(ctx, doc[index], group_ops(ops, doc.page_count).get(index, []))
+        try:
+            page = apply_page_ops(ctx, doc[index], group_ops(ops, doc.page_count).get(index, []))
+        except pdf_scan.OcrPending:
+            return {'ocr_pending': True}
         layout = page_layout(page, ctx)
         layout['overflow'] = {str(i): by for (number, i), by in ctx.overflow.items() if number == index}
         zoom = max(0.05, min(5.0, width / max(1.0, page.rect.width)))

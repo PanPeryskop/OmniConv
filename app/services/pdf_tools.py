@@ -494,21 +494,25 @@ class PdfTools:
             self.report_progress(20)
             info = apply_ops(doc, options.get('ops') or [])
             self.report_progress(70)
-            try:
-                doc.subset_fonts()
-            except Exception:
-                pass
+            if info['fonts_added']:
+                try:
+                    doc.subset_fonts()
+                except Exception:
+                    pass
             self.report_progress(85)
             self.save(doc, out_path)
-        if certificate and info['signature']:
+        if certificate and not info['signature']:
+            os.remove(out_path)
+            raise PdfToolError('err_cert_no_field', 'The digital signature box is no longer in the document')
+        if certificate:
             unsigned = out_base + '_unsigned.pdf'
             os.replace(out_path, unsigned)
             try:
                 sign_pdf(unsigned, out_path, certificate, info['signature'])
-            except SignError as e:
-                raise PdfToolError(e.code, str(e)) from e
             except Exception as e:
-                raise PdfToolError('err_cert_sign', str(e)) from e
+                if os.path.exists(out_path):
+                    os.remove(out_path)
+                raise PdfToolError(e.code if isinstance(e, SignError) else 'err_cert_sign', str(e)) from e
             finally:
                 if os.path.exists(unsigned):
                     os.remove(unsigned)

@@ -248,7 +248,7 @@ class PdfEditorTest(unittest.TestCase):
             self.assertEqual(doc.metadata['title'], '')
             self.assertEqual([a.type[1] for a in doc[ANNOT_PAGE].annots()], [])
 
-    def fake_ocr(self, page):
+    def fake_ocr(self, page, wait=True):
         with fitz.open(self.path) as original:
             source = original[TEXT_PAGE]
             lines = []
@@ -473,3 +473,50 @@ class TaggedTextTest(unittest.TestCase):
                 b'/Span <</MCID 4>> BDC BI /W 1 /H 1 /CS /G /BPC 8 ID \x00 EI EMC')
         found = {s['mcid']: (s['text'], s['paint']) for s in pdf_tags.sequences(data)}
         self.assertEqual(found, {3: (True, False), 4: (False, True)})
+
+
+class ReviewFixesTest(unittest.TestCase):
+    def test_field_reference_removal_keeps_similar_numbers(self):
+        self.assertEqual(pe.without_ref('[12 0 R 112 0 R 212 0 R]', 12), '[112 0 R 212 0 R]')
+
+    def test_rtl_line_keeps_embedded_ltr_runs_in_order(self):
+        token = lambda text, space=False: {'space': space, 'pieces': [[text]], 't': text}
+        line = [token('שלום'), token(' ', True), token('Version'), token(' ', True), token('2.0'), token(' ', True), token('עולם')]
+        self.assertEqual([t['t'] for t in pe.visual_order(line)], ['עולם', ' ', 'Version', ' ', '2.0', ' ', 'שלום'])
+
+    def test_inline_image_with_ei_bytes_is_skipped_exactly(self):
+        from app.services import pdf_tags
+        data = b'/P <</MCID 1>> BDC BI /W 3 /H 1 /CS /G /BPC 8 ID  EI EI EMC /P <</MCID 2>> BDC BT (x) Tj ET EMC'
+        self.assertEqual([(s['mcid'], s['text']) for s in pdf_tags.sequences(data)], [(1, False), (2, True)])
+        self.assertTrue(pdf_tags.reliable(data))
+        self.assertFalse(pdf_tags.reliable(b'BI /W 2 /H 1 /F /AHx ID 0a EI'))
+
+    def test_certificate_without_signature_box_fails_instead_of_saving_unsigned(self):
+        from app.services.pdf_tools import PdfToolError, PdfTools
+        folder = tempfile.mkdtemp()
+        path = build(os.path.join(folder, 'pe.pdf'))
+        ops = [{'type': 'digital_sign', 'page': FORM_PAGE, 'rect': [300, 700, 520, 760]},
+               {'type': 'page', 'action': 'delete', 'page': FORM_PAGE}]
+        with self.assertRaises(PdfToolError) as caught:
+            PdfTools(lambda _p: None).run('edit', [path], os.path.join(folder, 'out'), {'ops': ops, 'certificate': (self_signed_p12(), 'tajne')})
+        self.assertEqual(caught.exception.code, 'err_cert_no_field')
+        self.assertFalse(os.path.exists(os.path.join(folder, 'out.pdf')))
+
+    def test_preview_does_not_block_on_ocr(self):
+        import threading
+        path = build_scan(os.path.join(tempfile.mkdtemp(), 'scan.pdf'), build(os.path.join(tempfile.mkdtemp(), 'pe.pdf')))
+        release = threading.Event()
+
+        def slow(_renders):
+            release.wait(10)
+            return []
+        with mock.patch.object(pdf_scan, 'recognize_renders', slow):
+            first = pe.render_preview(path, 0, [{'type': 'ocr', 'page': 0}], 120)
+            self.assertEqual(first, {'ocr_pending': True})
+            release.set()
+            for _ in range(40):
+                if not pdf_scan.OCR.pending:
+                    break
+                threading.Event().wait(0.1)
+            done = pe.render_preview(path, 0, [{'type': 'ocr', 'page': 0}], 120)
+        self.assertIn('image', done)

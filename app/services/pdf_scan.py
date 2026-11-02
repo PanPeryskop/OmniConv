@@ -3,6 +3,7 @@ import os
 import shutil
 import tempfile
 import threading
+import time
 import unicodedata
 from collections import OrderedDict
 
@@ -23,37 +24,94 @@ SHAPE_CANDIDATES = (
 GENERIC = (('Helvetica', 'helv', 'sans'), ('Times', 'tiro', 'serif'), ('Courier', 'cour', 'mono'))
 
 
+class OcrPending(Exception):
+    pass
+
+
+def render_orientations(page, folder):
+    service = OCRService()
+    zoom = service.rapid_dpi / 72.0
+    renders = []
+    for angle in (0, 90, 270):
+        matrix = fitz.Matrix(zoom, zoom).prerotate(angle)
+        pix = page.get_pixmap(matrix=matrix)
+        path = os.path.join(folder, f'page_{angle}.png')
+        pix.save(path)
+        renders.append((path, ~matrix * page.derotation_matrix, fitz.Point(pix.x, pix.y), zoom))
+    return renders
+
+
+def recognize_renders(renders):
+    service = OCRService()
+    best = None
+    for index, (path, to_page, offset, zoom) in enumerate(renders):
+        items = service._rapid_raw(path)
+        quality, vertical = service._orientation_quality(items)
+        if best is None or quality > best[0]:
+            best = (quality, items, to_page, offset, zoom)
+        if index == 0 and (not items or vertical < 0.3):
+            break
+    _quality, items, to_page, offset, zoom = best
+    return service._page_lines(items, to_page, offset, zoom)
+
+
 class OcrCache:
     def __init__(self, limit=32):
         self.limit = limit
         self.items = OrderedDict()
+        self.pending = set()
         self.lock = threading.Lock()
         self.busy = threading.Lock()
 
-    def lines(self, page):
+    def store(self, key, lines):
+        with self.lock:
+            self.items[key] = lines
+            self.pending.discard(key)
+            while len(self.items) > self.limit:
+                self.items.popitem(last=False)
+
+    def run(self, key, folder, renders):
+        try:
+            with self.busy:
+                lines = recognize_renders(renders)
+        except Exception:
+            lines = []
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+        self.store(key, lines)
+
+    def lines(self, page, wait=True):
         key = (page.parent.name, page.number, hashlib.blake2b(page.read_contents(), digest_size=16).digest())
         with self.lock:
             if key in self.items:
                 self.items.move_to_end(key)
                 return self.items[key]
-        with self.busy:
-            folder = tempfile.mkdtemp(prefix='pe_ocr_')
-            try:
-                result = OCRService()._ocr_pdf_page(page, 'rapid', 'txt', {}, os.path.join(folder, 'page.png'))
-            finally:
-                shutil.rmtree(folder, ignore_errors=True)
+            running = key in self.pending
+            if not running:
+                self.pending.add(key)
+        if running:
+            if not wait:
+                raise OcrPending()
+            while True:
+                time.sleep(0.5)
+                with self.lock:
+                    if key in self.items:
+                        return self.items[key]
+        folder = tempfile.mkdtemp(prefix='pe_ocr_')
+        renders = render_orientations(page, folder)
+        if not wait:
+            threading.Thread(target=self.run, args=(key, folder, renders), daemon=True).start()
+            raise OcrPending()
+        self.run(key, folder, renders)
         with self.lock:
-            self.items[key] = result.lines
-            while len(self.items) > self.limit:
-                self.items.popitem(last=False)
-        return result.lines
+            return self.items.get(key, [])
 
 
 OCR = OcrCache()
 
 
-def recognize(page):
-    lines = [(unicodedata.normalize('NFKC', text), *rest) for text, *rest in OCR.lines(page)]
+def recognize(page, wait=True):
+    lines = [(unicodedata.normalize('NFKC', text), *rest) for text, *rest in OCR.lines(page, wait)]
     if lines:
         OCRService._place_lines(page, lines, fitz.Font('helv'))
     return bool(lines)
@@ -150,11 +208,11 @@ def candidate_fonts(library):
     return found
 
 
-def match_scan_font(page, words, library):
+def match_scan_font(page, words, library, pixels=None):
     samples = sorted((w for w in words if len(w[4]) >= 4 and w[4].isalpha() and w[4].isascii()), key=lambda w: -(w[2] - w[0]))[:5]
     if not samples:
         return None
-    pixels = raster(page)
+    pixels = raster(page) if pixels is None else pixels
     targets = [(w[4], tight(ink_mask(crop(pixels, w[:4])))) for w in samples]
     best, score = None, 0.0
     for name, font, kind in candidate_fonts(library):

@@ -203,6 +203,8 @@ def pdf_edit_translate():
         layout = pdf_editor.render_preview(job['input_path'], page, ops, 100)
         if layout is None:
             return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_ranges', 'message': 'Page out of range'}, success=False), 400
+        if layout.get('ocr_pending'):
+            return api_response(error={'type': 'PdfToolError', 'code': 'err_ocr_pending', 'message': 'Text recognition is still running'}, success=False), 409
         result = pdf_ai.translate_page(layout, page, language)
     except (TypeError, ValueError):
         return api_response(error={'type': 'InvalidRequestError', 'message': 'Invalid page'}, success=False), 400
