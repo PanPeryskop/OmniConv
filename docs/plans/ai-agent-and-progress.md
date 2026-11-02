@@ -480,7 +480,8 @@ WP0 jest zrobione i scalone na branchu bazowym. Ustalenia wiążące dla WP1–W
   (`pdf-editor-agent.css`).
 - **Podświetlenia:** `.pe-focus` z tonami `proposal` / `applied` / `error` w `pdf-editor.css`, przetrwa odświeżenie
   warstwy strony.
-- **`PdfProgress` (stub WP0, implementuje WP1):** `onTask(kind | '*', fn)`, `track(taskId)`, `get(taskId)`,
+- **`PdfProgress` (WP0: działa przez polling `GET /api/pdf/edit/tasks` co 1 s przy aktywnych zadaniach, 3 s bez;
+  WP1 dokłada Socket.IO, UI centrum aktywności i anulowanie, bez zmiany API):** `onTask(kind | '*', fn)`, `track(taskId)`, `get(taskId)`,
   `local(kind, {titleKey, total, page, cancel})` zwraca `{ task, update(fields), done(), fail(code), cancelled() }`.
   WP2/WP3 kodują przeciw temu API już teraz.
 - **Backend:** `editor_tasks.py` ma działający minimalny `TaskRegistry` z `subscribe(listener)` (WP1 dokłada throttling,
