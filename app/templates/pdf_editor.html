@@ -1,0 +1,38 @@
+<div class="pe hidden" id="pdfEditor" role="dialog" aria-modal="true" aria-labelledby="peTitle">
+    <header class="pe-top">
+        <button type="button" class="pe-icon-btn" id="peClose" aria-label="Close" data-i18n-aria="close" data-i18n-title="close" title="Close">
+            <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+        <div class="pe-heading">
+            <p class="pe-title" id="peTitle"></p>
+            <p class="pe-status" id="peStatus"></p>
+        </div>
+        <div class="pe-top-actions">
+            <button type="button" class="pe-icon-btn" id="peUndo" aria-label="Undo" data-i18n-aria="pe_undo" data-i18n-title="pe_undo" title="Undo" disabled>
+                <svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/></svg>
+            </button>
+            <button type="button" class="pe-icon-btn" id="peRedo" aria-label="Redo" data-i18n-aria="pe_redo" data-i18n-title="pe_redo" title="Redo" disabled>
+                <svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 000 11H13"/></svg>
+            </button>
+            <div class="pe-zoom">
+                <button type="button" class="pe-icon-btn" id="peZoomOut" aria-label="Zoom out" data-i18n-aria="pe_zoom_out" data-i18n-title="pe_zoom_out" title="Zoom out">
+                    <svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
+                </button>
+                <button type="button" class="pe-zoom-value" id="peZoomValue" data-i18n-title="pe_zoom_fit" title="Fit width">100%</button>
+                <button type="button" class="pe-icon-btn" id="peZoomIn" aria-label="Zoom in" data-i18n-aria="pe_zoom_in" data-i18n-title="pe_zoom_in" title="Zoom in">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+            </div>
+            <button type="button" class="btn btn-primary btn-small pe-save" id="peSave" data-i18n="pe_save">Save</button>
+        </div>
+    </header>
+    <div class="pe-scroll" id="peScroll">
+        <div class="pe-pages" id="pePages"></div>
+    </div>
+    <div class="pe-dock" id="peDock">
+        <span class="pe-page-pill" id="pePagePill"></span>
+        <div class="pe-context hidden" id="peContext"></div>
+        <nav class="pe-tools" id="peTools" aria-label="Tools" data-i18n-aria="pe_tools"></nav>
+    </div>
+    <input type="file" id="peImageInput" accept="image/png,image/jpeg,image/webp" hidden>
+</div>

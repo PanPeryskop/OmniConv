@@ -7,6 +7,7 @@ from flask import Blueprint, request, current_app, send_file
 from .api_common import conversion_jobs, api_response, unique_output_base, touch_file, file_expiry, register_result_file
 from ..utils.file_handler import generate_file_id
 from ..services.pdf_tools import PdfTools, PdfToolError
+from ..services import pdf_editor
 from .websocket import emit_progress, emit_complete, emit_error
 from ..services.job_registry import registry
 from ..utils.client import client_id
@@ -25,6 +26,7 @@ TOOL_SUFFIXES = {
     'metadata': 'metadata',
     'extract_images': 'images',
     'to_images': 'pages',
+    'edit': 'edited',
 }
 
 SUFFIX_RE = re.compile(r'(?:_(?:' + '|'.join(sorted(set(TOOL_SUFFIXES.values()))) + r')(?:_\d+)?)+$')
@@ -43,6 +45,25 @@ def get_pdf_job(file_id):
     if not job['original_filename'].lower().endswith('.pdf'):
         return None, (api_response(error={'type': 'UnsupportedError', 'message': 'Not a PDF file'}, success=False), 400)
     return job, None
+
+
+def resolve_edit_ops(ops):
+    if not isinstance(ops, list):
+        return None
+    resolved = []
+    for op in ops:
+        if not isinstance(op, dict):
+            continue
+        op = dict(op)
+        op.pop('path', None)
+        if op.get('type') == 'image' and op.get('file_id'):
+            image_job = conversion_jobs.owned(op['file_id'])
+            path = image_job.get('input_path') if image_job else None
+            if not path or not os.path.exists(path) or not path.lower().endswith(IMAGE_EXTENSIONS):
+                continue
+            op['path'] = path
+        resolved.append(op)
+    return resolved
 
 
 def tool_error_response(e: PdfToolError):
@@ -81,6 +102,55 @@ def pdf_page_image(file_id, page):
     return response
 
 
+@pdf_bp.route('/pdf/edit/pages', methods=['POST'])
+def pdf_edit_pages():
+    data = request.get_json(silent=True) or {}
+    job, error = get_pdf_job(data.get('file_id'))
+    if error:
+        return error
+    try:
+        sizes = pdf_editor.page_sizes(job['input_path'])
+    except Exception:
+        return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_damaged', 'message': 'The PDF could not be opened'}, success=False), 400
+    touch_file(data.get('file_id'))
+    return api_response(data={'pages': sizes})
+
+
+@pdf_bp.route('/pdf/edit/font/<file_id>/<int:xref>', methods=['GET'])
+def pdf_edit_font(file_id, xref):
+    job, error = get_pdf_job(file_id)
+    if error:
+        return error
+    font = pdf_editor.web_font(job['input_path'], xref)
+    if not font:
+        return api_response(error={'type': 'NotFoundError', 'message': 'Font not available'}, success=False), 404
+    response = send_file(io.BytesIO(font[1]), mimetype=f'font/{font[0]}')
+    response.headers['Cache-Control'] = 'private, max-age=3600'
+    return response
+
+
+@pdf_bp.route('/pdf/edit/page', methods=['POST'])
+def pdf_edit_page():
+    data = request.get_json(silent=True) or {}
+    job, error = get_pdf_job(data.get('file_id'))
+    if error:
+        return error
+    ops = resolve_edit_ops(data.get('ops') or [])
+    if ops is None:
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'ops must be a list'}, success=False), 400
+    try:
+        page = int(data.get('page', 0))
+        width = min(3000, max(100, int(data.get('width', 800))))
+        layout = pdf_editor.render_preview(job['input_path'], page, ops, width)
+    except (TypeError, ValueError):
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'Invalid page or width'}, success=False), 400
+    except Exception as e:
+        return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_edit', 'message': str(e)}, success=False), 400
+    if layout is None:
+        return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_ranges', 'message': 'Page out of range'}, success=False), 400
+    return api_response(data=layout)
+
+
 @pdf_bp.route('/pdf/process', methods=['POST'])
 def pdf_process():
     data = request.get_json(silent=True) or {}
@@ -114,6 +184,11 @@ def pdf_process():
 
     if tool == 'merge':
         options['names'] = [j['original_filename'] for j in jobs]
+
+    if tool == 'edit':
+        options['ops'] = resolve_edit_ops(options.get('ops'))
+        if not options['ops']:
+            return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_edit_empty', 'message': 'Nothing to save'}, success=False), 400
 
     if tool == 'watermark' and options.get('kind') == 'image':
         image_job = conversion_jobs.owned(options.get('image_file_id'))

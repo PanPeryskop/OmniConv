@@ -4,6 +4,7 @@
 {% block title_i18n %} data-i18n="pdf_page_title"{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pdf-editor.css') }}">
 <section class="hero-section" style="padding-bottom: var(--space-8);">
     <h1 class="hero-heading" data-i18n="pdf_hero_title">PDF <span class="hero-heading-accent">Tools</span></h1>
     <p class="hero-description" data-i18n="pdf_hero_desc">Upload a PDF and pick what to do with it.</p>
@@ -990,10 +991,14 @@ body.drag-over::after {
 }
 </style>
 
+{% include "pdf_editor.html" %}
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+<script src="{{ url_for('static', filename='js/pdf-editor.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const ICONS = {
+        edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
         compress: '<polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/>',
         organize: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="9" rx="1"/><path d="M6.5 16v5M17.5 16v5M4 18.5l2.5 2.5L9 18.5M15 18.5l2.5 2.5 2.5-2.5"/>',
         split: '<path d="M6 3v18M18 3v18"/><path d="M10 12h4M12 9l-2 3 2 3M12 9l2 3-2 3"/>',
@@ -1008,6 +1013,7 @@ document.addEventListener('DOMContentLoaded', () => {
         extract_images: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>'
     };
     const GROUPS = [
+        { key: 'pdf_group_editor', tools: ['edit'] },
         { key: 'pdf_group_pages', tools: ['organize', 'split', 'merge'] },
         { key: 'pdf_group_optimize', tools: ['compress', 'convert', 'ocr'] },
         { key: 'pdf_group_security', tools: ['protect', 'unlock'] },
@@ -1449,6 +1455,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function openTool(tool) {
         if (!file()) return;
         if (file().encrypted && tool !== 'unlock') return;
+        if (tool === 'edit') return openEditor();
         state.tool = tool;
         clearFieldErrors();
         i18n.set(els.title, `pdf_tool_${tool}`);
@@ -1463,11 +1470,28 @@ document.addEventListener('DOMContentLoaded', () => {
         els.panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
+    function openEditor(ops) {
+        state.tool = 'edit';
+        PdfEditor.open(file(), {
+            ops,
+            onSave: saved => {
+                state.editOps = saved;
+                startJob('edit', { options: { ops: saved } });
+            }
+        });
+    }
+
     els.back.addEventListener('click', showTools);
     els.change.addEventListener('click', resetAll);
     $('pdfExpiredReset').addEventListener('click', resetAll);
     els.resultBack.addEventListener('click', showTools);
-    els.errorBack.addEventListener('click', () => state.tool ? openTool(state.tool) : showTools());
+    els.errorBack.addEventListener('click', () => {
+        if (state.tool === 'edit') {
+            showTools();
+            openEditor(state.editOps);
+        } else if (state.tool) openTool(state.tool);
+        else showTools();
+    });
 
     document.querySelectorAll('[data-group]').forEach(group => {
         group.addEventListener('click', e => {
@@ -2220,7 +2244,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    els.run.addEventListener('click', async () => {
+    els.run.addEventListener('click', () => {
         const tool = state.tool;
         let spec;
         clearFieldErrors();
@@ -2231,7 +2255,10 @@ document.addEventListener('DOMContentLoaded', () => {
             else Toast.error(err.message);
             return;
         }
+        startJob(tool, spec);
+    });
 
+    async function startJob(tool, spec) {
         let url = '/api/pdf/process';
         let payload = { tool: spec.tool || tool, file_id: file().file_id, options: spec.options || {} };
         let stat = { kind: 'pdf', from: 'pdf', to: tool };
@@ -2261,7 +2288,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             showError(err);
         }
-    });
+    }
 
     els.cancel.addEventListener('click', async () => {
         if (!state.jobId) return;
@@ -2290,7 +2317,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (data.status === 'cancelled') {
                     clearInterval(state.poll);
                     Toast.info(t('err_cancelled'));
-                    openTool(tool);
+                    if (tool === 'edit') {
+                        showTools();
+                        openEditor(state.editOps);
+                    } else openTool(tool);
                 } else if (data.status === 'failed') {
                     clearInterval(state.poll);
                     showError(apiError({ message: data.error }, data.error_code, 'pdf_err_failed'));

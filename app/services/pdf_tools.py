@@ -7,6 +7,8 @@ from typing import Optional, Callable, Dict, Any, List
 
 import fitz
 
+from .pdf_editor import apply_ops
+
 
 class PdfToolError(Exception):
     def __init__(self, code: str, message: str):
@@ -481,6 +483,15 @@ class PdfTools:
                 writer.write_text(page, color=(0.2, 0.2, 0.2), morph=morph)
                 self.report_progress(5 + (n + 1) / len(targets) * 90)
             out_path = out_base + '.pdf'
+            self.save(doc, out_path)
+        return out_path
+
+    def tool_edit(self, paths, out_base, options):
+        out_path = out_base + '.pdf'
+        with self.open(paths[0]) as doc:
+            self.report_progress(20)
+            apply_ops(doc, options.get('ops') or [])
+            self.report_progress(80)
             self.save(doc, out_path)
         return out_path
 
