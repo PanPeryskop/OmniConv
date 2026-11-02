@@ -185,6 +185,29 @@ def build_scan(path=None, source=None):
     return path
 
 
+def build_tagged(path):
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    for i, text in enumerate(['Pierwszy otagowany akapit.', 'Drugi otagowany akapit.']):
+        page.insert_text((72, 100 + 40 * i), text, fontsize=14)
+        xref = page.get_contents()[-1]
+        doc.update_stream(xref, f'/P <</MCID {i}>> BDC\n'.encode() + doc.xref_stream(xref) + b'\nEMC\n')
+    root, top, tree = doc.get_new_xref(), doc.get_new_xref(), doc.get_new_xref()
+    paragraphs = [doc.get_new_xref(), doc.get_new_xref()]
+    for i, xref in enumerate(paragraphs):
+        doc.update_object(xref, f'<</Type/StructElem/S/P/P {top} 0 R/Pg {page.xref} 0 R/K {i}>>')
+    kids = ' '.join(f'{x} 0 R' for x in paragraphs)
+    doc.update_object(top, f'<</Type/StructElem/S/Document/P {root} 0 R/K [{kids}]>>')
+    doc.update_object(tree, f'<</Nums [0 [{kids}]]>>')
+    doc.update_object(root, f'<</Type/StructTreeRoot/K [{top} 0 R]/ParentTree {tree} 0 R/ParentTreeNextKey 1>>')
+    doc.xref_set_key(page.xref, 'StructParents', '0')
+    doc.xref_set_key(doc.pdf_catalog(), 'StructTreeRoot', f'{root} 0 R')
+    doc.xref_set_key(doc.pdf_catalog(), 'MarkInfo', '<</Marked true>>')
+    doc.save(path, garbage=3, deflate=True)
+    doc.close()
+    return path
+
+
 def build(path=None):
     path = path or os.path.join(HERE, 'pe_test.pdf')
     doc = fitz.open()

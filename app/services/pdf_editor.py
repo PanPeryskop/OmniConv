@@ -11,7 +11,7 @@ import fitz
 import pymupdf.mupdf as mupdf
 from pymupdf import _make_PdfFilterOptions
 
-from . import pdf_scan, shaping
+from . import pdf_scan, pdf_tags, shaping
 from .font_match import FontLibrary, family_key, pdf_font_profile
 from .pdf_search import MAX_MATCHES, search_page
 from .web_fonts import web_font_bytes
@@ -746,18 +746,26 @@ def annots_array(xrefs):
 
 def op_text(ctx, page, op):
     removes = [rect_of(r) for r in op.get('remove') or []]
+    marker = None
     if removes:
+        before = pdf_tags.text_ids(pdf_tags.contents(page)[1]) if pdf_tags.is_tagged(ctx.doc, page) else {}
         area = fitz.Rect(removes[0])
         for r in removes[1:]:
             area |= r
         area = (area + (-1, -1, 1, 1)) & page.rect
-        before = page.get_pixmap(clip=area, matrix=fitz.Matrix(2, 2), alpha=False)
+        snapshot = page.get_pixmap(clip=area, matrix=fitz.Matrix(2, 2), alpha=False)
         page = apply_own_redactions(page, [shrink(r) for r in removes], False, **KEEP_GRAPHICS)
-        cover = baked_background(page, area, before)
-        if cover and not pdf_scan.inpaint(page, area, before, removes):
+        if before:
+            marker = pdf_tags.detach(page, before)
+            page = ctx.doc.reload_page(page)
+        cover = baked_background(page, area, snapshot)
+        if cover and not pdf_scan.inpaint(page, area, snapshot, removes):
             page.draw_rect(area, color=None, fill=cover, overlay=True)
     if op.get('runs') and op.get('rect'):
+        previous = set(page.get_contents())
         overflow = write_text(page, op, ctx.picker(page), ctx)
+        if marker:
+            pdf_tags.attach(page, marker, previous)
         if overflow:
             ctx.overflow[ctx.current] = round(overflow, 2)
     return page

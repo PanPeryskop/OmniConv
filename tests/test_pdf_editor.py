@@ -15,7 +15,7 @@ from app.services import pdf_editor as pe
 from app.services import pdf_scan
 from app.services import pdf_search as ps
 from app.services.web_fonts import web_font_bytes
-from tests.fixtures.build_fixtures import build, build_scan
+from tests.fixtures.build_fixtures import build, build_scan, build_tagged
 
 TEXT_PAGE, IMAGE_PAGE, ANNOT_PAGE, FORM_PAGE, ROTATED_PAGE = range(5)
 
@@ -439,3 +439,37 @@ class ShapingTest(unittest.TestCase):
             line = next(l for b in doc[TEXT_PAGE].get_text('dict')['blocks'] if b['type'] == 0 for l in b['lines']
                         if 'שלום' in ''.join(s['text'] for s in l['spans']))
         self.assertGreater(line['bbox'][2], block['bbox'][0] + 100)
+
+
+class TaggedTextTest(unittest.TestCase):
+    def structure_texts(self, page):
+        found = []
+
+        def walk(blocks, tag=None):
+            for block in blocks:
+                if block['type'] == 2:
+                    walk(block['blocks'], block['raw'])
+                elif block['type'] == 0:
+                    found.append((tag, ''.join(s['text'] for l in block['lines'] for s in l['spans']).strip()))
+        walk(page.get_text('dict', flags=fitz.TEXT_COLLECT_STRUCTURE)['blocks'])
+        return found
+
+    def test_edited_paragraph_keeps_its_tag(self):
+        from app.services import pdf_tags
+        path = build_tagged(os.path.join(tempfile.mkdtemp(), 'tagged.pdf'))
+        block = pe.render_preview(path, 0, [], 100)['blocks'][0]
+        with saved(path, [text_op(0, block, 'Zmieniony akapit.')]) as doc:
+            texts = self.structure_texts(doc[0])
+            data = pdf_tags.contents(doc[0])[1]
+        self.assertIn(('P', 'Zmieniony akapit.'), texts)
+        self.assertIn(('P', 'Drugi otagowany akapit.'), texts)
+        self.assertNotIn('Pierwszy', ' '.join(t for _tag, t in texts))
+        ids = [s['mcid'] for s in pdf_tags.sequences(data) if s['mcid'] is not None]
+        self.assertEqual(sorted(ids), [0, 1])
+
+    def test_tokenizer_handles_strings_and_inline_images(self):
+        from app.services import pdf_tags
+        data = (b'/P <</MCID 3>> BDC BT (a\\) EMC \\(x\\)) Tj ET EMC '
+                b'/Span <</MCID 4>> BDC BI /W 1 /H 1 /CS /G /BPC 8 ID \x00 EI EMC')
+        found = {s['mcid']: (s['text'], s['paint']) for s in pdf_tags.sequences(data)}
+        self.assertEqual(found, {3: (True, False), 4: (False, True)})
