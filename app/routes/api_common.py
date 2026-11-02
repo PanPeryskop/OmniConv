@@ -1,8 +1,29 @@
 import os
 import time
-from flask import jsonify, current_app
+from flask import jsonify, current_app, has_request_context
 
-conversion_jobs = {}
+from ..utils.client import client_id
+
+IDLE_STATUSES = ('uploaded', 'completed', 'failed', 'cancelled', 'error')
+
+
+class JobStore(dict):
+    def __setitem__(self, key, value):
+        if isinstance(value, dict):
+            value.setdefault('created_at', time.time())
+            if 'owner' not in value and has_request_context():
+                value['owner'] = client_id()
+        super().__setitem__(key, value)
+
+    def owned(self, key):
+        job = self.get(key) if isinstance(key, str) else None
+        if job is None:
+            return None
+        owner = job.get('owner')
+        return job if owner is None or owner == client_id() else None
+
+
+conversion_jobs = JobStore()
 
 def api_response(data=None, error=None, success=True):
     return jsonify({'success': success, 'data': data, 'error': error})
@@ -27,7 +48,7 @@ def file_expiry(file_id):
     expires_at = mtime + hours * 3600
     return {'file_id': file_id, 'expires_at': int(expires_at * 1000), 'ttl_seconds': max(0, int(expires_at - time.time()))}
 
-def register_result_file(path, filename=None):
+def register_result_file(path, filename=None, owner=None):
     from ..utils.file_handler import generate_file_id
     file_id = generate_file_id()
     conversion_jobs[file_id] = {
@@ -37,7 +58,7 @@ def register_result_file(path, filename=None):
         'file_type': 'document',
         'output_formats': get_output_formats_for_type('document'),
         'progress': 0,
-        'created_at': time.time(),
+        'owner': owner,
     }
     return file_id
 

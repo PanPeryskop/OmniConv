@@ -1,7 +1,13 @@
+import ipaddress
+import mimetypes
 import os
 import re
+import shutil
+import socket
+import urllib.request
 import uuid
 import time
+from urllib.parse import unquote, urlparse
 from pathlib import Path
 from typing import Tuple, Optional
 from werkzeug.utils import secure_filename
@@ -92,35 +98,67 @@ def get_file_size_mb(file_path: str) -> float:
     return os.path.getsize(file_path) / (1024 * 1024)
 
 
-def download_file_from_url(url: str, upload_folder: Path) -> Tuple[str, str, str]:
-    import urllib.request
-    from urllib.parse import urlparse
-    import tempfile
-    
-    # Parse filename from URL
-    path = urlparse(url).path
-    original_filename = os.path.basename(path)
-    if not original_filename:
-        original_filename = "downloaded_file"
-    
-    # Sanitize filename
-    original_filename = secure_filename(original_filename)
-    
-    # Generate ID and paths
-    file_id = generate_file_id()
-    ext = get_file_extension(original_filename)
-    if not ext:
-        # Try to guess extension from content-type if requests was used, but with urllib it's harder
-        # For now assume no extension if not in URL
-        pass
-        
-    saved_filename = f"{file_id}.{ext}" if ext else file_id
-    saved_path = upload_folder / saved_filename
-    
-    # Download
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        check_remote_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def check_remote_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+        raise ValueError('Only http and https links are supported')
+    port = parsed.port or (443 if parsed.scheme == 'https' else 80)
     try:
-        urllib.request.urlretrieve(url, str(saved_path))
+        infos = socket.getaddrinfo(parsed.hostname, port, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        raise ValueError(f'Host not found: {parsed.hostname}')
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0].split('%')[0])
+        if getattr(ip, 'ipv4_mapped', None):
+            ip = ip.ipv4_mapped
+        if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+            raise ValueError('This address cannot be downloaded from')
+
+
+def _url_opener():
+    opener = urllib.request.OpenerDirector()
+    for handler in (
+        urllib.request.UnknownHandler(),
+        urllib.request.HTTPHandler(),
+        urllib.request.HTTPSHandler(),
+        _SafeRedirectHandler(),
+        urllib.request.HTTPDefaultErrorHandler(),
+        urllib.request.HTTPErrorProcessor(),
+    ):
+        opener.add_handler(handler)
+    return opener
+
+
+def download_file_from_url(url: str, upload_folder: Path) -> Tuple[str, str, str]:
+    url = (url or '').strip()
+    check_remote_url(url)
+    request = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 OmniConv'})
+    file_id = generate_file_id()
+    saved_path = None
+    try:
+        with _url_opener().open(request, timeout=30) as response:
+            original_filename = secure_filename(
+                response.headers.get_filename() or unquote(os.path.basename(urlparse(response.geturl()).path))
+            ) or 'downloaded_file'
+            if not get_file_extension(original_filename):
+                guessed = mimetypes.guess_extension((response.headers.get_content_type() or '').lower())
+                if guessed:
+                    original_filename += guessed
+            ext = get_file_extension(original_filename)
+            saved_path = upload_folder / (f"{file_id}.{ext}" if ext else file_id)
+            with open(saved_path, 'wb') as out:
+                shutil.copyfileobj(response, out, 1024 * 1024)
+    except ValueError:
+        raise
     except Exception as e:
+        if saved_path and os.path.exists(saved_path):
+            os.remove(saved_path)
         raise Exception(f"Failed to download file: {str(e)}")
-        
+
     return file_id, str(saved_path), original_filename

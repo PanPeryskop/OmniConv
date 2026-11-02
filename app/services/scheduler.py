@@ -6,20 +6,33 @@ import threading
 from .job_registry import registry
 
 
-def cleanup_job_store(store, max_age_hours):
-    keys_to_delete = []
+def cleanup_job_store(store, idle_hours, result_hours):
     now = time.time()
-    for job_id, job in store.items():
+    for job_id, job in list(store.items()):
         created_at = job.get('created_at')
         if created_at is None:
             job['created_at'] = now
             continue
+        hours = idle_hours if job.get('status') == 'uploaded' else result_hours
+        if now - created_at > hours * 3600:
+            store.pop(job_id, None)
 
-        if now - created_at > max_age_hours * 3600:
-            keys_to_delete.append(job_id)
 
-    for key in keys_to_delete:
-        del store[key]
+def active_input_paths():
+    from ..routes.api_common import conversion_jobs, IDLE_STATUSES
+    return {
+        os.path.normcase(os.path.abspath(job['input_path']))
+        for job in list(conversion_jobs.values())
+        if job.get('status') not in IDLE_STATUSES and job.get('input_path')
+    }
+
+
+def fail_orphaned_jobs():
+    from ..routes.api_common import conversion_jobs
+    from ..routes.youtube import JOBS
+    running = registry.running_ids()
+    active = set(conversion_jobs) | set(JOBS)
+    registry.fail_orphans(running - active)
 
 
 def sweep_folder(folder, max_age_seconds, protected=frozenset()):
@@ -44,7 +57,7 @@ def sweep_folder(folder, max_age_seconds, protected=frozenset()):
 def run_cleanup(app):
     max_age = app.config.get('CLEANUP_AFTER_HOURS', 1) * 3600
     registry.cleanup_expired()
-    sweep_folder(app.config.get('UPLOAD_FOLDER'), max_age)
+    sweep_folder(app.config.get('UPLOAD_FOLDER'), max_age, active_input_paths())
     sweep_folder(app.config.get('OUTPUT_FOLDER'), max_age, registry.protected_paths())
 
 
@@ -54,16 +67,22 @@ def start_cleanup_scheduler(app):
             while True:
                 time.sleep(600)
                 hours = app.config.get('CLEANUP_AFTER_HOURS', 1)
+                result_hours = max(hours, app.config.get('RESULT_RETENTION_HOURS', hours))
 
                 try:
                     from ..routes.api_common import conversion_jobs
-                    cleanup_job_store(conversion_jobs, hours)
+                    cleanup_job_store(conversion_jobs, hours, result_hours)
                 except Exception:
                     pass
 
                 try:
                     from ..routes.youtube import JOBS
-                    cleanup_job_store(JOBS, hours)
+                    cleanup_job_store(JOBS, hours, result_hours)
+                except Exception:
+                    pass
+
+                try:
+                    fail_orphaned_jobs()
                 except Exception:
                     pass
 

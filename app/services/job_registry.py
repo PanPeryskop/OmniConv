@@ -183,6 +183,17 @@ class JobRegistry:
             self._remove_file(row['output_path'])
         return len(rows)
 
+    def running_ids(self):
+        return {row['id'] for row in self._read("SELECT id FROM jobs WHERE status = 'running'")}
+
+    def fail_orphans(self, orphan_ids):
+        for job_id in orphan_ids:
+            self.fail(job_id, error_code='err_job_lost')
+        running = self.running_ids()
+        for job_id in list(self._progress):
+            if job_id not in running:
+                self._progress.pop(job_id, None)
+
     def protected_paths(self):
         rows = self._read(
             "SELECT output_path FROM jobs WHERE status = 'completed' AND output_path IS NOT NULL AND expires_at > ?",

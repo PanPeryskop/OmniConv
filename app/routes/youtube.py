@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, jsonify, current_app, sen
 from ..services.video_downloader import VideoDownloaderService, DownloadError
 from ..services.job_registry import registry
 from ..utils.client import client_id
+from .api_common import JobStore
 from urllib.parse import urlparse
 import os
 import threading
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 youtube_bp = Blueprint('youtube', __name__)
 
-JOBS = {}
+JOBS = JobStore()
 JOBS_LOCK = threading.Lock()
 
 MAX_CONCURRENT_DOWNLOADS = 3
@@ -265,7 +266,7 @@ def download():
 @youtube_bp.route('/api/youtube/status/<job_id>')
 def job_status(job_id):
     with JOBS_LOCK:
-        job = JOBS.get(job_id)
+        job = JOBS.owned(job_id)
 
     if not job:
         return jsonify({'error': 'Job not found'}), 404
@@ -297,7 +298,7 @@ def job_status(job_id):
 @youtube_bp.route('/api/youtube/download_file/<job_id>')
 def download_file(job_id):
     with JOBS_LOCK:
-        job = JOBS.get(job_id)
+        job = JOBS.owned(job_id)
 
     if not job or job.get('status') != 'completed':
         return jsonify({'error': 'File not ready'}), 404
@@ -311,7 +312,7 @@ def download_file(job_id):
 @youtube_bp.route('/api/youtube/smart-rename/<job_id>', methods=['POST'])
 def smart_rename_youtube(job_id):
     with JOBS_LOCK:
-        job = JOBS.get(job_id)
+        job = JOBS.owned(job_id)
 
     if not job or job.get('status') != 'completed':
         return jsonify({'error': 'File not ready'}), 404

@@ -23,10 +23,9 @@ def ocr_file():
     file_id = data['file_id']
     lang = data.get('lang', 'en')
 
-    if file_id not in conversion_jobs:
+    job = conversion_jobs.owned(file_id)
+    if not job:
         return api_response(error={'type': 'NotFoundError', 'message': 'File not found'}, success=False), 404
-
-    job = conversion_jobs[file_id]
 
     try:
         ocr_service = OCRService()
@@ -90,6 +89,7 @@ def upload_from_url():
         file_type = get_file_type(original_filename)
         if not file_type:
             ext = get_file_extension(original_filename)
+            os.remove(saved_path)
             return api_response(error={'type': 'UnsupportedFormatError', 'message': f'Unsupported file format: {ext}'}, success=False), 400
             
         output_formats = get_output_formats_for_type(file_type)
@@ -109,6 +109,8 @@ def upload_from_url():
             'file_type': file_type,
             'output_formats': output_formats
         })
+    except ValueError as e:
+        return api_response(error={'type': 'InvalidRequestError', 'message': str(e)}, success=False), 400
     except Exception as e:
         return api_response(error={'type': 'DownloadError', 'message': str(e)}, success=False), 500
 
@@ -176,10 +178,9 @@ def upload_archive():
 
 @convert_bp.route('/formats/<file_id>', methods=['GET'])
 def get_formats(file_id):
-    if file_id not in conversion_jobs:
+    job = conversion_jobs.owned(file_id)
+    if not job:
         return api_response(error={'type': 'NotFoundError', 'message': 'File not found'}, success=False), 404
-    
-    job = conversion_jobs[file_id]
     return api_response(data={'file_id': file_id, 'file_type': job['file_type'], 'output_formats': job['output_formats']})
 
 @convert_bp.route('/convert', methods=['POST'])
@@ -198,10 +199,9 @@ def start_conversion():
     if not file_id or not output_format:
         return api_response(error={'type': 'InvalidRequestError', 'message': 'file_id and output_format required'}, success=False), 400
 
-    if file_id not in conversion_jobs:
+    source = conversion_jobs.owned(file_id)
+    if not source or 'output_formats' not in source:
         return api_response(error={'type': 'NotFoundError', 'message': 'File not found'}, success=False), 404
-
-    source = conversion_jobs[file_id]
 
     if output_format.lower() not in [f.lower() for f in source['output_formats']]:
         return api_response(error={'type': 'UnsupportedFormatError', 'message': f'Format {output_format} not available'}, success=False), 400
@@ -301,7 +301,7 @@ def run_conversion(job, output_format, options, progress_callback):
         if info:
             job['ocr_info'] = info
         if result_path.lower().endswith('.pdf'):
-            job['result_file_id'] = register_result_file(result_path)
+            job['result_file_id'] = register_result_file(result_path, owner=job.get('owner'))
         job['progress'] = 100
         job['status'] = 'completed'
         registry.complete(job['job_id'], result_path, job.get('input_size'), job.get('output_size'))
@@ -334,7 +334,7 @@ def run_conversion(job, output_format, options, progress_callback):
 
 @convert_bp.route('/cancel/<job_id>', methods=['POST'])
 def cancel_job(job_id):
-    job = conversion_jobs.get(job_id)
+    job = conversion_jobs.owned(job_id)
     if not job:
         return api_response(error={'type': 'NotFoundError', 'message': 'Job not found'}, success=False), 404
     if job.get('status') in ('completed', 'failed', 'cancelled'):
@@ -351,7 +351,7 @@ def ocr_engines():
 
 @convert_bp.route('/files/<file_id>/download', methods=['GET'])
 def download_uploaded_file(file_id):
-    job = conversion_jobs.get(file_id)
+    job = conversion_jobs.owned(file_id)
     if not job or not os.path.exists(job.get('input_path', '')):
         return api_response(error={'type': 'NotFoundError', 'message': 'File not found'}, success=False), 404
     touch_file(file_id)
@@ -359,7 +359,8 @@ def download_uploaded_file(file_id):
 
 @convert_bp.route('/files/<file_id>/touch', methods=['POST'])
 def touch_uploaded_file(file_id):
-    if file_id not in conversion_jobs or not os.path.exists(conversion_jobs[file_id].get('input_path', '')):
+    job = conversion_jobs.owned(file_id)
+    if not job or not os.path.exists(job.get('input_path', '')):
         return api_response(error={'type': 'NotFoundError', 'message': 'File not found'}, success=False), 404
     touch_file(file_id)
     return api_response(data=file_expiry(file_id))
@@ -397,10 +398,9 @@ def smart_rename():
 
 @convert_bp.route('/status/<job_id>', methods=['GET'])
 def get_status(job_id):
-    if job_id not in conversion_jobs:
+    job = conversion_jobs.owned(job_id)
+    if not job:
         return api_response(error={'type': 'NotFoundError', 'message': 'Job not found'}, success=False), 404
-    
-    job = conversion_jobs[job_id]
     
     response_data = {'job_id': job_id, 'status': job['status'], 'progress': job.get('progress', 0)}
     if job.get('error_code'):
@@ -419,15 +419,17 @@ def get_status(job_id):
 
 @convert_bp.route('/download/<job_id>', methods=['GET'])
 def download_file(job_id):
-    if job_id not in conversion_jobs:
-        return api_response(error={'type': 'NotFoundError', 'message': 'Job not found'}, success=False), 404
-    
-    job = conversion_jobs[job_id]
-    
+    job = conversion_jobs.owned(job_id)
+    if not job:
+        record = registry.get(job_id, client_id())
+        if not record:
+            return api_response(error={'type': 'NotFoundError', 'message': 'Job not found'}, success=False), 404
+        job = record
+
     if job['status'] != 'completed':
         return api_response(error={'type': 'NotReadyError', 'message': 'Conversion not complete'}, success=False), 400
-    
-    output_path = job['output_path']
+
+    output_path = job.get('output_path') or ''
     
     if not os.path.exists(output_path):
         return api_response(error={'type': 'FileNotFoundError', 'message': 'Output file not found'}, success=False), 404

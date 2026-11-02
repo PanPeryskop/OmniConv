@@ -61,7 +61,8 @@ def start_compression():
     if not file_id:
         return api_response(error={'type': 'InvalidRequestError', 'message': 'file_id required'}, success=False), 400
 
-    if file_id not in conversion_jobs:
+    source = conversion_jobs.owned(file_id)
+    if not source or 'file_type' not in source:
         return api_response(error={'type': 'NotFoundError', 'message': 'File not found'}, success=False), 404
 
     try:
@@ -72,7 +73,6 @@ def start_compression():
     if target_size_mb <= 0:
         return api_response(error={'type': 'InvalidRequestError', 'message': 'target_size_mb must be greater than 0'}, success=False), 400
 
-    source = conversion_jobs[file_id]
     kind = get_compress_kind(source)
 
     if not kind:

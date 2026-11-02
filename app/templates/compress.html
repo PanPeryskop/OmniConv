@@ -94,14 +94,14 @@
             <h3 class="section-label" data-i18n="target_size">Target File Size</h3>
 
             <div class="size-display">
-                <span class="size-value" id="targetSizeValue">10</span>
+                <span class="size-value">10</span>
                 <span class="size-unit">MB</span>
             </div>
 
             <div class="slider-container">
                 <div class="slider-track">
-                    <div class="slider-fill" id="sliderFill"></div>
-                    <input type="range" id="sizeSlider" min="1" max="100" value="10" class="slider-input" aria-label="Target File Size" data-i18n-aria="target_size">
+                    <div class="slider-fill"></div>
+                    <input type="range" class="slider-input" aria-label="Target File Size" data-i18n-aria="target_size">
                 </div>
                 <div class="slider-labels">
                     <span>1 MB</span>
@@ -112,15 +112,15 @@
             <div class="size-info">
                 <div class="size-stat">
                     <span class="size-stat-label" data-i18n="size_original">Original</span>
-                    <span class="size-stat-value" id="originalSize">0 MB</span>
+                    <span class="size-stat-value">0 MB</span>
                 </div>
                 <div class="size-stat">
                     <span class="size-stat-label" data-i18n="size_target">Target</span>
-                    <span class="size-stat-value" id="targetSize">10 MB</span>
+                    <span class="size-stat-value">10 MB</span>
                 </div>
                 <div class="size-stat reduction">
                     <span class="size-stat-label" data-i18n="size_reduction">Reduction</span>
-                    <span class="size-stat-value" id="reductionPercent">0%</span>
+                    <span class="size-stat-value">0%</span>
                 </div>
             </div>
         </div>
@@ -255,20 +255,6 @@
     line-height: 1.4;
 }
 
-.mode-badge {
-    display: inline-block;
-    margin-left: var(--space-1);
-    padding: 1px 6px;
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-radius: var(--radius-full);
-    background: var(--color-success);
-    color: #000;
-    vertical-align: middle;
-}
-
 .pdf-toggles {
     display: flex;
     flex-wrap: wrap;
@@ -290,154 +276,6 @@
     height: 16px;
     accent-color: var(--accent-primary);
     cursor: pointer;
-}
-
-.size-control {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-6);
-}
-
-.size-display {
-    display: flex;
-    align-items: baseline;
-    justify-content: center;
-    gap: var(--space-2);
-}
-
-.size-value {
-    font-size: var(--text-5xl);
-    font-weight: 700;
-    letter-spacing: -0.04em;
-    font-variant-numeric: tabular-nums;
-    background: var(--gradient-primary);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    transition: transform var(--duration-fast) var(--ease-bounce);
-}
-
-.size-value.bounce {
-    animation: value-bounce 0.3s var(--ease-bounce);
-}
-
-@keyframes value-bounce {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.1); }
-}
-
-.size-unit {
-    font-size: var(--text-xl);
-    font-weight: 500;
-    color: var(--text-tertiary);
-}
-
-.slider-container {
-    padding: 0 var(--space-2);
-}
-
-.slider-track {
-    position: relative;
-    height: 8px;
-    background: var(--surface-glass-active);
-    border-radius: var(--radius-full);
-    overflow: visible;
-}
-
-.slider-fill {
-    position: absolute;
-    left: 0;
-    top: 0;
-    height: 100%;
-    background: var(--text-primary);
-    border-radius: var(--radius-full);
-    transition: width var(--duration-fast);
-    pointer-events: none;
-}
-
-.slider-input {
-    position: absolute;
-    top: 50%;
-    left: 0;
-    width: 100%;
-    height: 32px;
-    transform: translateY(-50%);
-    -webkit-appearance: none;
-    appearance: none;
-    background: transparent;
-    cursor: pointer;
-    margin: 0;
-}
-
-.slider-input::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 24px;
-    height: 24px;
-    background: var(--text-primary);
-    border-radius: 50%;
-    cursor: grab;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    transition: transform var(--duration-fast) var(--ease-bounce), box-shadow var(--duration-fast);
-}
-
-.slider-input::-webkit-slider-thumb:hover {
-    transform: scale(1.15);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-}
-
-.slider-input::-webkit-slider-thumb:active {
-    cursor: grabbing;
-    transform: scale(1.1);
-}
-
-.slider-input::-moz-range-thumb {
-    width: 24px;
-    height: 24px;
-    background: var(--text-primary);
-    border: none;
-    border-radius: 50%;
-    cursor: grab;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-.slider-labels {
-    display: flex;
-    justify-content: space-between;
-    margin-top: var(--space-2);
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-}
-
-.size-info {
-    display: flex;
-    justify-content: center;
-    gap: var(--space-8);
-    padding: var(--space-4);
-    background: var(--surface-glass);
-    border-radius: var(--radius-lg);
-}
-
-.size-stat {
-    text-align: center;
-}
-
-.size-stat-label {
-    display: block;
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: var(--space-1);
-}
-
-.size-stat-value {
-    font-size: var(--text-base);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-}
-
-.size-stat.reduction .size-stat-value {
-    color: var(--color-success);
 }
 
 .compress-btn {
@@ -490,9 +328,6 @@
     .compression-settings {
         padding: var(--space-5);
     }
-    .size-info {
-        gap: var(--space-4);
-    }
 }
 </style>
 
@@ -508,7 +343,6 @@ document.addEventListener('DOMContentLoaded', () => {
         isPdf: false,
         pdfMode: 'balanced',
         originalSizeMB: 0,
-        targetSizeMB: 10,
         isCompressing: false,
         pollInterval: null
     };
@@ -529,13 +363,6 @@ document.addEventListener('DOMContentLoaded', () => {
         pdfGrayscale: document.getElementById('pdfGrayscale'),
         pdfStripMeta: document.getElementById('pdfStripMeta'),
         sizeControl: document.getElementById('sizeControl'),
-        slider: document.getElementById('sizeSlider'),
-        sliderFill: document.getElementById('sliderFill'),
-        targetValue: document.getElementById('targetSizeValue'),
-        sizeUnit: document.querySelector('.size-unit'),
-        originalSize: document.getElementById('originalSize'),
-        targetSize: document.getElementById('targetSize'),
-        reductionPercent: document.getElementById('reductionPercent'),
         compressBtn: document.getElementById('compressBtn'),
         progress: document.getElementById('compressionProgress'),
         compressionFill: document.getElementById('compressionFill'),
@@ -688,15 +515,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return icons[type] || icons.image;
     }
 
-    function formatSize(bytes) {
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / 1048576).toFixed(2) + ' MB';
-    }
-
-    function formatMB(mb) {
-        return formatSize(Math.round(mb * 1048576));
-    }
+    const formatSize = SizeSlider.formatSize;
+    const slider = SizeSlider.create(els.sizeControl);
 
     function showSettings() {
         els.settings.classList.remove('hidden');
@@ -704,34 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.isPdf) setPdfMode(state.pdfMode);
         else els.sizeControl.classList.remove('hidden');
 
-        const originalMB = state.originalSizeMB;
-        const minRatio = state.isPdf ? 0.01 : 0.1;
-        const defaultRatio = state.isPdf ? 0.3 : 0.6;
-
-        const minVal = parseFloat(Math.max(0.01, originalMB * minRatio).toFixed(2));
-        const maxVal = parseFloat(originalMB.toFixed(2));
-
-        els.slider.min = minVal;
-        els.slider.max = maxVal;
-
-        if (originalMB > 500) els.slider.step = 5;
-        else if (originalMB > 100) els.slider.step = 1;
-        else if (originalMB > 10) els.slider.step = 0.5;
-        else if (originalMB > 1) els.slider.step = 0.1;
-        else els.slider.step = 0.01;
-
-        const defaultTarget = parseFloat((originalMB * defaultRatio).toFixed(2));
-        els.slider.value = defaultTarget;
-        state.targetSizeMB = parseFloat(els.slider.value);
-
-        const labels = els.settings.querySelectorAll('.slider-labels span');
-        if (labels.length >= 2) {
-            labels[0].textContent = formatMB(minVal);
-            labels[1].textContent = formatMB(maxVal);
-        }
-
-        updateSlider();
-        updateSizeInfo();
+        slider.configure(state.originalSizeMB * 1048576, state.isPdf ? { ratio: 0.3, minRatio: 0.01 } : { ratio: 0.6, minRatio: 0.1 });
     }
 
     function setPdfMode(mode) {
@@ -746,38 +539,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     els.modeOptions.forEach(btn => {
         btn.addEventListener('click', () => setPdfMode(btn.dataset.mode));
-    });
-
-    function updateSlider() {
-        const percent = ((els.slider.value - els.slider.min) / (els.slider.max - els.slider.min)) * 100;
-        els.sliderFill.style.width = `${percent}%`;
-        const value = parseFloat(els.slider.value);
-        els.targetValue.textContent = value < 1 ? Math.round(value * 1024) : value;
-        els.sizeUnit.textContent = value < 1 ? 'KB' : 'MB';
-
-        els.targetValue.classList.add('bounce');
-        setTimeout(() => els.targetValue.classList.remove('bounce'), 300);
-    }
-
-    function updateSizeInfo() {
-        const original = state.originalSizeMB;
-        const target = parseFloat(els.slider.value);
-        state.targetSizeMB = target;
-
-        els.originalSize.textContent = formatMB(original);
-        els.targetSize.textContent = formatMB(target);
-
-        if (target < original) {
-            const reduction = ((original - target) / original * 100).toFixed(0);
-            els.reductionPercent.textContent = reduction + '%';
-        } else {
-            els.reductionPercent.textContent = '0%';
-        }
-    }
-
-    els.slider.addEventListener('input', () => {
-        updateSlider();
-        updateSizeInfo();
     });
 
     els.compressBtn.addEventListener('click', startCompression);
@@ -795,7 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const payload = {
             file_id: state.fileId,
-            target_size_mb: state.targetSizeMB
+            target_size_mb: slider.target()
         };
         if (state.isPdf) {
             payload.mode = state.pdfMode;
@@ -873,7 +634,7 @@ document.addEventListener('DOMContentLoaded', () => {
         Toast.success(t('compression_complete'));
 
         const inputSize = result.input_size || state.originalSizeMB * 1048576;
-        const outputSize = result.output_size ?? state.targetSizeMB * 1048576;
+        const outputSize = result.output_size ?? slider.target() * 1048576;
         const inputExt = OmniStats.extOf(state.fileName);
         OmniStats.record({ jobId: state.jobId, kind: 'compression', from: inputExt, to: OmniStats.extOf(result.filename) || inputExt, inputSize, outputSize });
         const saved = Math.max(0, (1 - outputSize / inputSize) * 100);
@@ -886,7 +647,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let noteKey = null;
         if (info.kept_original) {
             noteKey = 'note_kept_original';
-        } else if (info.target_reached === false || (!state.isPdf && outputSize > state.targetSizeMB * 1048576 * 1.05)) {
+        } else if (info.target_reached === false || (!state.isPdf && outputSize > slider.target() * 1048576 * 1.05)) {
             noteKey = 'note_target_missed';
         }
         if (noteKey) setText(els.resultNote, noteKey);
@@ -917,7 +678,6 @@ document.addEventListener('DOMContentLoaded', () => {
         state.fileType = null;
         state.isPdf = false;
         state.originalSizeMB = 0;
-        state.targetSizeMB = 10;
         state.isCompressing = false;
 
         if (state.pollInterval) {

@@ -86,21 +86,48 @@
             </div>
 
             <div class="tool-options" data-tool="compress">
-                <div class="choice-grid" data-group="compressMode">
+                <span class="field-label section-center" data-i18n="pdf_level">Compression level</span>
+                <div class="choice-grid three" data-group="compressMode">
                     <button type="button" class="choice" data-value="lossless"><span class="choice-title" data-i18n="pdf_mode_lossless">Lossless</span><span class="choice-desc" data-i18n="pdf_mode_lossless_desc"></span></button>
-                    <button type="button" class="choice active" data-value="balanced"><span class="choice-title" data-i18n="pdf_mode_balanced">Balanced</span><span class="choice-desc" data-i18n="pdf_mode_balanced_desc"></span></button>
+                    <button type="button" class="choice active" data-value="balanced"><span class="choice-title"><span data-i18n="pdf_mode_balanced">Balanced</span> <span class="mode-badge" data-i18n="recommended">Recommended</span></span><span class="choice-desc" data-i18n="pdf_mode_balanced_desc"></span></button>
                     <button type="button" class="choice" data-value="strong"><span class="choice-title" data-i18n="pdf_mode_strong">Strong</span><span class="choice-desc" data-i18n="pdf_mode_strong_desc"></span></button>
                     <button type="button" class="choice" data-value="extreme"><span class="choice-title" data-i18n="pdf_mode_extreme">Maximum</span><span class="choice-desc" data-i18n="pdf_mode_extreme_desc"></span></button>
                     <button type="button" class="choice" data-value="target"><span class="choice-title" data-i18n="pdf_mode_target">Target size</span><span class="choice-desc" data-i18n="pdf_mode_target_desc"></span></button>
                 </div>
-                <div class="field hidden" id="compressTargetField">
-                    <label class="field-label" for="compressTarget" data-i18n="pdf_target_mb">Target size (MB)</label>
-                    <input type="number" class="text-input narrow" id="compressTarget" min="0.01" step="0.1">
-                    <p class="option-hint" id="compressTargetHint"></p>
-                </div>
                 <div class="option-row">
                     <label class="check-row"><input type="checkbox" id="compressGray"><span data-i18n="pdf_grayscale">Convert to grayscale</span></label>
                     <label class="check-row"><input type="checkbox" id="compressStrip"><span data-i18n="pdf_strip_metadata">Remove metadata</span></label>
+                </div>
+                <div class="size-control hidden" id="compressTargetField">
+                    <span class="field-label section-center" data-i18n="target_size">Target File Size</span>
+                    <div class="size-display">
+                        <span class="size-value">0</span>
+                        <span class="size-unit">MB</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-track">
+                            <div class="slider-fill"></div>
+                            <input type="range" class="slider-input" aria-label="Target File Size" data-i18n-aria="target_size">
+                        </div>
+                        <div class="slider-labels">
+                            <span></span>
+                            <span></span>
+                        </div>
+                    </div>
+                    <div class="size-info">
+                        <div class="size-stat">
+                            <span class="size-stat-label" data-i18n="size_original">Original</span>
+                            <span class="size-stat-value"></span>
+                        </div>
+                        <div class="size-stat">
+                            <span class="size-stat-label" data-i18n="size_target">Target</span>
+                            <span class="size-stat-value"></span>
+                        </div>
+                        <div class="size-stat reduction">
+                            <span class="size-stat-label" data-i18n="size_reduction">Reduction</span>
+                            <span class="size-stat-value"></span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -672,6 +699,8 @@
 
 .choice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); }
 .choice-grid.compact { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+.section-center { text-align: center; }
+#compressTargetField { margin-top: var(--space-2); }
 .choice-grid.two { grid-template-columns: repeat(2, 1fr); }
 .choice-grid.three { grid-template-columns: repeat(3, 1fr); }
 .choice {
@@ -949,6 +978,7 @@ body.drag-over::after {
     .pdf-file-actions { width: 100%; }
     .pdf-file-actions > * { flex: 1; justify-content: center; }
     .tool-grid { grid-template-columns: 1fr 1fr; }
+    .choice-grid.three:not(.compact) { grid-template-columns: 1fr 1fr; }
     .tool-panel { padding: var(--space-4); }
     .watermark-layout { grid-template-columns: 1fr; }
     .watermark-preview { position: relative; top: 0; max-width: 200px; margin: 0 auto; width: 100%; }
@@ -1051,11 +1081,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return new ToolError(fallbackKey);
     }
 
-    function formatSize(bytes) {
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / 1048576).toFixed(2) + ' MB';
-    }
+    const formatSize = SizeSlider.formatSize;
 
     function pageUrl(fileId, index, width) {
         return `/api/pdf/page/${encodeURIComponent(fileId)}/${index}?w=${width}`;
@@ -1152,10 +1178,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function keepAlive() {
         if (!state.versions.length || state.expired) return;
-        const results = await Promise.all(trackedIds().map(id => postJson(`/api/files/${encodeURIComponent(id)}/touch`).catch(() => ({ status: 0 }))));
         const currentId = file()?.file_id;
         const ids = trackedIds();
-        if (results.some((r, i) => r.status === 404 && ids[i] === currentId)) markExpired();
+        const results = await Promise.all(ids.map(id => postJson(`/api/files/${encodeURIComponent(id)}/touch`).catch(() => ({ status: 0 }))));
+        if (currentId === file()?.file_id && results.some((r, i) => r.status === 404 && ids[i] === currentId)) markExpired();
     }
 
     function markExpired() {
@@ -1554,9 +1580,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return value;
     }
 
+    const compressSlider = SizeSlider.create($('compressTargetField'));
+
     function initCompress() {
-        $('compressTargetHint').textContent = t('pdf_target_current', { size: formatSize(file().size) });
-        if (!$('compressTarget').value) $('compressTarget').value = Math.max(0.1, file().size / 1048576 / 2).toFixed(1);
+        compressSlider.configure(file().size, { id: file().file_id });
     }
 
     document.querySelector('[data-group="compressMode"]').addEventListener('choice', e => {
@@ -2077,8 +2104,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const mode = groupValue('compressMode');
                 const options = { mode, grayscale: $('compressGray').checked, strip_metadata: $('compressStrip').checked };
                 if (mode === 'target') {
-                    const value = Number($('compressTarget').value);
-                    if (!(value > 0)) throw new ToolError('err_pdf_target_size', null, $('compressTarget'));
+                    const value = compressSlider.target();
+                    if (!(value > 0)) throw new ToolError('err_pdf_target_size');
                     options.target_mb = value;
                 }
                 return { options };
@@ -2282,7 +2309,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.input_size && data.output_size) {
             i18n.set(els.resultSize, 'pdf_result_size', { before: formatSize(data.input_size), after: formatSize(data.output_size) });
             if (['compress', 'ocr', 'organize', 'metadata'].includes(tool) || data.output_size < data.input_size) {
-                const change = Math.round((data.output_size / data.input_size - 1) * 100);
+                const change = Math.max(-99, Math.round((data.output_size / data.input_size - 1) * 100));
                 els.resultSaving.textContent = `${change > 0 ? '+' : ''}${change}%`;
                 els.resultSaving.classList.toggle('worse', change >= 0);
                 els.resultSaving.classList.remove('hidden');

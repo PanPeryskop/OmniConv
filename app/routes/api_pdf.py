@@ -37,7 +37,7 @@ ERROR_STATUS = {
 
 
 def get_pdf_job(file_id):
-    job = conversion_jobs.get(file_id)
+    job = conversion_jobs.owned(file_id)
     if not job or not os.path.exists(job.get('input_path', '')):
         return None, (api_response(error={'type': 'NotFoundError', 'message': 'File not found'}, success=False), 404)
     if not job['original_filename'].lower().endswith('.pdf'):
@@ -116,7 +116,7 @@ def pdf_process():
         options['names'] = [j['original_filename'] for j in jobs]
 
     if tool == 'watermark' and options.get('kind') == 'image':
-        image_job = conversion_jobs.get(options.get('image_file_id') or '')
+        image_job = conversion_jobs.owned(options.get('image_file_id'))
         image_path = image_job.get('input_path') if image_job else None
         if not image_path or not os.path.exists(image_path) or not image_path.lower().endswith(IMAGE_EXTENSIONS):
             return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_watermark_image', 'message': 'Watermark image not found'}, success=False), 400
@@ -169,7 +169,7 @@ def run_pdf_tool(job, tools, tool, input_paths, out_base, options):
         if tools.info_result:
             job['compression_info'] = tools.info_result
         if result_path.lower().endswith('.pdf'):
-            job['result_file_id'] = register_result_file(result_path)
+            job['result_file_id'] = register_result_file(result_path, owner=job.get('owner'))
 
         job['progress'] = 100
         job['status'] = 'completed'

@@ -94,3 +94,4 @@ cloudflared-config.yml
 web-ext-artifacts/
 
 data/
+launch.json

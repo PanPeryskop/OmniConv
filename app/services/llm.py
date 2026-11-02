@@ -15,7 +15,10 @@ DEFAULT_TEXT_MODEL = 'ministral-3-8b-instruct-2512'
 
 
 class LLMService:
-    _models_cache = {'at': 0.0, 'keys': None}
+    OFFLINE_RETRY_SECONDS = 5.0
+
+    _models_cache = {'at': 0.0, 'keys': None, 'checked': False}
+    _models_lock = threading.Lock()
     _usage = {}
     _usage_lock = threading.Lock()
     _swap_lock = threading.Lock()
@@ -96,18 +99,20 @@ class LLMService:
     def available_models(self, max_age: float = 30.0):
         import time
         cache = LLMService._models_cache
-        if cache['keys'] is not None and time.time() - cache['at'] < max_age:
-            return cache['keys']
-        keys = None
-        try:
-            base = self.api_url.rsplit('/api/', 1)[0]
-            response = requests.get(f"{base}/api/v1/models", timeout=1.5)
-            response.raise_for_status()
-            keys = {m.get('key') for m in response.json().get('models', []) if m.get('key')}
-        except Exception:
+        with LLMService._models_lock:
+            ttl = max_age if cache['keys'] is not None else min(max_age, self.OFFLINE_RETRY_SECONDS)
+            if cache['checked'] and time.time() - cache['at'] < ttl:
+                return cache['keys']
             keys = None
-        cache['at'], cache['keys'] = time.time(), keys
-        return keys
+            try:
+                base = self.api_url.rsplit('/api/', 1)[0]
+                response = requests.get(f"{base}/api/v1/models", timeout=1.5)
+                response.raise_for_status()
+                keys = {m.get('key') for m in response.json().get('models', []) if m.get('key')}
+            except Exception:
+                keys = None
+            cache['at'], cache['keys'], cache['checked'] = time.time(), keys, True
+            return keys
 
     def resolve_model(self, model_key: str) -> str:
         keys = self.available_models() or set()

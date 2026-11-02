@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import threading
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
 
@@ -206,8 +207,9 @@ class OCRService(BaseConverter):
     ENGINES = ('rapid', 'qwen')
     DEFAULT_ENGINE = 'rapid'
 
-    _rapid = None
-    _rapid_key = None
+    RAPID_CACHE_SIZE = 2
+
+    _rapid_engines = OrderedDict()
     _rapid_lock = threading.Lock()
     _status_cache = {'at': 0.0, 'data': None}
 
@@ -286,18 +288,22 @@ class OCRService(BaseConverter):
     def _get_rapid(cls, quality: str = DEFAULT_RAPID_QUALITY, script: str = DEFAULT_RAPID_SCRIPT):
         key = (quality, script)
         with cls._rapid_lock:
-            if cls._rapid_key != key:
-                cls._release_rapid_locked()
-                from rapidocr import RapidOCR
-                cls._rapid = RapidOCR(params=cls._rapid_params(quality, script))
-                cls._rapid_key = key
-            return cls._rapid
+            engine = cls._rapid_engines.get(key)
+            if engine is not None:
+                cls._rapid_engines.move_to_end(key)
+                return engine
+            while len(cls._rapid_engines) >= cls.RAPID_CACHE_SIZE:
+                cls._rapid_engines.popitem(last=False)
+                gc.collect()
+            from rapidocr import RapidOCR
+            engine = RapidOCR(params=cls._rapid_params(quality, script))
+            cls._rapid_engines[key] = engine
+            return engine
 
     @classmethod
     def _release_rapid_locked(cls):
-        if cls._rapid is not None:
-            cls._rapid = None
-            cls._rapid_key = None
+        if cls._rapid_engines:
+            cls._rapid_engines.clear()
             gc.collect()
 
     @classmethod
