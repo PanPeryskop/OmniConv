@@ -40,7 +40,7 @@ class Wp0Test(unittest.TestCase):
         from app import create_app
         client = create_app().test_client()
         self.assertEqual(client.get('/api/pdf/edit/tasks').status_code, 200)
-        self.assertEqual(client.get('/api/pdf/edit/agent/status').status_code, 501)
+        self.assertEqual(client.get('/api/pdf/edit/agent/status').status_code, 200)
 
 
 if __name__ == '__main__':

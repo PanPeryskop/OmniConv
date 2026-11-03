@@ -1094,7 +1094,7 @@ const PdfEditor = (() => {
         s.ai.busy = true;
         renderSheet();
         const task = coreTask('ai', null);
-        const { body } = await postJson('/api/pdf/edit/ai', { mode, text, language: languageName(s.ai.language, 'en') }).catch(() => ({ body: {} }));
+        const { body } = await postJson('/api/pdf/edit/ai', { file_id: s.fileId, mode, text, language: languageName(s.ai.language, 'en') }).catch(() => ({ body: {} }));
         task.end(body.success ? 'done' : 'failed');
         if (s !== session) return;
         s.ai.busy = false;
@@ -1317,12 +1317,13 @@ const PdfEditor = (() => {
         const { body } = await postJson('/api/pdf/edit/search', {
             file_id: s.fileId, ops: s.ops, query: f.query, patterns: [...f.kinds], whole_word: f.whole
         }).catch(() => ({ body: {} }));
-        task.end(body.success ? 'done' : 'failed');
+        const cancelled = body.error?.code === 'err_cancelled';
+        task.end(body.success ? 'done' : cancelled ? 'cancelled' : 'failed');
         if (s !== session) return;
         f.busy = false;
         if (!body.success) {
             f.matches = null;
-            Toast.error(escapeHtml(errorText(body, 'err_connection')));
+            if (!cancelled) Toast.error(escapeHtml(errorText(body, 'err_connection')));
         } else {
             f.matches = body.data.matches;
             f.truncated = body.data.truncated;
