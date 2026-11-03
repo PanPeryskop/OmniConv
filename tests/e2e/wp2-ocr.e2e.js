@@ -57,6 +57,7 @@ async function recognizeAll(browser, url) {
     check((await notice.textContent()).includes('scanned pages'), 'recognize-all notice counts scanned pages');
     const candidates = await page.evaluate(() => PdfOcrView.candidates());
     await notice.locator('[data-ocr-all="run"]').click();
+    await page.waitForFunction(n => PdfEditor.bridge.ops().filter(op => op.type === 'ocr').length >= n, candidates.length);
     const ops = await page.evaluate(() => PdfEditor.bridge.ops());
     const ocr = ops.filter(op => op.type === 'ocr');
     check(ocr.length === candidates.length && new Set(ocr.map(op => op.g)).size === 1, `notice applies ${candidates.length} ocr ops as one group`);

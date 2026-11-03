@@ -5,7 +5,6 @@ import os
 import base64
 import threading
 from contextlib import contextmanager
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
