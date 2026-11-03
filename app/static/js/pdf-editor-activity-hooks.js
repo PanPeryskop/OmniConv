@@ -14,6 +14,7 @@ const PdfActivityHooks = (() => {
         en: {
             pe_act_translate: 'Translating document',
             pe_act_translate_count: 'Translating document… {done}/{total}',
+            pe_act_translate_page: 'Translating page {page}',
             pe_act_search: 'Searching document',
             pe_act_search_count: 'Searching document… {done}/{total}',
             pe_act_ai: 'AI rewrite',
@@ -27,6 +28,7 @@ const PdfActivityHooks = (() => {
         pl: {
             pe_act_translate: 'Tłumaczenie dokumentu',
             pe_act_translate_count: 'Tłumaczenie dokumentu… {done}/{total}',
+            pe_act_translate_page: 'Tłumaczenie strony {page}',
             pe_act_search: 'Wyszukiwanie w dokumencie',
             pe_act_search_count: 'Wyszukiwanie w dokumencie… {done}/{total}',
             pe_act_ai: 'Przeredagowanie AI',
@@ -40,6 +42,7 @@ const PdfActivityHooks = (() => {
         de: {
             pe_act_translate: 'Dokument wird übersetzt',
             pe_act_translate_count: 'Dokument wird übersetzt… {done}/{total}',
+            pe_act_translate_page: 'Seite {page} wird übersetzt',
             pe_act_search: 'Dokument wird durchsucht',
             pe_act_search_count: 'Dokument wird durchsucht… {done}/{total}',
             pe_act_ai: 'KI-Umformulierung',
@@ -57,6 +60,10 @@ const PdfActivityHooks = (() => {
         return detail.total && COUNTED.includes(kind) ? bridge.t(`${key}_count`, { done: detail.done || 0, total: detail.total }) : bridge.t(key);
     }
 
+    function entryTitle(entry, detail) {
+        return entry.page ? bridge.t('pe_act_translate_page', { page: entry.page }) : title(entry.kind, detail);
+    }
+
     function stageLabel(stage) {
         return STAGES.includes(stage) ? bridge.t(`pe_act_stage_${stage}`) : null;
     }
@@ -71,7 +78,7 @@ const PdfActivityHooks = (() => {
         if (!event.total) return {};
         const detail = { ...entry.handle.task.detail, done: event.done, total: event.total };
         if (entry.kind === 'translate') detail.eta_s = eta(entry, event.done, event.total);
-        return { progress: event.done / event.total, detail, title: title(entry.kind, detail) };
+        return { progress: event.done / event.total, detail, title: entryTitle(entry, detail) };
     }
 
     function postCancel(taskId) {
@@ -85,8 +92,11 @@ const PdfActivityHooks = (() => {
     }
 
     function start(event) {
-        const entry = { kind: event.kind, coreId: event.id, started: Date.now(), cancellable: !!event.cancellable, server: null, stopping: false };
-        const options = { titleKey: TITLES[event.kind], title: title(event.kind), total: event.total ?? null };
+        const entry = {
+            kind: event.kind, coreId: event.id, started: Date.now(), cancellable: !!event.cancellable, server: null, stopping: false,
+            pages: Array.isArray(event.pages) ? event.pages : null, page: event.kind === 'translate' && event.page ? event.page : null
+        };
+        const options = { titleKey: entry.page ? 'pe_act_translate_page' : TITLES[event.kind], title: entryTitle(entry, {}), total: event.total ?? null };
         if (entry.cancellable || entry.kind === 'search') options.cancel = () => cancel(entry);
         entry.handle = PdfProgress.local(event.kind, options);
         entries.set(event.id, entry);
@@ -125,7 +135,7 @@ const PdfActivityHooks = (() => {
         }
         if (entry.kind === 'translate' && !FINAL.includes(task.status) && typeof task.progress === 'number') {
             const { detail, progress } = entry.handle.task;
-            const current = bridge.session()?.order[detail.done || 0];
+            const current = (entry.pages || bridge.session()?.order || [])[detail.done || 0];
             if (detail.total && task.page === current) fields.progress = Math.max(progress || 0, Math.min(1, ((detail.done || 0) + task.progress) / detail.total));
         }
         entry.handle.update(fields);
@@ -152,9 +162,8 @@ const PdfActivityHooks = (() => {
     }
 
     function refreshTitles() {
-        const handles = [...entries.values()].map(entry => entry.handle);
-        if (fonts?.handle) handles.push(fonts.handle);
-        handles.forEach(handle => handle.update({ title: title(handle.task.kind, handle.task.detail), stageLabel: stageLabel(handle.task.stage) }));
+        entries.forEach(entry => entry.handle.update({ title: entryTitle(entry, entry.handle.task.detail), stageLabel: stageLabel(entry.handle.task.stage) }));
+        fonts?.handle?.update({ title: title('fonts', fonts.handle.task.detail), stageLabel: stageLabel(fonts.handle.task.stage) });
     }
 
     bridge.on('open', () => {
