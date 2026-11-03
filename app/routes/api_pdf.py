@@ -125,10 +125,11 @@ def pdf_edit_pages():
         return error
     try:
         sizes = pdf_editor.page_sizes(job['input_path'])
+        scans = pdf_editor.scan_pages(job['input_path'])
     except Exception:
         return api_response(error={'type': 'PdfToolError', 'code': 'err_pdf_damaged', 'message': 'The PDF could not be opened'}, success=False), 400
     touch_file(data.get('file_id'))
-    return api_response(data={'pages': sizes, 'digest': file_digest(job)})
+    return api_response(data={'pages': sizes, 'scans': scans, 'digest': file_digest(job)})
 
 
 @pdf_bp.route('/pdf/edit/keepalive', methods=['POST'])

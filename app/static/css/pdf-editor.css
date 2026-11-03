@@ -348,6 +348,8 @@ textarea.pe-widget { padding-top: 0.15em; }
     padding: 14px;
     border-radius: 16px;
     background: var(--surface-solid);
+    backdrop-filter: blur(24px) saturate(1.4);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
     border: 1px solid var(--border-strong);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
     display: flex;

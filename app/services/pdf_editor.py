@@ -1007,8 +1007,46 @@ def op_annot_edit(ctx, page, op):
     return page
 
 
+def hidden_spans(page):
+    found, visible = [], False
+    for block in page.get_text('rawdict', flags=fitz.TEXT_MEDIABOX_CLIP)['blocks']:
+        for line in block.get('lines', []):
+            for span in line['spans']:
+                if not ''.join(c['c'] for c in span.get('chars', [])).strip():
+                    continue
+                if span.get('alpha', 255) == 0:
+                    found.append(fitz.Rect(span['bbox']))
+                else:
+                    visible = True
+    return found, visible
+
+
+def image_cover(page):
+    return sum((image['bbox'] & page.rect).get_area() for image in page_images(page))
+
+
+def ocr_able(page):
+    if image_cover(page) < page.rect.get_area() * 0.5:
+        return False
+    return not hidden_spans(page)[1]
+
+
+def strip_hidden_text(page):
+    rects, _visible = hidden_spans(page)
+    if not rects:
+        return page
+    for rect in rects:
+        page.add_redact_annot(rect, fill=False, cross_out=False)
+    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE, graphics=fitz.PDF_REDACT_LINE_ART_NONE, text=fitz.PDF_REDACT_TEXT_REMOVE)
+    return page.parent.reload_page(page)
+
+
 def op_ocr(ctx, page, op):
-    if page.get_text('words'):
+    if op.get('force'):
+        if not ocr_able(page):
+            return page
+        page = strip_hidden_text(page)
+    elif page.get_text('words'):
         return page
     progress = pdf_scan.recognize(page, ctx.wait, op.get('retry'))
     if progress:
@@ -1096,10 +1134,22 @@ OPS = {
 RELOAD_AFTER = {'text', 'image', 'redact', 'ocr'}
 
 
+SUPERSEDED_BY_OCR = {'text', 'ocr'}
+
+
+def page_plan(ops):
+    plan = list(enumerate(ops))
+    last = next((i for i in range(len(ops) - 1, -1, -1) if ops[i].get('type') == 'ocr' and ops[i].get('force')), None)
+    if last is None:
+        return plan
+    kept = [(i, op) for i, op in plan[:last] if op.get('type') not in SUPERSEDED_BY_OCR]
+    return [plan[last]] + kept + plan[last + 1:]
+
+
 def apply_page_ops(ctx, page, ops):
     prepare_page(page)
     ctx.chars[page.number] = used_chars(page)
-    for index, op in enumerate(ops):
+    for index, op in page_plan(ops):
         handler = OPS.get(op.get('type'))
         if not handler:
             continue
@@ -1305,11 +1355,13 @@ def build_preview(path, index, ops, width):
             if index not in blanks:
                 return None
             add_blanks(doc, blanks, index)
+        able = ocr_able(doc[index])
         try:
             page = apply_page_ops(ctx, doc[index], group_ops(ops, doc.page_count).get(index, []))
         except pdf_scan.OcrPending as pending:
             return {'ocr_pending': True, **({'task_id': pending.task_id} if pending.task_id else {})}
         layout = page_layout(page, ctx)
+        layout['ocr_able'] = able
         layout['overflow'] = {str(i): by for (number, i), by in ctx.overflow.items() if number == index}
         zoom = max(0.05, min(5.0, width / max(1.0, page.rect.width)))
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
@@ -1338,3 +1390,14 @@ def page_sizes(path):
             rect = page.rect
             sizes.append([round(rect.width, 2), round(rect.height, 2)])
         return sizes
+
+
+def scan_pages(path):
+    with fitz.open(path) as doc:
+        found = []
+        for page in doc:
+            area = page.rect.get_area()
+            cover = sum((fitz.Rect(info['bbox']) & page.rect).get_area() for info in page.get_image_info())
+            if area and cover >= area * 0.5:
+                found.append(page.number)
+        return found
