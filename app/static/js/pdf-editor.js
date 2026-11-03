@@ -62,6 +62,9 @@ const PdfEditor = (() => {
     const round = v => Math.round(v * 100) / 100;
     let els = null;
     let s = null;
+    const listeners = {};
+    const menuItems = [];
+    const cancels = new Map();
     let committedDigest = null;
 
     function icon(name) {
@@ -120,7 +123,8 @@ const PdfEditor = (() => {
             save: $('peSave'), scroll: $('peScroll'), pages: $('pePages'), dock: $('peDock'), pill: $('pePagePill'),
             context: $('peContext'), tools: $('peTools'), imageInput: $('peImageInput'), notice: $('peNotice'),
             pagesBtn: $('pePagesBtn'), panel: $('pePanel'), thumbs: $('peThumbs'), sheet: $('peSheet'), translateBtn: $('peTranslateBtn'),
-            backdrop: $('peBackdrop'), panelClose: $('pePanelClose'), moreBtn: $('peMoreBtn')
+            backdrop: $('peBackdrop'), panelClose: $('pePanelClose'), moreBtn: $('peMoreBtn'),
+            side: $('peSide'), agentBtn: $('peAgentBtn'), activityBtn: $('peActivityBtn')
         };
         els.tools.innerHTML = TOOLS.map(tool => `
             <button type="button" class="pe-tool" data-tool="${tool}">
@@ -223,6 +227,7 @@ const PdfEditor = (() => {
             if (s !== session) return;
             s.digest = body.data.digest;
             buildPages(body.data.pages);
+            emit('open', bridge.session());
             s.keepalive = setInterval(keepAlive, KEEPALIVE_MS);
             if (s.ops.length) storeDraft();
             else offerDraft();
@@ -316,7 +321,9 @@ const PdfEditor = (() => {
         clearInterval(s.keepalive);
         hideBanner();
         closeSheet();
+        side(false);
         s = null;
+        emit('close');
         els.pages.innerHTML = '';
         els.root.classList.add('hidden');
         document.body.classList.remove('pe-open');
@@ -514,6 +521,7 @@ const PdfEditor = (() => {
         });
         if (current !== s.current) {
             s.current = current;
+            emit('page', { pageId: current });
             els.thumbs.querySelectorAll('.pe-thumb').forEach(el => el.classList.toggle('current', Number(el.dataset.id) === current));
         }
         els.pill.textContent = `${order.indexOf(current) + 1} / ${order.length}`;
@@ -614,6 +622,7 @@ const PdfEditor = (() => {
         page.el.classList.toggle('stale', page.loadedRev !== page.rev);
         page.svg.innerHTML = '';
         renderLayer(page);
+        emit('preview', { pageId: page.i, layout: data });
         const thumb = els.thumbs.querySelector(`.pe-thumb[data-id="${page.i}"] .pe-thumb-page`);
         if (thumb) thumb.innerHTML = `<img src="${escapeHtml(data.image)}" alt="">`;
         if (data.scanned && !s.banner && !s.scansDismissed.has(page.i) && !s.ops.some(op => op.type === 'ocr' && op.page === page.i)) offerOcr(page);
@@ -625,7 +634,7 @@ const PdfEditor = (() => {
 
     function offerOcr(page) {
         showBanner({
-            key: 'pe_scan_detected',
+            key: 'pe_scan_detected', scan: page.i,
             actions: [{ key: 'pe_scan_ocr', primary: true, run: () => {
                 Toast.info(escapeHtml(t('pe_scan_wait')));
                 pushOp({ type: 'ocr', page: page.i });
@@ -743,7 +752,9 @@ const PdfEditor = (() => {
 
     function updateHistory() {
         if (s.banner?.op && !s.ops.includes(s.banner.op)) hideBanner();
+        if (s.banner?.scan !== undefined && s.ops.some(op => op.type === 'ocr' && op.page === s.banner.scan)) hideBanner();
         storeDraft();
+        emit('ops', { ops: bridge.ops() });
         els.undo.disabled = !s.ops.length;
         els.redo.disabled = !s.redo.length;
         updateStatus();
@@ -781,6 +792,7 @@ const PdfEditor = (() => {
         });
         renderHits(page);
         renderDigital(page);
+        renderFocus(page);
         if (s.reselect?.page === page.i) {
             const target = s.reselect;
             s.reselect = null;
@@ -870,7 +882,7 @@ const PdfEditor = (() => {
             const align = box.style.textAlign || 'left';
             html = `
                 ${chip('done', icon('check') + label('pe_done'), { active: true })}
-                <select class="pe-select" data-act="family" data-native aria-label="${escapeHtml(t('pe_font'))}">
+                <select class="pe-select" data-act="family" aria-label="${escapeHtml(t('pe_font'))}">
                     ${FAMILIES.map(f => `<option value="${f}" ${box.dataset.family === f ? 'selected' : ''} data-i18n="pe_font_${f}">${escapeHtml(t(`pe_font_${f}`))}</option>`).join('')}
                 </select>
                 ${chip('bold', icon('bold'), { title: 'pe_bold' })}
@@ -1034,7 +1046,7 @@ const PdfEditor = (() => {
     }
 
     function languageSelect(action) {
-        return `<select data-native data-${action}="language" aria-label="${escapeHtml(t('pe_ai_translate'))}">${LANGUAGES.map(code =>
+        return `<select class="pe-select pe-lang" data-${action}="language" aria-label="${escapeHtml(t('pe_ai_translate'))}">${LANGUAGES.map(code =>
             `<option value="${code}" ${code === s.ai.language ? 'selected' : ''}>${escapeHtml(languageName(code, i18n.currentLang))}</option>`).join('')}</select>`;
     }
 
@@ -1082,7 +1094,9 @@ const PdfEditor = (() => {
         const session = s;
         s.ai.busy = true;
         renderSheet();
-        const { body } = await postJson('/api/pdf/edit/ai', { mode, text, language: languageName(s.ai.language, 'en') }).catch(() => ({ body: {} }));
+        const task = coreTask('ai', null);
+        const { body } = await postJson('/api/pdf/edit/ai', { file_id: s.fileId, mode, text, language: languageName(s.ai.language, 'en') }).catch(() => ({ body: {} }));
+        task.end(body.success ? 'done' : 'failed');
         if (s !== session) return;
         s.ai.busy = false;
         if (body.success) s.ai.result = body.data.text;
@@ -1107,21 +1121,26 @@ const PdfEditor = (() => {
         const language = languageName(s.ai.language, 'en');
         const pages = s.order.slice();
         const run = s.translation = { done: 0, total: pages.length, stopped: false };
+        const task = coreTask('translate', pages.length, () => { run.stopped = true; });
         const result = [];
+        let failed = false;
         renderSheet();
         for (const id of pages) {
             if (run.stopped || s !== session) break;
             const { body } = await postJson('/api/pdf/edit/translate', { file_id: s.fileId, ops: s.ops, page: id, language }).catch(() => ({ body: {} }));
-            if (s !== session) return;
+            if (s !== session) return task.end('cancelled');
             if (!body.success) {
                 Toast.error(escapeHtml(errorText(body, 'err_ai_failed')));
+                failed = true;
                 break;
             }
             result.push(...body.data.ops);
             run.done++;
+            task.step(run.done);
             if (s.sheet === 'translate') renderSheet();
         }
-        if (s !== session) return;
+        if (s !== session) return task.end('cancelled');
+        task.end(failed ? 'failed' : run.stopped ? 'cancelled' : 'done');
         s.translation = null;
         if (result.length) {
             pushOps(result);
@@ -1135,6 +1154,7 @@ const PdfEditor = (() => {
         return `<div class="pe-grabber" data-grab></div><div class="pe-menu" data-grab>
             ${item('pages', els.pagesBtn.innerHTML, 'pe_pages')}
             ${item('translate', els.translateBtn.innerHTML, 'pe_translate')}
+            ${menuItems.map(entry => item(`ext:${entry.id}`, entry.icon, entry.labelKey)).join('')}
         </div>`;
     }
 
@@ -1294,14 +1314,17 @@ const PdfEditor = (() => {
         const session = s;
         f.busy = true;
         renderSheet();
+        const task = coreTask('search', null);
         const { body } = await postJson('/api/pdf/edit/search', {
             file_id: s.fileId, ops: s.ops, query: f.query, patterns: [...f.kinds], whole_word: f.whole
         }).catch(() => ({ body: {} }));
+        const cancelled = body.error?.code === 'err_cancelled';
+        task.end(body.success ? 'done' : cancelled ? 'cancelled' : 'failed');
         if (s !== session) return;
         f.busy = false;
         if (!body.success) {
             f.matches = null;
-            Toast.error(escapeHtml(errorText(body, 'err_connection')));
+            if (!cancelled) Toast.error(escapeHtml(errorText(body, 'err_connection')));
         } else {
             f.matches = body.data.matches;
             f.truncated = body.data.truncated;
@@ -1375,6 +1398,7 @@ const PdfEditor = (() => {
         const menu = e.target.closest('[data-menu]')?.dataset.menu;
         if (menu) {
             closeSheet();
+            if (menu.startsWith('ext:')) return menuItems.find(entry => `ext:${entry.id}` === menu)?.run();
             return menu === 'pages' ? togglePanel(true) : toggleSheet('translate');
         }
         const certButton = e.target.closest('button[data-cert="sign"]');
@@ -2395,5 +2419,126 @@ const PdfEditor = (() => {
         committedDigest = null;
     }
 
-    return { open, committed, isOpen: () => !!s };
+    function emit(event, payload) {
+        (listeners[event] || []).slice().forEach(fn => {
+            try {
+                fn(payload);
+            } catch (err) {
+                console.error(err);
+            }
+        });
+    }
+
+    function coreTask(kind, total, cancel) {
+        const task = { id: `core_${kind}_${Date.now().toString(36)}`, kind, status: 'running', done: 0, total };
+        if (cancel) cancels.set(task.id, cancel);
+        emit('task', { ...task, cancellable: !!cancel });
+        return {
+            step(done) {
+                task.done = done;
+                emit('task', { ...task, cancellable: !!cancel });
+            },
+            end(status = 'done') {
+                if (task.status !== 'running') return;
+                task.status = status;
+                cancels.delete(task.id);
+                emit('task', { ...task, cancellable: false });
+            }
+        };
+    }
+
+    function side(open) {
+        if (!els) return false;
+        const show = open ?? els.side.classList.contains('hidden');
+        els.side.classList.toggle('hidden', !show);
+        els.root.classList.toggle('side-open', show);
+        if (s) layoutPages();
+        emit('side', { open: show });
+        return show;
+    }
+
+    function renderFocus(page) {
+        if (!page?.layer) return;
+        page.layer.querySelectorAll('.pe-focus').forEach(el => el.remove());
+        const focus = s?.focus;
+        if (focus?.pageId !== page.i) return;
+        page.layer.insertAdjacentHTML('beforeend', focus.rects.map(rect => `<div class="pe-focus ${escapeHtml(focus.tone || 'proposal')}" style="${pct(page, rect)}"></div>`).join(''));
+    }
+
+    function focusRects(pageId, rects, tone = 'proposal') {
+        const page = s?.pages[pageId];
+        if (!page) return;
+        const previous = s.focus?.pageId;
+        s.focus = { pageId, rects: rects || [], tone };
+        if (previous !== undefined && previous !== pageId) renderFocus(s.pages[previous]);
+        renderFocus(page);
+        const first = page.layer.querySelector('.pe-focus');
+        (first || page.el).scrollIntoView({ behavior: compact() ? 'auto' : 'smooth', block: 'center' });
+    }
+
+    function clearFocus() {
+        if (!s?.focus) return;
+        const page = s.pages[s.focus.pageId];
+        s.focus = null;
+        renderFocus(page);
+    }
+
+    async function pageLayout(pageId) {
+        const page = s?.pages[pageId];
+        if (!page) return null;
+        if (page.data && page.loadedRev === page.rev) return page.data;
+        const { body } = await postJson('/api/pdf/edit/page', { file_id: s.fileId, page: pageId, ops: opsFor(pageId), width: 200 });
+        return body.success ? body.data : null;
+    }
+
+    function currentSelection() {
+        const ed = s?.editor;
+        if (!ed?.block) return null;
+        return { page: ed.page.i, block_indexes: [ed.page.data.blocks.indexOf(ed.block)], text: serialize(ed).map(run => run.t).join('') };
+    }
+
+    const clone = value => JSON.parse(JSON.stringify(value));
+
+    const bridge = {
+        session: () => (s ? { fileId: s.fileId, digest: s.digest, order: (s.order || []).slice(), current: s.current, base: s.base } : null),
+        ops: () => (s ? clone(s.ops) : []),
+        opsForPage: pageId => (s ? clone(s.ops.filter(op => op.page === pageId)) : []),
+        layout: pageLayout,
+        apply(ops, { label } = {}) {
+            if (!s || !ops?.length) return null;
+            pushOps(clone(ops).map(op => (label ? { ...op, label } : op)));
+            return s.group;
+        },
+        focus: focusRects,
+        clearFocus,
+        selection: currentSelection,
+        on(event, fn) {
+            (listeners[event] ||= []).push(fn);
+        },
+        off(event, fn) {
+            listeners[event] = (listeners[event] || []).filter(item => item !== fn);
+        },
+        sheetSlot: () => (init(), els.side),
+        side,
+        button: name => (init(), { agent: els.agentBtn, activity: els.activityBtn }[name] || null),
+        cancelTask(id) {
+            cancels.get(id)?.();
+            return cancels.has(id);
+        },
+        addMenuItem(entry) {
+            if (!menuItems.some(item => item.id === entry.id)) menuItems.push(entry);
+        },
+        compact,
+        translations(dicts) {
+            const apply = () => Object.entries(dicts).forEach(([lang, dict]) => I18n.extend(lang, dict));
+            if (typeof I18n !== 'undefined') apply();
+            else document.addEventListener('DOMContentLoaded', apply, { once: true });
+        },
+        t: (key, vars) => t(key, vars),
+        escapeHtml: value => escapeHtml(value),
+        icon,
+        postJson
+    };
+
+    return { open, committed, isOpen: () => !!s, bridge };
 })();

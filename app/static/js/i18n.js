@@ -12,6 +12,11 @@ class I18n {
         this.currentLang = this.detectLanguage();
     }
 
+    static extend(lang, dict) {
+        translations[lang] = Object.assign(translations[lang] || {}, dict);
+        if (typeof i18n !== 'undefined' && document.readyState !== 'loading') i18n.apply();
+    }
+
     detectLanguage() {
         let saved = null;
         try { saved = localStorage.getItem('lang'); } catch (e) {}

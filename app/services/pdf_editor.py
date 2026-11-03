@@ -1008,8 +1008,14 @@ def op_annot_edit(ctx, page, op):
 
 
 def op_ocr(ctx, page, op):
-    if not page.get_text('words'):
-        pdf_scan.recognize(page, ctx.wait)
+    if page.get_text('words'):
+        return page
+    progress = pdf_scan.recognize(page, ctx.wait, op.get('retry'))
+    if progress:
+        page = ctx.doc.reload_page(page)
+        progress.update('fonts', pdf_scan.MATCHING)
+        ctx.scan_font(page)
+        progress.finish()
     return page
 
 
@@ -1200,13 +1206,16 @@ def signature_placement(doc, ops, order):
     }
 
 
-def apply_ops(doc, ops):
+def apply_ops(doc, ops, progress=None):
     ctx = EditContext(doc)
     count = doc.page_count
     order, rotation, blanks = page_structure(ops, count)
     add_blanks(doc, blanks)
-    for index, page_ops in sorted(group_ops(ops, doc.page_count).items()):
+    grouped = sorted(group_ops(ops, doc.page_count).items())
+    for done, (index, page_ops) in enumerate(grouped, 1):
         apply_page_ops(ctx, doc[index], page_ops)
+        if progress:
+            progress(done, len(grouped))
     placement = signature_placement(doc, ops, order)
     for pid, angle in rotation.items():
         page = doc[pid]
@@ -1219,7 +1228,7 @@ def apply_ops(doc, ops):
     return {'signature': placement, 'fonts_added': bool(ctx.origins) or any(op.get('type') == 'text' and op.get('runs') for op in ops or [])}
 
 
-def search_document(path, ops, query, kinds, whole_word=False):
+def search_document(path, ops, query, kinds, whole_word=False, progress=None):
     with fitz.open(path) as doc:
         if doc.needs_pass:
             return [], False
@@ -1228,7 +1237,9 @@ def search_document(path, ops, query, kinds, whole_word=False):
         add_blanks(doc, blanks)
         grouped = group_ops(ops, doc.page_count)
         results = []
-        for index in order:
+        if progress:
+            progress(0, len(order))
+        for done, index in enumerate(order, 1):
             page = doc[index]
             try:
                 page = apply_page_ops(ctx, page, grouped[index]) if grouped.get(index) else page
@@ -1239,6 +1250,8 @@ def search_document(path, ops, query, kinds, whole_word=False):
                 results.append(dict(match, page=index))
                 if len(results) >= MAX_MATCHES:
                     return results, True
+            if progress:
+                progress(done, len(order))
         return results, False
 
 
@@ -1294,8 +1307,8 @@ def build_preview(path, index, ops, width):
             add_blanks(doc, blanks, index)
         try:
             page = apply_page_ops(ctx, doc[index], group_ops(ops, doc.page_count).get(index, []))
-        except pdf_scan.OcrPending:
-            return {'ocr_pending': True}
+        except pdf_scan.OcrPending as pending:
+            return {'ocr_pending': True, **({'task_id': pending.task_id} if pending.task_id else {})}
         layout = page_layout(page, ctx)
         layout['overflow'] = {str(i): by for (number, i), by in ctx.overflow.items() if number == index}
         zoom = max(0.05, min(5.0, width / max(1.0, page.rect.width)))

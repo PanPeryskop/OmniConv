@@ -5,7 +5,6 @@ import os
 import base64
 import threading
 from contextlib import contextmanager
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +22,8 @@ class LLMService:
     _usage_lock = threading.Lock()
     _swap_lock = threading.Lock()
 
-    def __init__(self, api_url="http://localhost:1234/api/v1/chat"):
-        self.api_url = api_url
+    def __init__(self, api_url=None):
+        self.api_url = api_url or os.environ.get('LMSTUDIO_API_URL', 'http://localhost:1234/api/v1/chat')
 
     @staticmethod
     def ocr_model() -> str:

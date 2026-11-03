@@ -5,6 +5,9 @@
 
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pdf-editor.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pdf-editor-progress.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pdf-editor-ocr.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pdf-editor-agent.css') }}">
 <section class="hero-section" style="padding-bottom: var(--space-8);">
     <h1 class="hero-heading" data-i18n="pdf_hero_title">PDF <span class="hero-heading-accent">Tools</span></h1>
     <p class="hero-description" data-i18n="pdf_hero_desc">Upload a PDF and pick what to do with it.</p>
@@ -997,6 +1000,10 @@ body.drag-over::after {
 <script src="{{ url_for('static', filename='js/pdf-editor-drafts.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pdf-editor-sign.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pdf-editor.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pdf-editor-progress.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pdf-editor-ocr.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pdf-editor-activity-hooks.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pdf-editor-agent.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const ICONS = {

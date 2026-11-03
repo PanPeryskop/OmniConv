@@ -492,7 +492,7 @@ class PdfTools:
         certificate = options.get('certificate')
         with self.open(paths[0]) as doc:
             self.report_progress(20)
-            info = apply_ops(doc, options.get('ops') or [])
+            info = apply_ops(doc, options.get('ops') or [], lambda done, total: self.report_progress(20 + done / total * 50))
             self.report_progress(70)
             if info['fonts_added']:
                 try:
@@ -501,6 +501,7 @@ class PdfTools:
                     pass
             self.report_progress(85)
             self.save(doc, out_path)
+            self.report_progress(90 if certificate else 95)
         if certificate and not info['signature']:
             os.remove(out_path)
             raise PdfToolError('err_cert_no_field', 'The digital signature box is no longer in the document')
@@ -516,6 +517,7 @@ class PdfTools:
             finally:
                 if os.path.exists(unsigned):
                     os.remove(unsigned)
+            self.report_progress(97)
         return out_path
 
     def tool_metadata(self, paths, out_base, options):
