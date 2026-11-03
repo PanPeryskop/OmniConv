@@ -374,7 +374,7 @@
     .pa-input { min-height: 44px; font-size: 16px; padding: 10px 14px; }
     .pa-send { width: 44px; height: 44px; }
     .pa-btn { min-height: 44px; padding: 0 14px; font-size: var(--text-sm); }
-    .pa-card-foot .pa-btn.primary { flex: 1; }
+    .pa-card-foot .pa-btn.primary { flex: 1; max-width: 240px; }
     .pa-suggestion { min-height: 48px; font-size: 16px; }
     .pa-link { min-height: 44px; display: inline-flex; align-items: center; margin: -12px 0; }
     .pa-jump { width: 44px; height: 44px; }
