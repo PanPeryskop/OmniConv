@@ -8,7 +8,7 @@ from typing import Callable
 
 import fitz
 
-from . import pdf_ai, pdf_editor
+from . import pdf_ai, pdf_editor, pdf_translate
 from .pdf_search import PATTERNS
 
 
@@ -47,11 +47,14 @@ def page_base(ops, page):
     return {'count': len(page_ops), 'last_g': page_ops[-1].get('g') if page_ops else None}
 
 
-def make_proposal(kind, page, title, ops, base, before='', after='', reason='', rects=None, depends_on=None):
-    return {
+def make_proposal(kind, page, title, ops, base, before='', after='', reason='', rects=None, depends_on=None, terms=None):
+    proposal = {
         'id': 'prp_' + secrets.token_urlsafe(8), 'kind': kind, 'page': page, 'title': title, 'reason': reason,
         'before': before, 'after': after, 'rects': rects or [], 'ops': ops, 'base': base, 'depends_on': depends_on or [],
     }
+    if terms:
+        proposal['terms'] = [list(pair) for pair in terms]
+    return proposal
 
 
 TOOLS = {}
@@ -700,12 +703,16 @@ def redact(ctx, args):
 def translate(ctx, args):
     pages = as_pages(ctx, args.get('pages'))
     language = as_text(args, 'language', 40)
-    proposals, done = [], []
+    proposals, done, terms = [], [], []
     for page in pages[:MAX_TRANSLATE_PAGES]:
         layout = load_page(ctx, page)
         progress(ctx, 'translate', len(done), min(len(pages), MAX_TRANSLATE_PAGES))
         blocks = [b for _i, b in selected_blocks(ctx, page, layout) if pdf_ai.translatable(pdf_ai.block_text(b))]
-        ops = pdf_ai.translate_page(dict(layout, blocks=blocks), page, language) if blocks else []
+        ops = []
+        if blocks:
+            context = pdf_translate.page_context(ctx.path, page, language)
+            terms = context.glossary
+            ops = pdf_ai.translate_page(layout, page, language, context=context, blocks=blocks)
         done.append(page)
         if not ops:
             continue
@@ -713,9 +720,11 @@ def translate(ctx, args):
         after = '\n\n'.join(op['runs'][0]['t'] for op in ops)
         proposals.append(make_proposal(
             'text', page, f'Translate to {language}', ops, page_base(ctx.ops, page),
-            before=before, after=after, reason=f'{len(ops)} blocks → {language}', rects=[b['bbox'] for b in blocks],
+            before=before, after=after, reason=f'{len(ops)} blocks → {language}', rects=[b['bbox'] for b in blocks], terms=terms,
         ))
     content = {'translated': done, 'truncated': len(pages) > MAX_TRANSLATE_PAGES}
+    if terms:
+        content['glossary'] = [f'{term} => {target}' for term, target in terms]
     if content['truncated']:
         content['message'] = f'Translated {MAX_TRANSLATE_PAGES} pages. Call translate with pages={pages[MAX_TRANSLATE_PAGES:]} to continue.'
     progress(ctx, 'translate', len(done), len(done))

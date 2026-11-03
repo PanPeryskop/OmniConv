@@ -8,7 +8,7 @@ from unittest import mock
 import fitz
 
 from app.services import font_match as fm
-from app.services import pdf_ai
+from app.services import pdf_ai, pdf_translate
 from app.services import pdf_editor as pe
 from app.services.editor_tasks import TASKS
 from app.services.pdf_tools import PdfToolError, PdfTools
@@ -198,11 +198,13 @@ class TaskRoutesTest(unittest.TestCase):
         self.assertEqual(tasks, [])
 
     def test_translate_route_reports_stages(self):
-        with Recorder('translate') as rec, mock.patch.object(pdf_ai, 'translate_page', return_value=[{'type': 'text', 'page': 1}]):
+        pdf_translate.GLOSSARIES.items.clear()
+        with Recorder('translate') as rec, mock.patch.object(pdf_ai, 'translate_page', return_value=[{'type': 'text', 'page': 1}]), \
+                mock.patch.object(pdf_ai, 'build_glossary', return_value=[]):
             body = self.client.post('/api/pdf/edit/translate', json={'file_id': self.file_id, 'page': 1, 'language': 'English', 'ops': []}).get_json()
         self.assertTrue(body['success'])
         stages = [e[2] for e in rec.events]
-        self.assertEqual([s for i, s in enumerate(stages) if s and (i == 0 or stages[i - 1] != s)], ['layout', 'translate', 'ops'])
+        self.assertEqual([s for i, s in enumerate(stages) if s and (i == 0 or stages[i - 1] != s)], ['layout', 'glossary', 'translate', 'ops'])
         self.assertEqual(rec.statuses()[-1], 'done')
         self.assertEqual(rec.events[-1][4]['ops'], 1)
         self.assertEqual(self.listed('translate')[-1]['page'], 1)

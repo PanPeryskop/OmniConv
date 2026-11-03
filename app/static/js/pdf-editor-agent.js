@@ -454,6 +454,7 @@ const PdfAgent = (() => {
             </header>
             ${p.reason ? `<p class="pa-reason">${esc(p.reason)}</p>` : ''}
             ${body ? `<div class="pa-diff">${body}</div>` : ''}
+            ${termsHtml(p)}
             ${deps.length ? `<p class="pa-deps">${esc(tr('pa_applies_with', { count: deps.length }))}</p>` : ''}
             <div class="pa-card-foot">${foot}</div>
         </article>`;
@@ -795,12 +796,23 @@ const PdfAgent = (() => {
         }
     }
 
+    function termsOf(list) {
+        if (!Array.isArray(list)) return [];
+        return list.filter(pair => Array.isArray(pair) && pair.length === 2).slice(0, 60).map(([term, target]) => [String(term), String(target)]);
+    }
+
+    function termsHtml(p) {
+        if (!p.terms?.length) return '';
+        const rows = p.terms.map(([term, target]) => `<li><span>${esc(term)}</span><span class="pa-terms-arrow" aria-hidden="true">→</span><span>${esc(target)}</span></li>`).join('');
+        return `<details class="pa-terms"><summary>${esc(tr('pa_terms', { count: p.terms.length }))}</summary><ul>${rows}</ul></details>`;
+    }
+
     function addProposal(data, turn) {
         if (!data?.id || chat.proposals[data.id]) return null;
         const p = {
             id: String(data.id), kind: data.kind || 'text', page: Number(data.page), title: data.title || tr('pa_untitled'), reason: data.reason || '',
             before: data.before || '', after: data.after || '', rects: Array.isArray(data.rects) ? data.rects : [], ops: Array.isArray(data.ops) ? data.ops : [],
-            base: data.base || null, depends_on: Array.isArray(data.depends_on) ? data.depends_on.map(String) : [], turn, seq: ++chat.seq, rejected: false, by: null
+            base: data.base || null, depends_on: Array.isArray(data.depends_on) ? data.depends_on.map(String) : [], terms: termsOf(data.terms), turn, seq: ++chat.seq, rejected: false, by: null
         };
         chat.proposals[p.id] = p;
         chainCache = new Map();
@@ -1227,6 +1239,7 @@ const PdfAgent = (() => {
             pa_rejected: 'Rejected',
             pa_rejected_with: 'Rejected together with “{title}”',
             pa_stale: 'Out of date: the page changed after this suggestion',
+            pa_terms: 'Terms used ({count})',
             pa_applies_with_one: 'Also applies {count} earlier change it builds on',
             pa_applies_with_other: 'Also applies {count} earlier changes it builds on',
             pa_rejects_with_one: 'Also rejects {count} change that builds on this one',
@@ -1302,6 +1315,7 @@ const PdfAgent = (() => {
             pa_rejected: 'Odrzucono',
             pa_rejected_with: 'Odrzucono razem z „{title}”',
             pa_stale: 'Nieaktualne: strona zmieniła się po tej propozycji',
+            pa_terms: 'Użyte terminy ({count})',
             pa_applies_with_one: 'Zastosuje też {count} wcześniejszą zmianę, na której bazuje',
             pa_applies_with_few: 'Zastosuje też {count} wcześniejsze zmiany, na których bazuje',
             pa_applies_with_many: 'Zastosuje też {count} wcześniejszych zmian, na których bazuje',
@@ -1383,6 +1397,7 @@ const PdfAgent = (() => {
             pa_rejected: 'Abgelehnt',
             pa_rejected_with: 'Zusammen mit „{title}“ abgelehnt',
             pa_stale: 'Veraltet: Die Seite hat sich nach diesem Vorschlag geändert',
+            pa_terms: 'Verwendete Begriffe ({count})',
             pa_applies_with_one: 'Übernimmt auch {count} frühere Änderung, auf der er aufbaut',
             pa_applies_with_other: 'Übernimmt auch {count} frühere Änderungen, auf denen er aufbaut',
             pa_rejects_with_one: 'Lehnt auch {count} darauf aufbauende Änderung ab',

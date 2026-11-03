@@ -49,8 +49,11 @@ def scripted_step(messages):
 def native_reply(payload):
     text = payload.get('input', '')
     system = payload.get('system_prompt', '')
+    if 'prepare a glossary' in system:
+        return 'Edytor PDF => PDF editor\nFormularz => Form\n- Katowice => Katowice'
     if '<<1>>' in text:
-        return '\n\n'.join(f'<<{n}>> EN: {body.strip()}' for n, body in SEGMENT_RE.findall(text))
+        body = text.split('<translate>', 1)[-1].split('</translate>', 1)[0]
+        return '\n\n'.join(f'<<{n}>> EN: {segment.strip()}' for n, segment in SEGMENT_RE.findall(body))
     if 'Correct spelling' in system:
         return text.replace('wykladu', 'wykładu').replace('Zazolc', 'Zażółć').replace('teskt', 'tekst')
     if 'shorter' in system:

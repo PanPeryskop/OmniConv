@@ -8,7 +8,7 @@ from flask import Blueprint, request, current_app, send_file, g
 from .api_common import conversion_jobs, api_response, unique_output_base, touch_file, file_expiry, register_result_file
 from ..utils.file_handler import generate_file_id
 from ..services.pdf_tools import PdfTools, PdfToolError
-from ..services import pdf_ai, pdf_editor
+from ..services import pdf_ai, pdf_editor, pdf_translate
 from ..services.editor_tasks import TASKS
 from ..services.font_match import FontLibrary
 from ..services.pdf_sign import CERTIFICATES, MAX_CERT_BYTES, SignError
@@ -239,8 +239,12 @@ def pdf_edit_translate():
             task_failed(task, 'err_ocr_pending', 'Text recognition is still running')
             return api_response(error={'type': 'PdfToolError', 'code': 'err_ocr_pending', 'message': 'Text recognition is still running'}, success=False), 409
         cancel_point(task)
-        TASKS.update(task.id, stage='translate', progress=0.2, detail={'blocks': len(layout.get('blocks') or [])})
-        result = pdf_ai.translate_page(layout, page, language)
+        if not pdf_translate.has_glossary(job['input_path'], language):
+            TASKS.update(task.id, stage='glossary', progress=0.1)
+        context = pdf_translate.page_context(job['input_path'], page, language)
+        cancel_point(task)
+        TASKS.update(task.id, stage='translate', progress=0.2, detail={'blocks': len(layout.get('blocks') or []), 'terms': len(context.glossary)})
+        result = pdf_ai.translate_page(layout, page, language, context=context)
         cancel_point(task)
         TASKS.update(task.id, stage='ops', progress=0.9, detail={'blocks': len(layout.get('blocks') or []), 'ops': len(result)})
     except (TypeError, ValueError):
