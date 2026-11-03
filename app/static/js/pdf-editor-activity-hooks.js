@@ -3,7 +3,7 @@ const PdfActivityHooks = (() => {
     const TITLES = { translate: 'pe_act_translate', search: 'pe_act_search', ai: 'pe_act_ai', fonts: 'pe_act_fonts' };
     const FAILURES = { translate: 'err_ai_failed', search: 'err_pdf_edit', ai: 'err_ai_failed' };
     const COUNTED = ['translate', 'search', 'fonts'];
-    const STAGES = ['layout', 'translate', 'ops'];
+    const STAGES = ['layout', 'glossary', 'translate', 'ops'];
     const FINAL = ['done', 'failed', 'cancelled'];
     const FONT_POLL_MS = 1000;
     const entries = new Map();
@@ -20,6 +20,7 @@ const PdfActivityHooks = (() => {
             pe_act_fonts: 'Preparing system fonts…',
             pe_act_fonts_count: 'Preparing system fonts… {done}/{total}',
             pe_act_stage_layout: 'Reading the page',
+            pe_act_stage_glossary: 'Collecting key terms',
             pe_act_stage_translate: 'Translating',
             pe_act_stage_ops: 'Placing the text'
         },
@@ -32,6 +33,7 @@ const PdfActivityHooks = (() => {
             pe_act_fonts: 'Przygotowuję czcionki systemowe…',
             pe_act_fonts_count: 'Przygotowuję czcionki systemowe… {done}/{total}',
             pe_act_stage_layout: 'Odczyt strony',
+            pe_act_stage_glossary: 'Zbieranie kluczowych terminów',
             pe_act_stage_translate: 'Tłumaczenie',
             pe_act_stage_ops: 'Wstawianie tekstu'
         },
@@ -44,6 +46,7 @@ const PdfActivityHooks = (() => {
             pe_act_fonts: 'Systemschriften werden vorbereitet…',
             pe_act_fonts_count: 'Systemschriften werden vorbereitet… {done}/{total}',
             pe_act_stage_layout: 'Seite wird gelesen',
+            pe_act_stage_glossary: 'Schlüsselbegriffe werden gesammelt',
             pe_act_stage_translate: 'Übersetzung',
             pe_act_stage_ops: 'Text wird eingesetzt'
         }

@@ -9,7 +9,6 @@ import threading
 import time
 import unittest
 import warnings
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
 
 from app.services import agent_providers as ap
@@ -550,110 +549,19 @@ class FakeLmTest(unittest.TestCase):
         self.assertEqual(events[-2][1]['text'], 'Jedna poprawka.')
 
 
-class AnthropicHandler(BaseHTTPRequestHandler):
-    protocol_version = 'HTTP/1.1'
-    script = []
-    bodies = []
+class ProviderChoiceTest(unittest.TestCase):
+    def test_lm_studio_is_the_only_real_provider(self):
+        with mock.patch.dict(os.environ):
+            os.environ.pop('AGENT_PROVIDER', None)
+            self.assertIsInstance(ap.provider_from_env(), ap.LmStudioProvider)
+        for kind in ('lmstudio', 'anthropic', 'openai'):
+            with mock.patch.dict(os.environ, {'AGENT_PROVIDER': kind}):
+                self.assertIsInstance(ap.provider_from_env(), ap.LmStudioProvider, kind)
+        with mock.patch.dict(os.environ, {'AGENT_PROVIDER': 'fake', 'AGENT_FAKE_STEPS': '[]'}):
+            self.assertIsInstance(ap.provider_from_env(), ap.FakeProvider)
 
-    def do_GET(self):
-        self.reply(200 if self.path.endswith('/claude-sonnet-5-5') else 404, b'{}')
-
-    def do_POST(self):
-        body = json.loads(self.rfile.read(int(self.headers.get('Content-Length') or 0)))
-        self.bodies.append((dict(self.headers), body))
-        kind, payload = self.script.pop(0)
-        if kind == 'error':
-            return self.reply(400, json.dumps({'type': 'error', 'error': {'message': payload}}).encode())
-        data = ''.join(f'event: {e["type"]}\ndata: {json.dumps(e)}\n\n' for e in payload).encode()
-        self.reply(200, data, 'text/event-stream')
-
-    def reply(self, status, data, kind='application/json'):
-        self.send_response(status)
-        self.send_header('Content-Type', kind)
-        self.send_header('Content-Length', str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-
-    def log_message(self, *args):
-        pass
-
-
-def anthropic_stream():
-    return [
-        {'type': 'message_start', 'message': {'id': 'msg_1', 'content': []}},
-        {'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'thinking', 'thinking': '', 'signature': ''}},
-        {'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'signature_delta', 'signature': 'sig'}},
-        {'type': 'content_block_stop', 'index': 0},
-        {'type': 'content_block_start', 'index': 1, 'content_block': {'type': 'text', 'text': ''}},
-        {'type': 'content_block_delta', 'index': 1, 'delta': {'type': 'text_delta', 'text': 'Czytam '}},
-        {'type': 'content_block_delta', 'index': 1, 'delta': {'type': 'text_delta', 'text': 'stronę.'}},
-        {'type': 'content_block_stop', 'index': 1},
-        {'type': 'content_block_start', 'index': 2, 'content_block': {'type': 'tool_use', 'id': 'toolu_1', 'name': 'read_page', 'input': {}}},
-        {'type': 'content_block_delta', 'index': 2, 'delta': {'type': 'input_json_delta', 'partial_json': '{"pa'}},
-        {'type': 'content_block_delta', 'index': 2, 'delta': {'type': 'input_json_delta', 'partial_json': 'ge": 3}'}},
-        {'type': 'content_block_stop', 'index': 2},
-        {'type': 'message_delta', 'delta': {'stop_reason': 'tool_use'}},
-        {'type': 'message_stop'},
-    ]
-
-
-class AnthropicTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.server = ThreadingHTTPServer(('127.0.0.1', 0), AnthropicHandler)
-        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
-        cls.env = mock.patch.dict(os.environ, {'ANTHROPIC_API_KEY': 'test-key', 'ANTHROPIC_BASE_URL': f'http://127.0.0.1:{cls.server.server_port}', 'AGENT_PROVIDER': 'anthropic'})
-        cls.env.start()
-        os.environ.pop('AGENT_ANTHROPIC_MODEL', None)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.server.shutdown()
-        cls.env.stop()
-
-    def setUp(self):
-        AnthropicHandler.bodies.clear()
-        ap.AnthropicProvider.statuses.clear()
-
-    def test_status_and_model(self):
-        provider = ap.provider_from_env()
-        self.assertIsInstance(provider, ap.AnthropicProvider)
-        self.assertEqual((provider.model(), provider.status()), ('claude-sonnet-5-5', 'ok'))
-        with mock.patch.dict(os.environ, {'AGENT_ANTHROPIC_MODEL': 'claude-unknown'}):
-            self.assertEqual(provider.status(), 'llm_model_missing')
-        with mock.patch.dict(os.environ, {'ANTHROPIC_API_KEY': ''}):
-            self.assertEqual(ap.AnthropicProvider().status(), 'llm_offline')
-
-    def test_step_maps_tool_use_and_tool_result(self):
-        AnthropicHandler.script[:] = [('stream', anthropic_stream()), ('error', 'messages.1.content.0: Invalid `signature` in `thinking` block.'), ('stream', anthropic_stream())]
-        provider = ap.AnthropicProvider()
-        deltas = []
-        messages = [{'role': 'system', 'content': 'sys'}, {'role': 'user', 'content': 'Czytaj'}]
-        step = provider.step(messages, [spec('read_page')], deltas.append)
-        self.assertEqual(deltas, ['Czytam ', 'stronę.'])
-        self.assertEqual((step.text, step.finish_reason), ('Czytam stronę.', 'tool_use'))
-        self.assertEqual([(c.id, c.name, c.args) for c in step.tool_calls], [('toolu_1', 'read_page', {'page': 3})])
-        self.assertEqual(step.raw['anthropic'][0], {'type': 'thinking', 'thinking': '', 'signature': 'sig'})
-        headers, body = AnthropicHandler.bodies[0]
-        self.assertEqual(headers['x-api-key'], 'test-key')
-        self.assertEqual(headers['anthropic-version'], ap.ANTHROPIC_VERSION)
-        self.assertEqual(body['system'], 'sys')
-        self.assertEqual(body['tools'][0], {'name': 'read_page', 'description': 'read_page tool', 'input_schema': READ_SCHEMA})
-        self.assertEqual(body['messages'], [{'role': 'user', 'content': [{'type': 'text', 'text': 'Czytaj'}]}])
-        history = messages + [
-            {'role': 'assistant', 'content': step.text, 'raw': step.raw, 'tool_calls': [{'id': 'toolu_1', 'name': 'read_page', 'args': {'page': 3}}]},
-            {'role': 'tool', 'tool_call_id': 'toolu_1', 'name': 'read_page', 'content': '{"error": "stale_block"}', 'error': True},
-            {'role': 'system', 'content': 'Note: accepted'},
-            {'role': 'user', 'content': 'Dalej'},
-        ]
-        provider.step(history, [spec('read_page')], deltas.append)
-        first, retry = AnthropicHandler.bodies[1][1]['messages'], AnthropicHandler.bodies[2][1]['messages']
-        self.assertEqual(first[1]['content'][0]['type'], 'thinking')
-        self.assertEqual([b['type'] for b in retry[1]['content']], ['text', 'tool_use'])
-        self.assertEqual(retry[2], {'role': 'user', 'content': [
-            {'type': 'tool_result', 'tool_use_id': 'toolu_1', 'content': '{"error": "stale_block"}', 'is_error': True},
-            {'type': 'text', 'text': 'Note: accepted\nDalej'},
-        ]})
+    def test_no_external_provider_code_is_left(self):
+        self.assertFalse([name for name in dir(ap) if 'anthropic' in name.lower()])
 
 
 class RouteTest(DummyTools, unittest.TestCase):

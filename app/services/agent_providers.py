@@ -11,14 +11,6 @@ from .llm import LLMService
 
 STREAM_CHUNK = 64
 LMSTUDIO_TIMEOUT = (5, 600)
-ANTHROPIC_URL = 'https://api.anthropic.com'
-ANTHROPIC_VERSION = '2026-10-21'
-ANTHROPIC_MODEL = 'claude-sonnet-5-5'
-ANTHROPIC_MAX_TOKENS = 16000
-ANTHROPIC_TIMEOUT = (10, 600)
-ANTHROPIC_FALLBACK_BETA = 'server-side-fallback-2026-07-01'
-ANTHROPIC_FALLBACK_MODELS = ('claude-sonnet-5-5', 'claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1')
-STATUS_TTL = 60
 FENCE_RE = re.compile(r'```(?:json)?\s*(.*?)```', re.S)
 JSON_MODE_PROMPT = (
     'Tools are available, but this model has to call them through plain JSON. To call a tool, reply with only one JSON '
@@ -41,7 +33,6 @@ class AgentStep:
     text: str = ''
     tool_calls: list = field(default_factory=list)
     finish_reason: str = ''
-    raw: dict = field(default_factory=dict)
 
 
 class ProviderError(Exception):
@@ -333,139 +324,6 @@ class LmStudioProvider(AgentProvider):
         return AgentStep(text=content.strip(), tool_calls=calls, finish_reason=finish)
 
 
-class AnthropicProvider(AgentProvider):
-    name = 'anthropic'
-    statuses = {}
-
-    def __init__(self):
-        self.key = os.environ.get('ANTHROPIC_API_KEY', '')
-        self.base = os.environ.get('ANTHROPIC_BASE_URL', ANTHROPIC_URL).rstrip('/')
-
-    def model(self):
-        return os.environ.get('AGENT_ANTHROPIC_MODEL') or ANTHROPIC_MODEL
-
-    def headers(self, betas=()):
-        headers = {'x-api-key': self.key, 'anthropic-version': ANTHROPIC_VERSION, 'content-type': 'application/json'}
-        if betas:
-            headers['anthropic-beta'] = ','.join(betas)
-        return headers
-
-    def status(self):
-        if not self.key:
-            return 'llm_offline'
-        model = self.model()
-        cached = self.statuses.get((self.base, model))
-        if cached and time.time() - cached[0] < STATUS_TTL:
-            return cached[1]
-        try:
-            response = requests.get(f'{self.base}/v1/models/{model}', headers=self.headers(), timeout=5)
-            result = 'ok' if response.ok else 'llm_model_missing' if response.status_code == 404 else 'llm_offline'
-        except requests.RequestException:
-            result = 'llm_offline'
-        self.statuses[(self.base, model)] = (time.time(), result)
-        return result
-
-    def wire(self, history, keep_thinking):
-        wire = []
-
-        def push(role, blocks):
-            if wire and wire[-1]['role'] == role:
-                wire[-1]['content'].extend(blocks)
-            elif blocks:
-                wire.append({'role': role, 'content': list(blocks)})
-
-        for message in history:
-            role = message['role']
-            if role == 'assistant':
-                blocks = (message.get('raw') or {}).get('anthropic')
-                if not blocks:
-                    blocks = [{'type': 'text', 'text': message['content']}] if message.get('content') else []
-                    blocks += [{'type': 'tool_use', 'id': c['id'], 'name': c['name'], 'input': c['args']} for c in message.get('tool_calls') or []]
-                if not keep_thinking:
-                    blocks = [b for b in blocks if b.get('type') not in ('thinking', 'redacted_thinking')]
-                push('assistant', [b for b in blocks if b.get('type') != 'text' or b.get('text')])
-            elif role == 'tool':
-                block = {'type': 'tool_result', 'tool_use_id': message['tool_call_id'], 'content': message['content']}
-                if message.get('error'):
-                    block['is_error'] = True
-                push('user', [block])
-            else:
-                push('user', [{'type': 'text', 'text': message['content']}])
-        return wire
-
-    def step(self, messages, tools, on_delta, should_stop=None):
-        if not self.key:
-            raise ProviderError('err_ai_llm_offline', 'ANTHROPIC_API_KEY is not set')
-        system, history = fold_messages(messages)
-        model = self.model()
-        keep_thinking, fallbacks = True, model in ANTHROPIC_FALLBACK_MODELS
-        for _attempt in range(3):
-            body = {'model': model, 'max_tokens': ANTHROPIC_MAX_TOKENS, 'system': system, 'messages': self.wire(history, keep_thinking), 'stream': True}
-            if tools:
-                body['tools'] = [{'name': t.name, 'description': t.description, 'input_schema': t.parameters or {'type': 'object', 'properties': {}}} for t in tools]
-            if fallbacks:
-                body['fallbacks'] = 'default'
-            try:
-                with requests.post(f'{self.base}/v1/messages', headers=self.headers([ANTHROPIC_FALLBACK_BETA] if fallbacks else ()), json=body, stream=True, timeout=ANTHROPIC_TIMEOUT) as response:
-                    if response.status_code == 400:
-                        message = response.text.lower()
-                        if keep_thinking and ('thinking' in message or 'signature' in message):
-                            keep_thinking = False
-                            continue
-                        if fallbacks and 'fallback' in message:
-                            fallbacks = False
-                            continue
-                    if response.status_code == 404:
-                        raise ProviderError('err_ai_llm_model_missing', response.text[:300])
-                    if response.status_code in (401, 403):
-                        raise ProviderError('err_ai_llm_offline', response.text[:300])
-                    if response.status_code >= 400:
-                        raise ProviderError('err_agent_failed', f'HTTP {response.status_code}: {response.text[:300]}')
-                    return self.read(response, on_delta, should_stop)
-            except (requests.ConnectionError, requests.Timeout) as e:
-                raise ProviderError('err_ai_llm_offline', str(e)) from e
-            except requests.RequestException as e:
-                raise ProviderError('err_agent_failed', str(e)) from e
-        raise ProviderError('err_agent_failed', 'The request was rejected')
-
-    def read(self, response, on_delta, should_stop):
-        blocks, stop_reason = {}, ''
-        for event in stream_lines(response, should_stop):
-            kind = event.get('type')
-            if kind == 'content_block_start':
-                blocks[event.get('index', len(blocks))] = dict(event.get('content_block') or {})
-            elif kind == 'content_block_delta':
-                block = blocks.setdefault(event.get('index', 0), {'type': 'text', 'text': ''})
-                delta = event.get('delta') or {}
-                if delta.get('type') == 'text_delta':
-                    block['text'] = block.get('text', '') + delta.get('text', '')
-                    on_delta(delta.get('text', ''))
-                elif delta.get('type') == 'input_json_delta':
-                    block['partial'] = block.get('partial', '') + delta.get('partial_json', '')
-                elif delta.get('type') == 'thinking_delta':
-                    block['thinking'] = block.get('thinking', '') + delta.get('thinking', '')
-                elif delta.get('type') == 'signature_delta':
-                    block['signature'] = block.get('signature', '') + delta.get('signature', '')
-            elif kind == 'message_delta':
-                stop_reason = (event.get('delta') or {}).get('stop_reason') or stop_reason
-            elif kind == 'error':
-                raise ProviderError('err_agent_failed', (event.get('error') or {}).get('message', 'Stream error'))
-            elif kind == 'message_stop':
-                break
-        ordered, calls = [], []
-        for _index, block in sorted(blocks.items()):
-            if block.get('type') == 'tool_use':
-                partial = block.pop('partial', None)
-                args, error = parse_arguments(partial, stop_reason == 'max_tokens') if partial is not None else (block.get('input') or {}, '')
-                block['input'] = args
-                calls.append(ToolCall(id=block.get('id') or call_id(), name=block.get('name', ''), args=args, error=error))
-            ordered.append(block)
-        text = ''.join(b.get('text', '') for b in ordered if b.get('type') == 'text')
-        if stop_reason == 'refusal' and not calls:
-            raise ProviderError('err_agent_failed', 'The model declined the request')
-        return AgentStep(text=text.strip(), tool_calls=calls, finish_reason=stop_reason, raw={'anthropic': ordered})
-
-
 class FakeProvider(AgentProvider):
     name = 'fake'
 
@@ -504,6 +362,4 @@ def provider_from_env():
     kind = os.environ.get('AGENT_PROVIDER', 'lmstudio')
     if kind == 'fake':
         return FakeProvider(json.loads(os.environ.get('AGENT_FAKE_STEPS', '[]')))
-    if kind == 'anthropic':
-        return AnthropicProvider()
     return LmStudioProvider()

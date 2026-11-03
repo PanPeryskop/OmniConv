@@ -52,6 +52,10 @@ const RULES = [
         check(log.includes('Gotowe: przetłumaczyłem stronę 4.'), 'finish summary is shown');
         const card = await page.textContent('.pa-card');
         check(card.includes('EN:'), 'proposal card shows the translated text');
+        const terms = await page.$$eval('.pa-card .pa-terms li', els => els.map(el => el.textContent));
+        check(terms.length === 3 && terms[0].includes('PDF editor'), `card lists the glossary terms (${terms.join(' | ')})`);
+        await page.click('.pa-card .pa-terms summary');
+        check(await page.$eval('.pa-card .pa-terms', el => el.open), 'terms section expands');
 
         const before = await page.evaluate(() => PdfEditor.bridge.ops().length);
         await page.click('.pa-card [data-pa="apply"]');

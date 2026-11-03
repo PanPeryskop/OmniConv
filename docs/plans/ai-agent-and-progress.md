@@ -55,7 +55,7 @@ mobile-first (zasady z sekcji 4.8).
    app/routes/api_pdf_agent.py   app/routes/api_pdf_tasks.py
                    │               │
    services/pdf_agent.py ──► services/pdf_agent_tools.py ──► pdf_editor / pdf_ai / pdf_search
-   services/agent_providers.py (LM Studio OpenAI-compat, Anthropic opcjonalnie, Fake)
+   services/agent_providers.py (LM Studio OpenAI-compat, Fake)
                                    │
                     services/editor_tasks.py  ◄── pdf_scan (OCR), tłumaczenie, wyszukiwanie, zapis
 ```
@@ -103,7 +103,7 @@ Zmiana w podglądzie: odpowiedź `ocr_pending` dostaje pole `task_id`, czyli `{"
 
 | Metoda i ścieżka | Wejście | Wyjście |
 |---|---|---|
-| `GET /api/pdf/edit/agent/status` | — | `{"status": "ok" \| "llm_offline" \| "llm_model_missing", "provider": "lmstudio" \| "anthropic", "model": str}` |
+| `GET /api/pdf/edit/agent/status` | — | `{"status": "ok" \| "llm_offline" \| "llm_model_missing", "provider": "lmstudio", "model": str}` |
 | `POST /api/pdf/edit/agent/sessions` | `{"file_id"}` | `{"session_id"}` |
 | `POST /api/pdf/edit/agent/sessions/<sid>/messages` | `{"text", "ops", "scope", "selection"}` | **`text/event-stream`** (zdarzenia z 4.3) |
 | `POST /api/pdf/edit/agent/sessions/<sid>/stop` | — | `{"stopped": bool}` |
@@ -229,13 +229,10 @@ class AgentProvider:
 - `LmStudioProvider`: endpoint zgodny z OpenAI `POST {base}/v1/chat/completions` z `tools`, `tool_choice: "auto"` i
   `stream: true` (składa delty `tool_calls`). Model z `LLM_AGENT_MODEL`, domyślnie `LLMService.text_model()`.
   Base URL z `LLMService().base_url`.
-- `AnthropicProvider` (opcjonalny, włączany gdy jest `ANTHROPIC_API_KEY`): Messages API z `tools`, bloki
-  `tool_use` / `tool_result`, model z `AGENT_ANTHROPIC_MODEL`. Implementujący agent sprawdza aktualne nazwy modeli
-  i format w dokumentacji SDK, a nie z pamięci.
 - `FakeProvider`: skrypt kroków z JSON-a (testy i e2e). `tests/fakes/fake_lm.py` to serwer HTTP udający LM Studio:
   `/api/v1/models`, `/api/v1/chat`, `/v1/chat/completions` z tool-callingiem sterowanym regułami z pliku.
-- Wybór: `AGENT_PROVIDER=lmstudio|anthropic`, domyślnie `lmstudio`. Prywatność: domyślnie wszystko lokalnie.
-  Gdy wybrany jest dostawca zewnętrzny, panel pokazuje informację, że treść strony wychodzi poza komputer.
+- Jedynym prawdziwym dostawcą jest LM Studio, więc treść dokumentu nigdy nie opuszcza komputera. `AGENT_PROVIDER=fake`
+  służy wyłącznie testom; każda inna wartość daje LM Studio. Dostawca Anthropic API został usunięty.
 
 ### 4.8 Zasady UI (wspólne)
 
@@ -424,7 +421,7 @@ Dopiski per WP:
   overlay i OCR wszystkich zeskanowanych stron.”
 - **WP3:** „Dodaj postęp do tłumaczenia, wyszukiwania, zapisu, podpisu, AI rewrite i indeksu czcionek przez
   `EditorTask` i `PdfProgress`.”
-- **WP4:** „Zbuduj pętlę agenta, dostawców (LM Studio tool-calling, opcjonalnie Anthropic, Fake), endpoint SSE i
+- **WP4:** „Zbuduj pętlę agenta, dostawców (LM Studio tool-calling, Fake), endpoint SSE i
   sesje. Używaj tylko interfejsu narzędzi z 4.4 (WP5 dostarcza implementacje; do czasu scalenia użyj stubów z WP0).”
 - **WP5:** „Zaimplementuj wszystkie narzędzia z 4.4, w tym `proofread`, `block_id`, `working_ops` i `Proposal`.”
 - **WP6:** „Zbuduj panel czatu wyłącznie na `PdfEditor.bridge` i zdarzeniach SSE z 4.3, z kartami propozycji i
@@ -439,7 +436,7 @@ Dopiski per WP:
 | Model bez tool-callingu | fallback „JSON w treści” z walidacją; status w panelu |
 | Duże dokumenty przekraczają kontekst | `read_page` per strona, przycinanie, podsumowania; `scope` domyślnie „ta strona” |
 | Agent psuje dokument | tylko propozycje, ręczna akceptacja, grupa cofania, `base` wykrywa nieaktualne propozycje |
-| Prywatność | domyślnie LM Studio lokalnie; dostawca zewnętrzny tylko jawnie z ostrzeżeniem w UI |
+| Prywatność | tylko LM Studio lokalnie; brak dostawców zewnętrznych |
 | Rozjazd stanu klient–serwer | serwer zawsze liczy na opach z żądania, nie trzyma stanu dokumentu |
 | Konflikty przy równoległej pracy | tabela własności plików, `I18n.extend`, zamrożone kontrakty, WP0 przed resztą |
 
@@ -486,7 +483,7 @@ WP0 jest zrobione i scalone na branchu bazowym. Ustalenia wiążące dla WP1–W
   WP2/WP3 kodują przeciw temu API już teraz.
 - **Backend:** `editor_tasks.py` ma działający minimalny `TaskRegistry` z `subscribe(listener)` (WP1 dokłada throttling,
   emit do pokojów i UI, nie zmienia sygnatur). `agent_providers.py` ma `ToolCall`, `AgentStep`, `AgentProvider`,
-  działający `FakeProvider` (`AGENT_PROVIDER=fake`, kroki w `AGENT_FAKE_STEPS`) i puste klasy LM Studio/Anthropic
+  działający `FakeProvider` (`AGENT_PROVIDER=fake`, kroki w `AGENT_FAKE_STEPS`) i pustą klasę LM Studio
   (WP4). `pdf_agent_tools.py` ma `ToolContext`, `ToolResult`, `ToolSpec`, `block_id`, `page_base`, `make_proposal`,
   `register`, `tool_specs` (WP5 rejestruje narzędzia). `pdf_agent.py` ma `AgentSession`, `AgentSessionStore`,
   stałe limitów i stub `run_turn(session, text, ctx, provider, emit)` (WP4). Trasy agenta zwracają 501, trasy zadań

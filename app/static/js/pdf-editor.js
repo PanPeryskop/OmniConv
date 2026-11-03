@@ -26,6 +26,7 @@ const PdfEditor = (() => {
         trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
         replace: '<path d="M4 7h11l-3-3M20 17H9l3 3"/>',
         rotate: '<path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/>',
+        rescan: '<path d="M4 8V5a1 1 0 011-1h3M16 4h3a1 1 0 011 1v3M20 16v3a1 1 0 01-1 1h-3M8 20H5a1 1 0 01-1-1v-3"/><path d="M8 10h8M8 14h5"/>',
         plus: '<path d="M12 5v14M5 12h14"/>',
         duplicate: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 00-1-1H5a1 1 0 00-1 1v10a1 1 0 001 1h3"/>',
         check: '<path d="M5 12l5 5 9-10"/>',
@@ -208,7 +209,7 @@ const PdfEditor = (() => {
             banner: null, dismissed: new WeakSet(), digest: null, draftTimer: 0, keepalive: 0, restoring: false,
             group: 0, nudge: null, clipboard: null, pasteCount: 0, current: 0, suppressClick: false, sheet: null,
             find: { query: '', whole: false, kinds: new Set(), matches: null, off: new Set(), truncated: false, busy: false },
-            scansDismissed: new Set(), ai: { status: null, busy: false, result: null, language: defaultLanguage() },
+            scans: new Set(), scansDismissed: new Set(), ai: { status: null, busy: false, result: null, language: defaultLanguage() },
             translation: null, place: null, sign: { tab: 'draw', color: INK[0], font: 0, name: '', image: null, keep: true, pad: null },
             opts: { ink: INK[1], mark: MARKS[0], width: WIDTHS[1], markup: 'highlight', shape: 'rect', textColor: INK[0], textSize: 12 }
         };
@@ -226,6 +227,7 @@ const PdfEditor = (() => {
             if (!body.success) throw new Error(errorText(body, 'pdf_err_failed'));
             if (s !== session) return;
             s.digest = body.data.digest;
+            s.scans = new Set(body.data.scans || []);
             buildPages(body.data.pages);
             emit('open', bridge.session());
             s.keepalive = setInterval(keepAlive, KEEPALIVE_MS);
@@ -479,11 +481,37 @@ const PdfEditor = (() => {
                 <div class="pe-thumb-bar">
                     <span>${position + 1}</span>
                     <button type="button" class="pe-icon-btn" data-thumb="rotate" title="${escapeHtml(t('pe_rotate_page'))}" aria-label="${escapeHtml(t('pe_rotate_page'))}">${icon('rotate')}</button>
+                    ${scanCandidate(page) ? `<button type="button" class="pe-icon-btn" data-thumb="reocr" title="${escapeHtml(t('pe_reocr'))}" aria-label="${escapeHtml(t('pe_reocr'))}">${icon('rescan')}</button>` : ''}
                     <button type="button" class="pe-icon-btn" data-thumb="insert" title="${escapeHtml(t('pe_insert_blank'))}" aria-label="${escapeHtml(t('pe_insert_blank'))}">${icon('plus')}</button>
                     <button type="button" class="pe-icon-btn" data-thumb="delete" title="${escapeHtml(t('pe_delete_page'))}" aria-label="${escapeHtml(t('pe_delete_page'))}" ${single ? 'disabled' : ''}>${icon('trash')}</button>
                 </div>
             </div>`;
         }).join('');
+    }
+
+    function scanCandidate(page) {
+        if (!page) return false;
+        if (page.data && 'ocr_able' in page.data) return page.data.ocr_able;
+        return s.scans.has(page.i);
+    }
+
+    async function reOcr(id) {
+        const page = s.pages[id];
+        if (!page) return;
+        const session = s;
+        const fresh = page.data && page.loadedRev === page.rev && 'ocr_able' in page.data;
+        const layout = fresh ? page.data : await pageLayout(id);
+        if (s !== session) return;
+        if (layout?.ocr_pending) return Toast.info(escapeHtml(t('pe_scan_wait')));
+        if (!layout?.ocr_able) {
+            Toast.info(escapeHtml(t('pe_reocr_unavailable')));
+            renderThumbs();
+            return;
+        }
+        const edits = new Set(s.ops.filter(op => op.page === id && op.type === 'text').map(op => op.g)).size;
+        if (edits && !confirm(t('pe_reocr_confirm', { count: edits }))) return;
+        pushOp({ type: 'ocr', page: id, force: true, retry: Date.now() });
+        Toast.info(escapeHtml(t('pe_scan_wait')));
     }
 
     function onThumbClick(e) {
@@ -497,6 +525,8 @@ const PdfEditor = (() => {
             s.pages[id].el.scrollIntoView({ behavior: compact() ? 'auto' : 'smooth', block: 'start' });
         } else if (action === 'rotate') {
             pushOp({ type: 'page', action: 'rotate', page: id, angle: 90 });
+        } else if (action === 'reocr') {
+            reOcr(id);
         } else if (action === 'delete' && s.order.length > 1) {
             pushOp({ type: 'page', action: 'delete', page: id });
         } else if (action === 'insert') {
@@ -625,6 +655,7 @@ const PdfEditor = (() => {
         emit('preview', { pageId: page.i, layout: data });
         const thumb = els.thumbs.querySelector(`.pe-thumb[data-id="${page.i}"] .pe-thumb-page`);
         if (thumb) thumb.innerHTML = `<img src="${escapeHtml(data.image)}" alt="">`;
+        if (thumb && scanCandidate(page) !== !!thumb.closest('.pe-thumb').querySelector('[data-thumb="reocr"]')) renderThumbs();
         if (data.scanned && !s.banner && !s.scansDismissed.has(page.i) && !s.ops.some(op => op.type === 'ocr' && op.page === page.i)) offerOcr(page);
         Object.keys(data.overflow || {}).forEach(i => {
             const op = sent[Number(i)];
@@ -1154,6 +1185,7 @@ const PdfEditor = (() => {
         return `<div class="pe-grabber" data-grab></div><div class="pe-menu" data-grab>
             ${item('pages', els.pagesBtn.innerHTML, 'pe_pages')}
             ${item('translate', els.translateBtn.innerHTML, 'pe_translate')}
+            ${scanCandidate(s.pages[s.current]) ? item('reocr', icon('rescan'), 'pe_reocr') : ''}
             ${menuItems.map(entry => item(`ext:${entry.id}`, entry.icon, entry.labelKey)).join('')}
         </div>`;
     }
@@ -1399,6 +1431,7 @@ const PdfEditor = (() => {
         if (menu) {
             closeSheet();
             if (menu.startsWith('ext:')) return menuItems.find(entry => `ext:${entry.id}` === menu)?.run();
+            if (menu === 'reocr') return reOcr(s.current);
             return menu === 'pages' ? togglePanel(true) : toggleSheet('translate');
         }
         const certButton = e.target.closest('button[data-cert="sign"]');

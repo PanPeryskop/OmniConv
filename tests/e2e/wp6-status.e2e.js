@@ -26,10 +26,11 @@ const { mockAgent, openAgent, sendText, idle } = require('./wp6-mock');
         check(await page.$$eval('.pa-suggestion:disabled', els => els.length) === 4, 'suggestions are disabled while offline');
         check(await page.$eval('.pa-send', el => el.disabled), 'Send is disabled while offline');
 
-        current = { status: 'ok', provider: 'anthropic', model: 'claude-test' };
+        current = { status: 'ok', provider: 'lmstudio', model: 'local-test' };
         await page.click('.pa-notice [data-pa="retry"]');
-        await page.waitForSelector('.pa-notice.privacy');
-        check((await page.textContent('.pa-notice.privacy')).includes('Anthropic'), 'external provider shows a privacy note');
+        await page.waitForFunction(() => !document.querySelector('.pa-notice.off'));
+        check((await page.textContent('.pa-model')).includes('LM Studio · local-test'), 'model line shows the local provider after retry');
+        check(await page.$('.pa-notice') === null, 'no notice while the local model is ready');
         check(!(await page.$eval('.pa-send', el => el.disabled)), 'Send is enabled again after retry');
 
         await sendText(page, 'hello');

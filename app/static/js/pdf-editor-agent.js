@@ -10,16 +10,14 @@ const PdfAgent = (() => {
         { key: 'summary', scope: 'document', send: true }
     ];
     const KIND_ICONS = { text: 'edit', style: 'bold', insert: 'text', delete: 'trash', annot: 'markup', redact: 'redact', page: 'rotate' };
-    const PROVIDERS = { lmstudio: 'LM Studio', anthropic: 'Anthropic', fake: 'Fake LM' };
-    const LOCAL_PROVIDERS = ['lmstudio', 'fake'];
+    const PROVIDERS = { lmstudio: 'LM Studio', fake: 'Fake LM' };
     const GLYPHS = {
         send: '<path d="M5 12h13M13 6l6 6-6 6"/>',
         stop: '<rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/>',
         chat: '<path d="M4 5h16v11H9l-5 4z"/><path d="M12 8v5M9.5 10.5h5"/>',
         eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
         down: '<path d="M12 5v14M6 13l6 6 6-6"/>',
-        minus: '<path d="M6 12h12"/>',
-        lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>'
+        minus: '<path d="M6 12h12"/>'
     };
     const STICK_PX = 48;
     const DIFF_LIMIT = 250000;
@@ -376,9 +374,6 @@ const PdfAgent = (() => {
             return `<div class="pa-notice off" role="status">${bridge.icon('warning')}<span>${esc(reason)}</span>
                 <button type="button" class="pa-link" data-pa="retry">${esc(tr('pa_retry'))}</button></div>`;
         }
-        if (status.provider && !LOCAL_PROVIDERS.includes(status.provider)) {
-            return `<div class="pa-notice privacy" role="note">${glyph('lock')}<span>${esc(tr('pa_privacy', { provider: providerName() }))}</span></div>`;
-        }
         return '';
     }
 
@@ -454,6 +449,7 @@ const PdfAgent = (() => {
             </header>
             ${p.reason ? `<p class="pa-reason">${esc(p.reason)}</p>` : ''}
             ${body ? `<div class="pa-diff">${body}</div>` : ''}
+            ${termsHtml(p)}
             ${deps.length ? `<p class="pa-deps">${esc(tr('pa_applies_with', { count: deps.length }))}</p>` : ''}
             <div class="pa-card-foot">${foot}</div>
         </article>`;
@@ -795,12 +791,23 @@ const PdfAgent = (() => {
         }
     }
 
+    function termsOf(list) {
+        if (!Array.isArray(list)) return [];
+        return list.filter(pair => Array.isArray(pair) && pair.length === 2).slice(0, 60).map(([term, target]) => [String(term), String(target)]);
+    }
+
+    function termsHtml(p) {
+        if (!p.terms?.length) return '';
+        const rows = p.terms.map(([term, target]) => `<li><span>${esc(term)}</span><span class="pa-terms-arrow" aria-hidden="true">→</span><span>${esc(target)}</span></li>`).join('');
+        return `<details class="pa-terms"><summary>${esc(tr('pa_terms', { count: p.terms.length }))}</summary><ul>${rows}</ul></details>`;
+    }
+
     function addProposal(data, turn) {
         if (!data?.id || chat.proposals[data.id]) return null;
         const p = {
             id: String(data.id), kind: data.kind || 'text', page: Number(data.page), title: data.title || tr('pa_untitled'), reason: data.reason || '',
             before: data.before || '', after: data.after || '', rects: Array.isArray(data.rects) ? data.rects : [], ops: Array.isArray(data.ops) ? data.ops : [],
-            base: data.base || null, depends_on: Array.isArray(data.depends_on) ? data.depends_on.map(String) : [], turn, seq: ++chat.seq, rejected: false, by: null
+            base: data.base || null, depends_on: Array.isArray(data.depends_on) ? data.depends_on.map(String) : [], terms: termsOf(data.terms), turn, seq: ++chat.seq, rejected: false, by: null
         };
         chat.proposals[p.id] = p;
         chainCache = new Map();
@@ -1216,7 +1223,6 @@ const PdfAgent = (() => {
             pa_offline: 'Model unavailable',
             pa_status_unavailable: 'The assistant is not available right now.',
             pa_retry: 'Try again',
-            pa_privacy: '{provider} is an external service: page content is sent outside this computer.',
             pa_thinking: 'Thinking…',
             pa_jump: 'Jump to the latest message',
             pa_show: 'Show',
@@ -1227,6 +1233,7 @@ const PdfAgent = (() => {
             pa_rejected: 'Rejected',
             pa_rejected_with: 'Rejected together with “{title}”',
             pa_stale: 'Out of date: the page changed after this suggestion',
+            pa_terms: 'Terms used ({count})',
             pa_applies_with_one: 'Also applies {count} earlier change it builds on',
             pa_applies_with_other: 'Also applies {count} earlier changes it builds on',
             pa_rejects_with_one: 'Also rejects {count} change that builds on this one',
@@ -1291,7 +1298,6 @@ const PdfAgent = (() => {
             pa_offline: 'Model niedostępny',
             pa_status_unavailable: 'Asystent jest teraz niedostępny.',
             pa_retry: 'Spróbuj ponownie',
-            pa_privacy: '{provider} to usługa zewnętrzna: treść stron zostanie wysłana poza ten komputer.',
             pa_thinking: 'Myślę…',
             pa_jump: 'Przejdź do najnowszej wiadomości',
             pa_show: 'Pokaż',
@@ -1302,6 +1308,7 @@ const PdfAgent = (() => {
             pa_rejected: 'Odrzucono',
             pa_rejected_with: 'Odrzucono razem z „{title}”',
             pa_stale: 'Nieaktualne: strona zmieniła się po tej propozycji',
+            pa_terms: 'Użyte terminy ({count})',
             pa_applies_with_one: 'Zastosuje też {count} wcześniejszą zmianę, na której bazuje',
             pa_applies_with_few: 'Zastosuje też {count} wcześniejsze zmiany, na których bazuje',
             pa_applies_with_many: 'Zastosuje też {count} wcześniejszych zmian, na których bazuje',
@@ -1372,7 +1379,6 @@ const PdfAgent = (() => {
             pa_offline: 'Modell nicht verfügbar',
             pa_status_unavailable: 'Der Assistent ist gerade nicht verfügbar.',
             pa_retry: 'Erneut versuchen',
-            pa_privacy: '{provider} ist ein externer Dienst: Seiteninhalte verlassen diesen Computer.',
             pa_thinking: 'Denke nach…',
             pa_jump: 'Zur neuesten Nachricht',
             pa_show: 'Zeigen',
@@ -1383,6 +1389,7 @@ const PdfAgent = (() => {
             pa_rejected: 'Abgelehnt',
             pa_rejected_with: 'Zusammen mit „{title}“ abgelehnt',
             pa_stale: 'Veraltet: Die Seite hat sich nach diesem Vorschlag geändert',
+            pa_terms: 'Verwendete Begriffe ({count})',
             pa_applies_with_one: 'Übernimmt auch {count} frühere Änderung, auf der er aufbaut',
             pa_applies_with_other: 'Übernimmt auch {count} frühere Änderungen, auf denen er aufbaut',
             pa_rejects_with_one: 'Lehnt auch {count} darauf aufbauende Änderung ab',

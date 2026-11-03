@@ -274,7 +274,7 @@ class AgentTurn:
                 return self.fail(e.code, str(e))
             partial = []
             messages.append({
-                'role': 'assistant', 'content': step.text, 'raw': step.raw,
+                'role': 'assistant', 'content': step.text,
                 'tool_calls': [{'id': c.id, 'name': c.name, 'args': c.args} for c in step.tool_calls],
             })
             if not step.tool_calls:

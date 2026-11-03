@@ -84,7 +84,6 @@
 .pa-notice > span { flex: 1; min-width: 0; }
 .pa-notice.off { border-color: var(--color-error); background: var(--color-error-glow); }
 .pa-notice.off svg { color: var(--color-error); }
-.pa-notice.privacy svg { color: var(--text-secondary); }
 .pa-link { flex: none; padding: 0; border: 0; background: none; color: var(--text-primary); font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; white-space: nowrap; }
 
 .pa-body { position: relative; flex: 1; min-height: 0; display: flex; }
@@ -218,6 +217,16 @@
 .pa-diff ins { color: var(--text-primary); text-decoration: none; background: var(--color-success-glow); box-shadow: inset 0 -2px 0 var(--color-success); border-radius: 3px; }
 .pa-diff del + ins { margin-left: 4px; }
 .pa-redacted { padding: 0 3px; border-radius: 3px; background: var(--text-primary); color: var(--bg-primary); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.pa-terms { margin-top: 8px; font-size: var(--text-xs); color: var(--text-secondary); }
+.pa-terms summary { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; cursor: pointer; list-style: none; border-radius: 6px; }
+.pa-terms summary::-webkit-details-marker { display: none; }
+.pa-terms summary::before { content: '›'; display: inline-block; width: 10px; color: var(--text-tertiary); transition: transform 0.15s ease; }
+.pa-terms[open] summary::before { transform: rotate(90deg); }
+.pa-terms summary:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.pa-terms ul { display: grid; gap: 2px; max-height: 9em; margin: 4px 0 0; padding: 6px 10px; overflow-y: auto; list-style: none; border-radius: 8px; background: var(--surface-glass-active); scrollbar-width: thin; }
+.pa-terms li { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px; overflow-wrap: anywhere; }
+.pa-terms li span:last-child { color: var(--text-primary); }
+.pa-terms-arrow { color: var(--text-tertiary); }
 .pa-deps { margin: 8px 0 0; font-size: var(--text-xs); color: var(--text-secondary); }
 .pa-deps::before { content: '↳ '; color: var(--text-tertiary); }
 .pa-card-foot { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
@@ -257,7 +266,7 @@
 .pa-card.is-applied .pa-state { color: var(--text-primary); }
 .pa-card.is-applied .pa-state svg { color: var(--color-success); }
 .pa-card.is-rejected { opacity: 0.6; box-shadow: none; background: transparent; }
-.pa-card.is-rejected .pa-diff, .pa-card.is-rejected .pa-reason { display: none; }
+.pa-card.is-rejected .pa-diff, .pa-card.is-rejected .pa-reason, .pa-card.is-rejected .pa-terms { display: none; }
 .pa-card.is-stale { border-style: dashed; box-shadow: none; }
 .pa-card.is-stale .pa-state svg { color: var(--color-warning); }
 .pa-card.doomed { border-color: var(--color-error); box-shadow: 0 0 0 3px var(--color-error-glow); }
@@ -375,6 +384,7 @@
     .pa-send { width: 44px; height: 44px; }
     .pa-btn { min-height: 44px; padding: 0 14px; font-size: var(--text-sm); }
     .pa-card-foot .pa-btn.primary { flex: 1; max-width: 240px; }
+    .pa-terms summary { min-height: 44px; }
     .pa-suggestion { min-height: 48px; font-size: 16px; }
     .pa-link { min-height: 44px; display: inline-flex; align-items: center; margin: -12px 0; }
     .pa-jump { width: 44px; height: 44px; }
