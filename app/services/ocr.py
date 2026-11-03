@@ -1,3 +1,5 @@
+import contextlib
+import functools
 import gc
 import logging
 import os
@@ -44,6 +46,44 @@ SCRIPT_BLOCKS = (
     ('th', 0x0E00, 0x0E7F), ('korean', 0xAC00, 0xD7AF),
 )
 MIN_ALIGN_RATIO = 0.4
+
+
+@functools.cache
+def _paddle_gpu_available() -> bool:
+    try:
+        import paddle
+        return bool(paddle.device.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0)
+    except Exception as e:
+        logger.info("PaddlePaddle GPU is not available for OCR: %s", e)
+        return False
+
+
+@functools.cache
+def _warn_gpu_missing():
+    logger.warning("OCR_DEVICE=gpu, but PaddlePaddle with CUDA is not available; OCR runs on CPU")
+
+
+@functools.cache
+def _quiet_paddle():
+    from rapidocr.inference_engine.paddle import main
+    original = main.PaddleInferSession.init_predictor
+
+    def init_predictor(self, infer_opts, ocr_version):
+        infer_opts.disable_glog_info()
+        return original(self, infer_opts, ocr_version)
+
+    main.PaddleInferSession.init_predictor = init_predictor
+
+
+def rapid_device() -> str:
+    wanted = os.environ.get('OCR_DEVICE', 'auto').strip().lower()
+    if wanted == 'cpu':
+        return 'cpu'
+    if _paddle_gpu_available():
+        return 'gpu'
+    if wanted == 'gpu':
+        _warn_gpu_missing()
+    return 'cpu'
 
 
 class OcrPage:
@@ -211,6 +251,7 @@ class OCRService(BaseConverter):
 
     _rapid_engines = OrderedDict()
     _rapid_lock = threading.Lock()
+    _gpu_run_lock = threading.Lock()
     _status_cache = {'at': 0.0, 'data': None}
 
     def __init__(self, *args, **kwargs):
@@ -266,8 +307,8 @@ class OCRService(BaseConverter):
         return engine, correct
 
     @staticmethod
-    def _rapid_params(quality: str, script: str) -> Dict[str, Any]:
-        from rapidocr import ModelType, OCRVersion, LangDet, LangRec
+    def _rapid_params(quality: str, script: str, device: str = 'cpu') -> Dict[str, Any]:
+        from rapidocr import EngineType, ModelType, OCRVersion, LangDet, LangRec
         profile = RAPID_QUALITIES[quality]
         params = {'Global.log_level': 'error', 'Global.max_side_len': profile['max_side']}
         if script == 'latin':
@@ -282,11 +323,15 @@ class OCRService(BaseConverter):
                 'Rec.ocr_version': OCRVersion.PPOCRV5, 'Rec.model_type': ModelType.MOBILE,
                 'Rec.lang_type': LangRec(script),
             })
+        if device == 'gpu':
+            params.update({f'{stage}.engine_type': EngineType.PADDLE for stage in ('Det', 'Cls', 'Rec')})
+            params['EngineConfig.paddle.use_cuda'] = True
         return params
 
     @classmethod
     def _get_rapid(cls, quality: str = DEFAULT_RAPID_QUALITY, script: str = DEFAULT_RAPID_SCRIPT):
-        key = (quality, script)
+        device = rapid_device()
+        key = (quality, script, device)
         with cls._rapid_lock:
             engine = cls._rapid_engines.get(key)
             if engine is not None:
@@ -295,10 +340,26 @@ class OCRService(BaseConverter):
             while len(cls._rapid_engines) >= cls.RAPID_CACHE_SIZE:
                 cls._rapid_engines.popitem(last=False)
                 gc.collect()
-            from rapidocr import RapidOCR
-            engine = RapidOCR(params=cls._rapid_params(quality, script))
+            engine = cls._create_rapid(quality, script, device)
             cls._rapid_engines[key] = engine
             return engine
+
+    @classmethod
+    def _create_rapid(cls, quality: str, script: str, device: str):
+        from rapidocr import RapidOCR
+        if device == 'gpu':
+            _quiet_paddle()
+            try:
+                engine = RapidOCR(params=cls._rapid_params(quality, script, 'gpu'))
+                logger.info("RapidOCR %s/%s runs on GPU (PaddlePaddle CUDA)", quality, script)
+                return engine
+            except Exception as e:
+                logger.warning("RapidOCR GPU engine failed for %s/%s, falling back to CPU: %s", quality, script, e)
+        return RapidOCR(params=cls._rapid_params(quality, script))
+
+    @classmethod
+    def rapid_guard(cls):
+        return cls._gpu_run_lock if rapid_device() == 'gpu' else contextlib.nullcontext()
 
     @classmethod
     def _release_rapid_locked(cls):
@@ -329,7 +390,9 @@ class OCRService(BaseConverter):
 
     def _rapid_raw(self, image_path: str, quality: Optional[str] = None, script: Optional[str] = None):
         engine = self._get_rapid(quality or self.rapid_quality, script or self.rapid_script)
-        result = engine(self._padded_image(image_path))
+        image = self._padded_image(image_path)
+        with self.rapid_guard():
+            result = engine(image)
         boxes = result.boxes if result.boxes is not None else []
         items = []
         for box, text, score in zip(boxes, result.txts or [], result.scores or []):

@@ -33,5 +33,25 @@ dependencies = [
     "pyhanko==0.29.1",
 ]
 
+[project.optional-dependencies]
+gpu = [
+    "paddlepaddle-gpu==3.4.0; sys_platform == 'win32' or sys_platform == 'linux'",
+    "nvidia-cuda-runtime-cu12==12.9.37; sys_platform == 'win32'",
+    "nvidia-cudnn-cu12==9.9.0.52; sys_platform == 'win32'",
+    "nvidia-cublas-cu12==12.9.0.13; sys_platform == 'win32'",
+    "nvidia-cufft-cu12==11.4.0.6; sys_platform == 'win32'",
+    "nvidia-curand-cu12==10.3.10.19; sys_platform == 'win32'",
+    "nvidia-cusolver-cu12==11.7.4.40; sys_platform == 'win32'",
+    "nvidia-cusparse-cu12==12.5.9.5; sys_platform == 'win32'",
+]
+
 [tool.uv]
 package = false
+
+[[tool.uv.index]]
+name = "paddle-cu129"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu129/"
+explicit = true
+
+[tool.uv.sources]
+paddlepaddle-gpu = { index = "paddle-cu129" }
