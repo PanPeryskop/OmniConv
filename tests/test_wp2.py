@@ -57,10 +57,12 @@ class Wp2Test(unittest.TestCase):
         self.app = Flask(__name__)
         self.events = []
         self.listener = lambda task: self.events.append((task.id, task.status, task.stage, task.progress, dict(task.detail)))
+        self.interval, TASKS.interval = TASKS.interval, 0
         TASKS.subscribe(self.listener)
 
     def tearDown(self):
         TASKS.listeners.remove(self.listener)
+        TASKS.interval = self.interval
 
     def preview(self, path, ops=(OCR_OP,), owner='me'):
         with self.app.test_request_context():
