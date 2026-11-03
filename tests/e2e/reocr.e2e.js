@@ -55,11 +55,13 @@ async function settle(page, id, test, timeout = 40000) {
         check((await settle(page, 0, text => text.includes('Poprawka'))).includes('Poprawka'), 'user edit is visible');
         const before = await page.evaluate(() => PdfEditor.bridge.ops().length);
 
-        const prompt = page.waitForEvent('dialog');
+        let message = '';
+        page.once('dialog', dialog => {
+            message = dialog.message();
+            dialog.dismiss();
+        });
         await page.click('.pe-thumb[data-id="0"] [data-thumb="reocr"]');
-        const dialog = await prompt;
-        const message = dialog.message();
-        await dialog.dismiss();
+        for (let i = 0; i < 50 && !message; i++) await page.waitForTimeout(100);
         await page.waitForTimeout(200);
         check(/1 earlier text change/.test(message), `confirmation names the replaced edits (${message})`);
         check(await page.evaluate(() => PdfEditor.bridge.ops().length) === before, 'dismissing the confirmation changes nothing');
@@ -79,14 +81,53 @@ async function settle(page, id, test, timeout = 40000) {
         const restored = await settle(page, 0, text => text.includes('Poprawka'));
         check(restored.includes('Poprawka'), 'undo brings the earlier edit back');
 
-        await page.click('.pe-thumb[data-id="1"] .pe-thumb-frame');
+        await page.click('#pePagesBtn');
+        await page.waitForSelector('#pePanel.hidden', { state: 'attached' });
+        const pill = page.locator('.pe-page[data-page="0"] .pe-page-reocr');
+        check(await pill.count() === 1, 'scan page has its own re-OCR button');
+        check(await page.locator('.pe-page[data-page="1"] .pe-page-reocr').count() === 0, 'digital page has no re-OCR button');
+        await page.mouse.move(5, 5);
+        await page.waitForTimeout(250);
+        check(await pill.evaluate(el => getComputedStyle(el).opacity) === '0', 'button stays out of the way until the page is hovered');
+        const frame = await page.locator('.pe-page[data-page="0"]').boundingBox();
+        await page.mouse.move(frame.x + frame.width / 2, frame.y + 40);
+        await page.waitForTimeout(250);
+        check(await pill.evaluate(el => getComputedStyle(el).opacity) === '1', 'hovering the page reveals the button');
+        const label = await pill.textContent();
+        check(label.trim() === 'Recognize text again', `button is labelled (${label.trim()})`);
+        const count = await page.evaluate(() => PdfEditor.bridge.ops().length);
+        page.once('dialog', dialog => dialog.accept());
+        await pill.click();
+        await page.waitForFunction(n => PdfEditor.bridge.ops().length === n + 1, count);
+        check(await page.evaluate(() => { const op = PdfEditor.bridge.ops().pop(); return op.type === 'ocr' && op.force; }), 'page button starts recognition');
+        check(await page.evaluate(() => PdfEditor.bridge.ops().filter(op => op.type === 'text').length) === 1, 'page button does not start a selection or remove edits');
+        await page.evaluate(() => i18n.setLanguage('pl'));
+        check((await pill.textContent()).trim() === 'Rozpoznaj tekst ponownie', 'button label follows the language');
+        await page.evaluate(() => i18n.setLanguage('en'));
         check(errors.length === 0, `no page errors (${errors.join('; ')})`);
+
+        const tablet = await browser.newContext({ ...devices['iPad Mini'] });
+        const pad = await tablet.newPage();
+        const padErrors = await openEditor(pad, app.url, fixture, { touch: true });
+        const padPill = pad.locator('.pe-page[data-page="0"] .pe-page-reocr');
+        await padPill.waitFor();
+        await pad.waitForFunction(() => {
+            const el = document.querySelector('.pe-page[data-page="0"] .pe-page-reocr');
+            return el && !el.closest('.pe-page').classList.contains('loading') && getComputedStyle(el).opacity === '1';
+        }, null, { timeout: 20000 });
+        const padBox = await padPill.boundingBox();
+        check(await padPill.evaluate(el => getComputedStyle(el).opacity) === '1' && padBox.height >= 40, 'tablet shows a touch-size button without hover');
+        await padPill.tap();
+        await pad.waitForFunction(() => PdfEditor.bridge.ops().some(op => op.type === 'ocr' && op.force));
+        check(padErrors.length === 0, `tablet: no page errors (${padErrors.join('; ')})`);
+        await tablet.close();
 
         for (const theme of ['dark', 'light']) {
             const context = await browser.newContext({ ...devices['iPhone 13'], colorScheme: theme });
             await context.addInitScript(value => localStorage.setItem('theme-preference', value), theme);
             const phone = await context.newPage();
             const phoneErrors = await openEditor(phone, app.url, fixture, { touch: true });
+            check(await phone.locator('.pe-page[data-page="0"] .pe-page-reocr').evaluate(el => getComputedStyle(el).display) === 'none', `${theme}: phone keeps the page clean and uses the menu`);
             await phone.tap('#peMoreBtn');
             const entry = phone.locator('[data-menu="reocr"]');
             await entry.waitFor();

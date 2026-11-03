@@ -180,6 +180,10 @@ const PdfEditor = (() => {
         }
         els.context.addEventListener('change', onContextChange);
         els.pages.addEventListener('pointerdown', onPointerDown);
+        els.pages.addEventListener('click', e => {
+            const button = e.target.closest('.pe-page-reocr');
+            if (button && s) reOcr(Number(button.closest('.pe-page').dataset.page));
+        });
         els.pages.addEventListener('click', onClick);
         els.pages.addEventListener('change', onWidgetChange);
         els.scroll.addEventListener('scroll', () => {
@@ -399,9 +403,20 @@ const PdfEditor = (() => {
         return { i, w, h, el, img: el.querySelector('.pe-img'), layer: el.querySelector('.pe-layer'), svg: el.querySelector('.pe-live'), data: null, rev: 0, loadedRev: -1, loadedWidth: 0, token: 0, visible: false };
     }
 
+    function syncReOcr(page) {
+        const button = page.el.querySelector('.pe-page-reocr');
+        const show = scanCandidate(page);
+        if (show && !button) {
+            page.el.insertAdjacentHTML('beforeend', `<button type="button" class="pe-page-reocr" title="${escapeHtml(t('pe_reocr'))}" data-i18n-title="pe_reocr">${icon('rescan')}<span data-i18n="pe_reocr">${escapeHtml(t('pe_reocr'))}</span></button>`);
+        } else if (!show && button) {
+            button.remove();
+        }
+    }
+
     function buildPages(sizes) {
         s.base = sizes.length;
         s.pages = sizes.map(([w, h], i) => makePage(i, w, h));
+        s.pages.forEach(syncReOcr);
         applyStructure();
         requestAnimationFrame(onScroll);
     }
@@ -656,6 +671,7 @@ const PdfEditor = (() => {
         const thumb = els.thumbs.querySelector(`.pe-thumb[data-id="${page.i}"] .pe-thumb-page`);
         if (thumb) thumb.innerHTML = `<img src="${escapeHtml(data.image)}" alt="">`;
         if (thumb && scanCandidate(page) !== !!thumb.closest('.pe-thumb').querySelector('[data-thumb="reocr"]')) renderThumbs();
+        syncReOcr(page);
         if (data.scanned && !s.banner && !s.scansDismissed.has(page.i) && !s.ops.some(op => op.type === 'ocr' && op.page === page.i)) offerOcr(page);
         Object.keys(data.overflow || {}).forEach(i => {
             const op = sent[Number(i)];
@@ -1750,6 +1766,7 @@ const PdfEditor = (() => {
         if (!s || s.gesture || !(e.target instanceof Element)) return;
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         if (!e.isPrimary || s.drag) return cancelDrag();
+        if (e.target.closest('.pe-page-reocr')) return;
         const inEditor = e.target.closest('.pe-text-wrap, .pe-note-pop');
         if (s.editor && !inEditor) finishText(true);
         if (inEditor) {

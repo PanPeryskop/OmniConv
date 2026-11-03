@@ -143,6 +143,41 @@ body.pe-open { overflow: hidden; }
 }
 
 .pe-page.loading .pe-spinner { opacity: 1; }
+.pe-page-reocr {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 4;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: calc(100% - 20px);
+    height: 32px;
+    padding: 0 12px 0 10px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-solid);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: var(--shadow-md);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    cursor: pointer;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+.pe-page-reocr svg { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pe-page-reocr span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pe-page-reocr:hover { background: var(--surface-glass-hover); }
+.pe-page-reocr:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.pe-page:hover .pe-page-reocr, .pe-page-reocr:focus-visible { opacity: 1; transform: none; }
+.pe-page.loading .pe-page-reocr, .pe-page:has(.pe-ocr) .pe-page-reocr, .pe.editing .pe-page-reocr { opacity: 0; pointer-events: none; }
+@media (hover: none) {
+    .pe-page-reocr { opacity: 1; transform: none; height: 40px; padding: 0 14px 0 12px; }
+}
 @keyframes pe-spin { to { transform: rotate(360deg); } }
 
 .pe-block, .pe-obj, .pe-widget { position: absolute; box-sizing: border-box; }
@@ -551,6 +586,7 @@ textarea.pe-widget { padding-top: 0.15em; }
 }
 
 @media (max-width: 760px) {
+    .pe-page-reocr { display: none; }
     .pe-pages { padding-bottom: 190px; }
     .pe-dock { left: 0; right: 0; bottom: 0; transform: none; width: 100%; max-width: none; gap: 8px; align-items: stretch; }
     .pe-dock > .pe-page-pill { align-self: center; }
