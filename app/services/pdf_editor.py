@@ -1008,8 +1008,14 @@ def op_annot_edit(ctx, page, op):
 
 
 def op_ocr(ctx, page, op):
-    if not page.get_text('words'):
-        pdf_scan.recognize(page, ctx.wait)
+    if page.get_text('words'):
+        return page
+    progress = pdf_scan.recognize(page, ctx.wait, op.get('retry'))
+    if progress:
+        page = ctx.doc.reload_page(page)
+        progress.update('fonts', pdf_scan.MATCHING)
+        ctx.scan_font(page)
+        progress.finish()
     return page
 
 
@@ -1301,8 +1307,8 @@ def build_preview(path, index, ops, width):
             add_blanks(doc, blanks, index)
         try:
             page = apply_page_ops(ctx, doc[index], group_ops(ops, doc.page_count).get(index, []))
-        except pdf_scan.OcrPending:
-            return {'ocr_pending': True}
+        except pdf_scan.OcrPending as pending:
+            return {'ocr_pending': True, **({'task_id': pending.task_id} if pending.task_id else {})}
         layout = page_layout(page, ctx)
         layout['overflow'] = {str(i): by for (number, i), by in ctx.overflow.items() if number == index}
         zoom = max(0.05, min(5.0, width / max(1.0, page.rect.width)))
