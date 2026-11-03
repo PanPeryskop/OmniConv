@@ -634,7 +634,7 @@ const PdfEditor = (() => {
 
     function offerOcr(page) {
         showBanner({
-            key: 'pe_scan_detected',
+            key: 'pe_scan_detected', scan: page.i,
             actions: [{ key: 'pe_scan_ocr', primary: true, run: () => {
                 Toast.info(escapeHtml(t('pe_scan_wait')));
                 pushOp({ type: 'ocr', page: page.i });
@@ -752,6 +752,7 @@ const PdfEditor = (() => {
 
     function updateHistory() {
         if (s.banner?.op && !s.ops.includes(s.banner.op)) hideBanner();
+        if (s.banner?.scan !== undefined && s.ops.some(op => op.type === 'ocr' && op.page === s.banner.scan)) hideBanner();
         storeDraft();
         emit('ops', { ops: bridge.ops() });
         els.undo.disabled = !s.ops.length;
