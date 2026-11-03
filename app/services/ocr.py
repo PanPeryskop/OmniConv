@@ -21,9 +21,9 @@ OCR_DPI = 200
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tif', '.tiff'}
 
 RAPID_QUALITIES = {
-    'fast': {'model': 'tiny', 'dpi': 150, 'max_side': 2000},
-    'standard': {'model': 'small', 'dpi': 200, 'max_side': 2000},
-    'accurate': {'model': 'medium', 'dpi': 300, 'max_side': 4000},
+    'fast': {'det': 'tiny', 'rec': 'tiny', 'dpi': 150, 'max_side': 2000},
+    'standard': {'det': 'small', 'rec': 'small', 'dpi': 200, 'max_side': 2000},
+    'accurate': {'det': 'small', 'rec': 'medium', 'dpi': 300, 'max_side': 2500},
 }
 DEFAULT_RAPID_QUALITY = 'accurate'
 RAPID_SCRIPTS = ('latin', 'eslav', 'cyrillic', 'el', 'arabic', 'korean', 'th', 'devanagari', 'ta', 'te')
@@ -272,8 +272,8 @@ class OCRService(BaseConverter):
         params = {'Global.log_level': 'error', 'Global.max_side_len': profile['max_side']}
         if script == 'latin':
             params.update({
-                'Det.ocr_version': OCRVersion.PPOCRV6, 'Det.model_type': ModelType(profile['model']),
-                'Rec.ocr_version': OCRVersion.PPOCRV6, 'Rec.model_type': ModelType(profile['model']),
+                'Det.ocr_version': OCRVersion.PPOCRV6, 'Det.model_type': ModelType(profile['det']),
+                'Rec.ocr_version': OCRVersion.PPOCRV6, 'Rec.model_type': ModelType(profile['rec']),
             })
         else:
             params.update({
