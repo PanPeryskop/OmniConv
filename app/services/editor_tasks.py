@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 KINDS = ('ocr', 'translate', 'search', 'save', 'sign', 'ai', 'agent', 'fonts')
 FINAL = ('done', 'failed', 'cancelled')
 KEEP_FINISHED = 60
+MIN_INTERVAL = 0.1
 
 
 @dataclass
@@ -32,10 +33,13 @@ class EditorTask:
 
 
 class TaskRegistry:
-    def __init__(self):
+    def __init__(self, interval=MIN_INTERVAL):
         self.tasks = {}
         self.lock = threading.Lock()
         self.listeners = []
+        self.interval = interval
+        self.sent = {}
+        self.timers = {}
 
     def subscribe(self, listener):
         self.listeners.append(listener)
@@ -51,12 +55,15 @@ class TaskRegistry:
         now = time.time()
         for key in [k for k, t in self.tasks.items() if t.status in FINAL and now - t.updated_at > KEEP_FINISHED]:
             del self.tasks[key]
+            self.mark_sent(key)
+            del self.sent[key]
 
     def create(self, owner, kind, file_id=None, page=None):
         task = EditorTask(id='tsk_' + secrets.token_urlsafe(10), owner=owner, kind=kind, file_id=file_id, page=page)
         with self.lock:
             self.prune()
             self.tasks[task.id] = task
+            self.mark_sent(task.id)
         self.notify(task)
         return task
 
@@ -69,13 +76,45 @@ class TaskRegistry:
             task = self.tasks.get(task_id)
             if not task:
                 return None
+            if task.status in FINAL:
+                return task
+            before = (task.status, task.stage)
             for key, value in fields.items():
                 setattr(task, key, value)
             if task.status == 'queued' and 'status' not in fields:
                 task.status = 'running'
             task.updated_at = time.time()
+            urgent = before != (task.status, task.stage)
+            delay = 0 if urgent else self.sent.get(task_id, 0) + self.interval - time.monotonic()
+            if delay > 0:
+                self.defer(task_id, delay)
+                return task
+            self.mark_sent(task_id)
         self.notify(task)
         return task
+
+    def defer(self, task_id, delay):
+        if task_id in self.timers:
+            return
+        timer = threading.Timer(delay, self.flush, (task_id,))
+        timer.daemon = True
+        self.timers[task_id] = timer
+        timer.start()
+
+    def mark_sent(self, task_id):
+        self.sent[task_id] = time.monotonic()
+        timer = self.timers.pop(task_id, None)
+        if timer:
+            timer.cancel()
+
+    def flush(self, task_id):
+        with self.lock:
+            if task_id not in self.timers:
+                return
+            self.mark_sent(task_id)
+            task = self.tasks.get(task_id)
+        if task:
+            self.notify(task)
 
     def finish(self, task_id, status='done', error=None):
         fields = {'status': status, 'error': error}

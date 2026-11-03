@@ -1,4 +1,8 @@
-from flask_socketio import SocketIO, emit
+from flask import request
+from flask_socketio import SocketIO, join_room
+
+from ..services.editor_tasks import TASKS
+from ..utils.client import COOKIE_NAME, VALID_ID
 
 socketio = SocketIO()
 
@@ -26,3 +30,23 @@ def emit_error(job_id, error_message):
         'error': error_message,
         'status': 'failed'
     })
+
+
+def client_room(owner):
+    return f'client:{owner}'
+
+
+@socketio.on('editor_join')
+def editor_join(*_):
+    value = request.cookies.get(COOKIE_NAME, '')
+    if not VALID_ID.match(value):
+        return {'joined': False}
+    join_room(client_room(value))
+    return {'joined': True}
+
+
+def emit_task(task):
+    socketio.emit('editor_task', task.public(), to=client_room(task.owner))
+
+
+TASKS.subscribe(emit_task)
