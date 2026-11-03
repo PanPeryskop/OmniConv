@@ -118,11 +118,13 @@ class Recorder:
             self.react(task)
 
     def __enter__(self):
+        self.interval, TASKS.interval = TASKS.interval, 0
         TASKS.subscribe(self)
         return self
 
     def __exit__(self, *_):
         TASKS.listeners.remove(self)
+        TASKS.interval = self.interval
 
     def statuses(self):
         return [e[1] for e in self.events]
