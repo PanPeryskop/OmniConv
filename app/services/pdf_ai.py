@@ -1,5 +1,7 @@
 import re
+from collections import Counter
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 
 from .llm import LLMService
 
@@ -22,6 +24,7 @@ MAX_CONTEXT = 6000
 MAX_GLOSSARY_SOURCE = 8000
 MAX_GLOSSARY_TERMS = 40
 MAX_TERM = 80
+RESTYLE_RATIO = 0.5
 
 
 @dataclass
@@ -187,25 +190,113 @@ def build_glossary(text, language, limit=MAX_GLOSSARY_TERMS):
     return pairs[:limit]
 
 
+def style_of(span):
+    return {key: value for key, value in span.items() if key != 't'}
+
+
+def block_chars(block):
+    chars = []
+    lines = block['lines']
+    for i, line in enumerate(lines):
+        following = lines[i + 1] if i + 1 < len(lines) else None
+        spans = line['spans']
+        for j, span in enumerate(spans):
+            text = span['t'].lstrip() if j == 0 else span['t']
+            if j == len(spans) - 1 and following:
+                trimmed = text.rstrip()
+                if line['brk']:
+                    text = trimmed
+                else:
+                    head = next((c for c in ''.join(s['t'] for s in following['spans']).lstrip()[:1]), '')
+                    if trimmed.endswith('\u00ad') or (trimmed.endswith('-') and head.islower()):
+                        text = trimmed[:-1]
+                    elif text and not text[-1].isspace():
+                        text += ' '
+            style = style_of(span)
+            chars.extend((char, style) for char in text)
+        if line['brk'] and following and spans:
+            chars.append(('\n', style_of(spans[-1])))
+    while chars and chars[-1][0].isspace():
+        chars.pop()
+    while chars and chars[0][0].isspace():
+        chars.pop(0)
+    return chars
+
+
 def block_text(block):
-    parts = []
-    for line in block['lines']:
-        parts.append(''.join(span['t'] for span in line['spans']).strip())
-        parts.append('\n' if line['brk'] else ' ')
-    return ''.join(parts).strip()
+    return ''.join(char for char, _style in block_chars(block))
+
+
+def dominant_style(chars, fallback):
+    counts = Counter()
+    styles = {}
+    for char, style in chars:
+        if char.isspace() or style.get('rise'):
+            continue
+        key = repr(sorted(style.items()))
+        counts[key] += 1
+        styles.setdefault(key, style)
+    return styles[counts.most_common(1)[0][0]] if counts else fallback
+
+
+def neighbour_style(styles, at):
+    before = styles[at - 1] if at > 0 else None
+    after = styles[at] if at < len(styles) else None
+    for style in (before, after):
+        if style and not style.get('rise'):
+            return style
+    return before or after
+
+
+def merged_runs(pairs):
+    runs = []
+    for char, style in pairs:
+        if runs and style_of(runs[-1]) == style:
+            runs[-1]['t'] += char
+        else:
+            runs.append(dict(style, t=char))
+    return runs
+
+
+def restyle(block, text):
+    chars = block_chars(block)
+    fallback = style_of(block['lines'][0]['spans'][0])
+    if not text:
+        return []
+    if not chars:
+        return [dict(fallback, t=text)]
+    old = ''.join(char for char, _style in chars)
+    styles = [style for _char, style in chars]
+    matcher = SequenceMatcher(None, old, text, autojunk=False)
+    if matcher.ratio() < RESTYLE_RATIO:
+        return [dict(dominant_style(chars, fallback), t=text)]
+    picked = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == 'equal':
+            picked.extend(styles[i1:i2])
+        elif tag == 'replace':
+            span = i2 - i1
+            picked.extend(styles[i1 + min(k * span // (j2 - j1), span - 1)] for k in range(j2 - j1))
+        elif tag == 'insert':
+            picked.extend([neighbour_style(styles, i1)] * (j2 - j1))
+    return merged_runs(zip(text, picked, strict=True))
 
 
 def translatable(text):
-    return sum(c.isalpha() for c in text) >= 2
+    text = text.strip()
+    return sum(c.isalpha() for c in text) >= 2 or (len(text) == 1 and text.isalpha())
+
+
+def op_text(op):
+    return ''.join(run['t'] for run in op['runs'])
 
 
 def block_op(page, block, text):
-    first = dict(block['lines'][0]['spans'][0], t=text, rise=0)
     return {
         'type': 'text', 'page': page,
         'remove': [r for line in block['lines'] for r in line['rects']] + (block.get('extra') or []),
         'rect': block['bbox'], 'baseline': block['baseline'], 'lh': block['lh'], 'align': block['align'],
-        'family': 'original', 'grow': all(line['brk'] for line in block['lines']), 'fit': True, 'runs': [first],
+        'family': 'original', 'grow': all(line['brk'] for line in block['lines']), 'fit': True, 'runs': restyle(block, text),
     }
 
 

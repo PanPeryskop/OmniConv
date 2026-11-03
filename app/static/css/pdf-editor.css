@@ -171,7 +171,8 @@ body.pe-open { overflow: hidden; }
 }
 .pe-page-reocr svg { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .pe-page-reocr span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pe-page-reocr:hover { background: var(--surface-glass-hover); }
+.pe-page-reocr:hover { background-image: linear-gradient(var(--surface-glass-hover), var(--surface-glass-hover)); border-color: var(--text-tertiary); }
+.pe-page .pe-page-reocr:active { transform: scale(0.97); }
 .pe-page-reocr:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 .pe-page:hover .pe-page-reocr, .pe-page-reocr:focus-visible { opacity: 1; transform: none; }
 .pe-page.loading .pe-page-reocr, .pe-page:has(.pe-ocr) .pe-page-reocr, .pe.editing .pe-page-reocr { opacity: 0; pointer-events: none; }

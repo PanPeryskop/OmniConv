@@ -93,6 +93,10 @@ async function settle(page, id, test, timeout = 40000) {
         await page.mouse.move(frame.x + frame.width / 2, frame.y + 40);
         await page.waitForTimeout(250);
         check(await pill.evaluate(el => getComputedStyle(el).opacity) === '1', 'hovering the page reveals the button');
+        await pill.hover();
+        await page.waitForTimeout(250);
+        const alpha = await pill.evaluate(el => Number((getComputedStyle(el).backgroundColor.match(/[\d.]+/g) || [])[3] ?? 1));
+        check(alpha >= 0.85, `button keeps a solid background while hovered (${alpha})`);
         const label = await pill.textContent();
         check(label.trim() === 'Recognize text again', `button is labelled (${label.trim()})`);
         const count = await page.evaluate(() => PdfEditor.bridge.ops().length);
