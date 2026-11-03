@@ -213,7 +213,7 @@ const PdfEditor = (() => {
             banner: null, dismissed: new WeakSet(), digest: null, draftTimer: 0, keepalive: 0, restoring: false,
             group: 0, nudge: null, clipboard: null, pasteCount: 0, current: 0, suppressClick: false, sheet: null,
             find: { query: '', whole: false, kinds: new Set(), matches: null, off: new Set(), truncated: false, busy: false },
-            scans: new Set(), scansDismissed: new Set(), ai: { status: null, busy: false, result: null, language: defaultLanguage() },
+            scans: new Set(), scansDismissed: new Set(), translateScope: 'document', ai: { status: null, busy: false, result: null, language: defaultLanguage() },
             translation: null, place: null, sign: { tab: 'draw', color: INK[0], font: 0, name: '', image: null, keep: true, pad: null },
             opts: { ink: INK[1], mark: MARKS[0], width: WIDTHS[1], markup: 'highlight', shape: 'rect', textColor: INK[0], textSize: 12 }
         };
@@ -567,6 +567,8 @@ const PdfEditor = (() => {
         if (current !== s.current) {
             s.current = current;
             emit('page', { pageId: current });
+            const scope = s.sheet === 'translate' && els.sheet.querySelector('[data-act="translate-scope"][data-value="page"]');
+            if (scope) scope.textContent = t('pe_translate_page', { page: pageNumber(current) });
             els.thumbs.querySelectorAll('.pe-thumb').forEach(el => el.classList.toggle('current', Number(el.dataset.id) === current));
         }
         els.pill.textContent = `${order.indexOf(current) + 1} / ${order.length}`;
@@ -1123,14 +1125,22 @@ const PdfEditor = (() => {
             ${result}`;
     }
 
+    function pageNumber(id) {
+        return s.order.indexOf(id) + 1;
+    }
+
     function translateSheet() {
         const run = s.translation;
         const disabled = run || s.ai.status !== 'ok' ? 'disabled' : '';
-        const progress = run ? `<p>${escapeHtml(t('pe_translate_progress', { page: run.done + 1, total: run.total }))}</p>
+        const single = s.translateScope === 'page';
+        const scopes = [['page', t('pe_translate_page', { page: pageNumber(s.current) })], ['document', t('pe_translate_all')]].map(([value, label]) =>
+            `<button type="button" class="pe-chip ${s.translateScope === value ? 'active' : ''}" data-act="translate-scope" data-value="${value}" aria-pressed="${s.translateScope === value}" ${run ? 'disabled' : ''}>${escapeHtml(label)}</button>`).join('');
+        const progress = run ? `<p>${escapeHtml(run.total === 1 ? t('pe_translate_progress_page', { page: run.page }) : t('pe_translate_progress', { page: run.done + 1, total: run.total }))}</p>
             <div class="pe-progress"><span style="width:${Math.round(run.done / run.total * 100)}%"></span></div>
             <div class="pe-sheet-row"><button type="button" class="btn btn-ghost btn-small" data-translate="stop">${escapeHtml(t('pe_stop'))}</button></div>` : '';
         return `${sheetHead('pe_translate_title')}${aiNotice()}
-            <div class="pe-sheet-row">${languageSelect('translate')}<button type="button" class="btn btn-primary btn-small" data-translate="run" ${disabled}>${escapeHtml(t('pe_translate_run'))}</button></div>
+            <div class="pe-sheet-row pe-segment" role="group" aria-label="${escapeHtml(t('pe_translate_scope'))}">${scopes}</div>
+            <div class="pe-sheet-row">${languageSelect('translate')}<button type="button" class="btn btn-primary btn-small" data-translate="run" ${disabled}>${escapeHtml(t(single ? 'pe_translate_run_page' : 'pe_translate_run'))}</button></div>
             ${progress}`;
     }
 
@@ -1166,9 +1176,10 @@ const PdfEditor = (() => {
         if (s.translation) return;
         const session = s;
         const language = languageName(s.ai.language, 'en');
-        const pages = s.order.slice();
-        const run = s.translation = { done: 0, total: pages.length, stopped: false };
-        const task = coreTask('translate', pages.length, () => { run.stopped = true; });
+        const pages = s.translateScope === 'page' ? [s.current] : s.order.slice();
+        const page = pages.length === 1 ? pageNumber(pages[0]) : null;
+        const run = s.translation = { done: 0, total: pages.length, stopped: false, page };
+        const task = coreTask('translate', pages.length, () => { run.stopped = true; }, { pages, page });
         const result = [];
         let failed = false;
         renderSheet();
@@ -1191,7 +1202,7 @@ const PdfEditor = (() => {
         s.translation = null;
         if (result.length) {
             pushOps(result);
-            Toast.success(escapeHtml(t('pe_translate_done')));
+            Toast.success(escapeHtml(page ? t('pe_translate_done_page', { page }) : t('pe_translate_done')));
         }
         if (s.sheet === 'translate') closeSheet();
     }
@@ -1431,6 +1442,11 @@ const PdfEditor = (() => {
     function onSheetClick(e) {
         if (!s) return;
         if (e.target.closest('[data-sheet="close"]')) return closeSheet();
+        const scope = e.target.closest('[data-act="translate-scope"]');
+        if (scope && !s.translation) {
+            s.translateScope = scope.dataset.value;
+            return renderSheet();
+        }
         const tab = e.target.closest('[data-act="sig-tab"]');
         if (tab) {
             s.sign.tab = tab.dataset.value;
@@ -2479,8 +2495,8 @@ const PdfEditor = (() => {
         });
     }
 
-    function coreTask(kind, total, cancel) {
-        const task = { id: `core_${kind}_${Date.now().toString(36)}`, kind, status: 'running', done: 0, total };
+    function coreTask(kind, total, cancel, extra = {}) {
+        const task = { ...extra, id: `core_${kind}_${Date.now().toString(36)}`, kind, status: 'running', done: 0, total };
         if (cancel) cancels.set(task.id, cancel);
         emit('task', { ...task, cancellable: !!cancel });
         return {

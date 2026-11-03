@@ -502,6 +502,10 @@ textarea.pe-widget { padding-top: 0.15em; }
 
 .pe-chip:hover { background: var(--surface-glass-hover); }
 .pe-chip.active { background: var(--accent-primary); color: var(--bg-primary); border-color: transparent; }
+.pe-chip:disabled { opacity: 0.5; cursor: default; }
+.pe-segment { flex-wrap: nowrap; gap: 4px; padding: 3px; border-radius: 12px; background: var(--surface-glass); border: 1px solid var(--border-default); }
+.pe-segment .pe-chip { flex: 1 1 0; min-width: 0; justify-content: center; border-color: transparent; overflow: hidden; text-overflow: ellipsis; }
+.pe-segment .pe-chip:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 1px; }
 
 .pe-select {
     height: 36px;
@@ -582,6 +586,7 @@ textarea.pe-widget { padding-top: 0.15em; }
 @media (pointer: coarse) {
     .pe-icon-btn { width: 44px; height: 44px; }
     .pe-chip { height: 40px; }
+    .pe-segment .pe-chip { height: 44px; }
     .pe-thumb-bar .pe-icon-btn { width: 36px; height: 36px; }
 }
 
