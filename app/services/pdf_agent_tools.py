@@ -69,7 +69,7 @@ def tool_specs():
     return list(TOOLS.values())
 
 
-BLOCK_RE = re.compile(r'^p(\d+)b(\d+)-[0-9a-f]{6}$')
+BLOCK_RE = re.compile(r'^p(\d+)b(\d+)(?:-([0-9a-f]{6}))?$')
 COLOR_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
 ALIGNS = ('left', 'center', 'right', 'justify')
 HIGHLIGHT = '#ffd400'
@@ -261,7 +261,7 @@ def find_block(ctx, value):
     if not layout or layout.get('ocr_pending') or index >= len(layout['blocks']):
         raise ToolError('stale_block')
     block = layout['blocks'][index]
-    if block_id(page, index, block) != match.group(0):
+    if match.group(3) and block_id(page, index, block) != match.group(0):
         raise ToolError('stale_block')
     return page, index, block, layout
 
@@ -717,12 +717,13 @@ def translate(ctx, args):
         if not ops:
             continue
         before = '\n\n'.join(pdf_ai.block_text(b) for b in blocks)
-        after = '\n\n'.join(op['runs'][0]['t'] for op in ops)
+        after = '\n\n'.join(pdf_ai.op_text(op) for op in ops)
         proposals.append(make_proposal(
             'text', page, f'Translate to {language}', ops, page_base(ctx.ops, page),
             before=before, after=after, reason=f'{len(ops)} blocks → {language}', rects=[b['bbox'] for b in blocks], terms=terms,
         ))
-    content = {'translated': done, 'truncated': len(pages) > MAX_TRANSLATE_PAGES}
+    content = {'translated': done, 'truncated': len(pages) > MAX_TRANSLATE_PAGES,
+               'note': 'Each translated page is one proposal covering all its text blocks. Do not translate these blocks again.'}
     if terms:
         content['glossary'] = [f'{term} => {target}' for term, target in terms]
     if content['truncated']:

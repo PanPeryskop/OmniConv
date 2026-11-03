@@ -776,7 +776,7 @@ def annots_array(xrefs):
     return '[' + ' '.join(f'{xref} 0 R' for xref in xrefs) + ']'
 
 
-def op_text(ctx, page, op):
+def remove_text(ctx, page, op):
     removes = [rect_of(r) for r in op.get('remove') or []]
     marker = None
     if removes:
@@ -793,6 +793,10 @@ def op_text(ctx, page, op):
         cover = baked_background(page, area, snapshot)
         if cover and not pdf_scan.inpaint(page, area, snapshot, removes):
             page.draw_rect(area, color=None, fill=cover, overlay=True)
+    return page, marker
+
+
+def place_text(ctx, page, op, marker=None):
     if op.get('runs') and op.get('rect'):
         previous = set(page.get_contents())
         overflow = write_text(page, op, ctx.picker(page), ctx)
@@ -801,6 +805,11 @@ def op_text(ctx, page, op):
         if overflow:
             ctx.overflow[ctx.current] = round(overflow, 2)
     return page
+
+
+def op_text(ctx, page, op):
+    page, marker = remove_text(ctx, page, op)
+    return place_text(ctx, page, op, marker)
 
 
 def rect_distance(a, b):
@@ -1146,10 +1155,38 @@ def page_plan(ops):
     return [plan[last]] + kept + plan[last + 1:]
 
 
+def text_batches(plan):
+    batches = []
+    for index, op in plan:
+        head = batches[-1][0][1] if batches else None
+        if op.get('type') == 'text' and op.get('g') is not None and head and head.get('type') == 'text' and head.get('g') == op.get('g'):
+            batches[-1].append((index, op))
+        else:
+            batches.append([(index, op)])
+    return batches
+
+
+def apply_text_batch(ctx, page, batch):
+    markers = []
+    for index, op in batch:
+        ctx.current = (page.number, index)
+        page, marker = remove_text(ctx, page, op)
+        page = ctx.doc.reload_page(page)
+        markers.append(marker)
+    for (index, op), marker in zip(batch, markers, strict=True):
+        ctx.current = (page.number, index)
+        page = ctx.doc.reload_page(place_text(ctx, page, op, marker))
+    return page
+
+
 def apply_page_ops(ctx, page, ops):
     prepare_page(page)
     ctx.chars[page.number] = used_chars(page)
-    for index, op in page_plan(ops):
+    for batch in text_batches(page_plan(ops)):
+        if len(batch) > 1:
+            page = apply_text_batch(ctx, page, batch)
+            continue
+        index, op = batch[0]
         handler = OPS.get(op.get('type'))
         if not handler:
             continue

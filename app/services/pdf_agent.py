@@ -22,7 +22,7 @@ CONTEXT_LIMIT = int(CONTEXT_BUDGET * 1.5)
 CHARS_PER_TOKEN = 3.5
 SUMMARY_CHARS = 200
 SELECTION_CHARS = 1500
-BLOCK_PAGE_RE = re.compile(r'^p(\d+)b\d+-')
+BLOCK_PAGE_RE = re.compile(r'^p(\d+)b\d+(?:-|$)')
 STOPPED_TEXT = 'The user stopped this answer.'
 
 SYSTEM_PROMPT = (
@@ -35,7 +35,8 @@ SYSTEM_PROMPT = (
     'ask for confirmation before proposing.\n'
     '3. Stay inside the scope given in the [Editor context] part of the user message.\n'
     '4. Prefer the macro tools: proofread for typos, translate for translations, redact with patterns for personal '
-    'data, search to find text.\n'
+    'data, search to find text. translate already covers every text block of the page, so never call replace_text '
+    'to translate blocks one by one.\n'
     '5. When a tool returns an error, fix the call. After "stale_block" call read_page again.\n'
     '6. Answer briefly, in the language the user writes in, and do not repeat the document text.\n'
     '7. When the work is done, call finish with a one-sentence summary.\n'
