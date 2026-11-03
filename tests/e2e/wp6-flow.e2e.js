@@ -61,7 +61,6 @@ const stateOf = (page, id) => page.$eval(card(id), el => [...el.classList].find(
         check((await page.textContent('.pa-model')).includes('qwen2.5-7b-instruct'), 'header shows the model');
         check((await page.textContent('.pa-model')).includes('LM Studio'), 'header shows the provider');
         check(await page.$$eval('.pa-suggestion', els => els.length) === 4, 'empty state shows four suggestions');
-        check(await page.$('.pa-notice.privacy') === null, 'no privacy note for a local provider');
         check(await page.evaluate(() => document.activeElement?.classList.contains('pa-input')), 'input is focused after opening');
         check(await page.$('.pa-scope .cselect-trigger') !== null, 'scope picker uses CustomSelect');
 

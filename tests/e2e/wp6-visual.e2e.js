@@ -51,7 +51,6 @@ async function verify(page, target, label) {
                 const blocks = await layouts(page, [0]);
                 const [b4, b6, b8] = [4, 6, 8].map(i => blocks[0].blocks[i]);
                 await mockAgent(page, {
-                    status: target.name === 'ipad' ? { status: 'ok', provider: 'anthropic', model: 'claude-test' } : undefined,
                     turns: [turn('I found **three** typos on this page:\n1. `listy` in the first item\n2. the second item\n3. the third item', [
                         textProposal('prp_1', 0, b4, 'Pierwszy punkt na liście', { title: 'Fix typos' }),
                         textProposal('prp_2', 0, b6, 'Drugi punkt na liście', { title: 'Fix typos', depends_on: ['prp_1'] }),

@@ -10,16 +10,14 @@ const PdfAgent = (() => {
         { key: 'summary', scope: 'document', send: true }
     ];
     const KIND_ICONS = { text: 'edit', style: 'bold', insert: 'text', delete: 'trash', annot: 'markup', redact: 'redact', page: 'rotate' };
-    const PROVIDERS = { lmstudio: 'LM Studio', anthropic: 'Anthropic', fake: 'Fake LM' };
-    const LOCAL_PROVIDERS = ['lmstudio', 'fake'];
+    const PROVIDERS = { lmstudio: 'LM Studio', fake: 'Fake LM' };
     const GLYPHS = {
         send: '<path d="M5 12h13M13 6l6 6-6 6"/>',
         stop: '<rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/>',
         chat: '<path d="M4 5h16v11H9l-5 4z"/><path d="M12 8v5M9.5 10.5h5"/>',
         eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
         down: '<path d="M12 5v14M6 13l6 6 6-6"/>',
-        minus: '<path d="M6 12h12"/>',
-        lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>'
+        minus: '<path d="M6 12h12"/>'
     };
     const STICK_PX = 48;
     const DIFF_LIMIT = 250000;
@@ -375,9 +373,6 @@ const PdfAgent = (() => {
             const reason = status.status === 'unavailable' ? tr('pa_status_unavailable') : errorText(`err_ai_${status.status}`, tr('pa_status_unavailable'));
             return `<div class="pa-notice off" role="status">${bridge.icon('warning')}<span>${esc(reason)}</span>
                 <button type="button" class="pa-link" data-pa="retry">${esc(tr('pa_retry'))}</button></div>`;
-        }
-        if (status.provider && !LOCAL_PROVIDERS.includes(status.provider)) {
-            return `<div class="pa-notice privacy" role="note">${glyph('lock')}<span>${esc(tr('pa_privacy', { provider: providerName() }))}</span></div>`;
         }
         return '';
     }
@@ -1228,7 +1223,6 @@ const PdfAgent = (() => {
             pa_offline: 'Model unavailable',
             pa_status_unavailable: 'The assistant is not available right now.',
             pa_retry: 'Try again',
-            pa_privacy: '{provider} is an external service: page content is sent outside this computer.',
             pa_thinking: 'Thinking…',
             pa_jump: 'Jump to the latest message',
             pa_show: 'Show',
@@ -1304,7 +1298,6 @@ const PdfAgent = (() => {
             pa_offline: 'Model niedostępny',
             pa_status_unavailable: 'Asystent jest teraz niedostępny.',
             pa_retry: 'Spróbuj ponownie',
-            pa_privacy: '{provider} to usługa zewnętrzna: treść stron zostanie wysłana poza ten komputer.',
             pa_thinking: 'Myślę…',
             pa_jump: 'Przejdź do najnowszej wiadomości',
             pa_show: 'Pokaż',
@@ -1386,7 +1379,6 @@ const PdfAgent = (() => {
             pa_offline: 'Modell nicht verfügbar',
             pa_status_unavailable: 'Der Assistent ist gerade nicht verfügbar.',
             pa_retry: 'Erneut versuchen',
-            pa_privacy: '{provider} ist ein externer Dienst: Seiteninhalte verlassen diesen Computer.',
             pa_thinking: 'Denke nach…',
             pa_jump: 'Zur neuesten Nachricht',
             pa_show: 'Zeigen',
