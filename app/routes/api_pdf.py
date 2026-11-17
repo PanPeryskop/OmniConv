@@ -8,7 +8,7 @@ from flask import Blueprint, request, current_app, send_file, g
 from .api_common import conversion_jobs, api_response, unique_output_base, touch_file, file_expiry, register_result_file
 from ..utils.file_handler import generate_file_id
 from ..services.pdf_tools import PdfTools, PdfToolError
-from ..services import pdf_ai, pdf_editor, pdf_translate
+from ..services import pdf_ai, pdf_chapters, pdf_editor, pdf_translate
 from ..services.editor_tasks import TASKS
 from ..services.font_match import FontLibrary
 from ..services.pdf_sign import CERTIFICATES, MAX_CERT_BYTES, SignError
@@ -100,6 +100,23 @@ def pdf_info():
     info.update(file_expiry(file_id))
     info['filename'] = job['original_filename']
     return api_response(data=info)
+
+
+@pdf_bp.route('/pdf/chapters', methods=['POST'])
+def pdf_chapters_detect():
+    data = request.get_json(silent=True) or {}
+    job, error = get_pdf_job(data.get('file_id'))
+    if error:
+        return error
+    source = data.get('source') if data.get('source') in ('auto', 'bookmarks', 'headings') else 'auto'
+    try:
+        result = pdf_chapters.detect(job['input_path'], data.get('level') or 1, source)
+    except (TypeError, ValueError):
+        return api_response(error={'type': 'InvalidRequestError', 'message': 'Invalid level'}, success=False), 400
+    except pdf_chapters.ChapterError as e:
+        return api_response(error={'type': 'PdfToolError', 'code': e.code, 'message': str(e)}, success=False), 400
+    touch_file(data.get('file_id'))
+    return api_response(data=result)
 
 
 @pdf_bp.route('/pdf/page/<file_id>/<int:page>', methods=['GET'])

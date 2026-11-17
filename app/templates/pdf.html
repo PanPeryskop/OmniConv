@@ -172,7 +172,28 @@
                     <button type="button" class="choice" data-value="every_n"><span class="choice-title" data-i18n="pdf_split_every_n">Every N pages</span><span class="choice-desc" data-i18n="pdf_split_every_n_desc"></span></button>
                     <button type="button" class="choice" data-value="ranges"><span class="choice-title" data-i18n="pdf_split_ranges">By ranges</span><span class="choice-desc" data-i18n="pdf_split_ranges_desc"></span></button>
                     <button type="button" class="choice" data-value="extract"><span class="choice-title" data-i18n="pdf_split_extract">Extract pages</span><span class="choice-desc" data-i18n="pdf_split_extract_desc"></span></button>
-                    <button type="button" class="choice" data-value="bookmarks" id="splitBookmarks"><span class="choice-title" data-i18n="pdf_split_bookmarks">By bookmarks</span><span class="choice-desc" id="splitBookmarksDesc"></span></button>
+                    <button type="button" class="choice" data-value="chapters"><span class="choice-title" data-i18n="pdf_split_chapters">By chapters</span><span class="choice-desc" id="splitChaptersDesc"></span></button>
+                </div>
+                <div class="field hidden chapters-field" id="splitChaptersField">
+                    <div class="chapter-head">
+                        <p class="option-hint" id="chaptersStatus" role="status" aria-live="polite"></p>
+                        <div class="chapter-controls">
+                            <div class="segmented hidden" id="chaptersLevel" role="group" aria-label="Level" data-i18n-aria="pdf_chapters_level">
+                                <button type="button" data-level="1" aria-pressed="true" data-i18n="pdf_chapters_level_1">Chapters</button>
+                                <button type="button" data-level="2" aria-pressed="false" data-i18n="pdf_chapters_level_2">Subchapters</button>
+                            </div>
+                            <button type="button" class="btn btn-ghost btn-small hidden" id="chaptersSource"></button>
+                        </div>
+                    </div>
+                    <div class="chapter-list" id="chapterList" role="list" aria-label="Parts" data-i18n-aria="pdf_chapters_parts"></div>
+                    <div class="field chapter-add">
+                        <label class="field-label" for="chapterAddPage" data-i18n="pdf_chapters_add_label">Start a new part at page</label>
+                        <div class="pages-input-row">
+                            <input type="number" class="text-input narrow" id="chapterAddPage" min="2" inputmode="numeric">
+                            <button type="button" class="btn btn-ghost btn-small" id="chapterAdd" data-i18n="pdf_chapters_add">Add split</button>
+                        </div>
+                    </div>
+                    <p class="option-hint" id="chaptersSummary"></p>
                 </div>
                 <div class="field hidden" id="splitNField">
                     <label class="field-label" for="splitN" data-i18n="pdf_split_n_label">Pages per part</label>
@@ -792,20 +813,20 @@
 }
 .picker-page img { width: 100%; aspect-ratio: 1 / 1.3; object-fit: contain; background: #fff; border-radius: 2px; }
 .picker-page.selected { border-color: var(--accent-primary); color: var(--text-primary); }
-.picker-page.selected::after {
-    content: '✓';
+.picker-page.selected::after, .picker-page.selected::before {
+    content: '';
     position: absolute;
     top: 6px;
     right: 6px;
     width: 18px;
     height: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    border-radius: 50%;
-    background: var(--text-primary);
-    color: var(--bg-primary);
+}
+.picker-page.selected::after { border-radius: 50%; background: var(--text-primary); box-shadow: 0 0 0 2px var(--bg-primary); }
+.picker-page.selected::before {
+    z-index: 1;
+    background: var(--bg-primary);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E") center / 12px no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E") center / 12px no-repeat;
 }
 
 .organize-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); }
@@ -865,6 +886,25 @@
 .icon-btn.danger:hover { color: var(--color-error); }
 .icon-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
+.chapters-field { gap: var(--space-3); }
+.chapter-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.chapter-head .option-hint { flex: 1 1 220px; margin: 0; }
+.chapter-controls { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.segmented { display: inline-flex; gap: 3px; padding: 3px; border-radius: var(--radius-md); border: 1px solid var(--border-default); background: var(--surface-glass); }
+.segmented button { min-height: 30px; padding: 0 12px; border: 0; border-radius: calc(var(--radius-md) - 3px); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--text-xs); cursor: pointer; }
+.segmented button:hover { color: var(--text-primary); }
+.segmented button[aria-pressed="true"] { background: var(--accent-primary); color: var(--bg-primary); }
+.segmented button:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.chapter-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 440px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.chapter-list[aria-busy="true"] { opacity: 0.5; pointer-events: none; }
+.chapter-item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--surface-glass); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
+.chapter-thumb { flex: none; width: 44px; height: 58px; padding: 0; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: #fff; cursor: zoom-in; }
+.chapter-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.chapter-thumb:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.chapter-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.chapter-main .text-input { padding: 7px 10px; }
+.chapter-pages { font-size: var(--text-xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.chapter-item .icon-btn svg { width: 16px; height: 16px; }
 .merge-list { display: flex; flex-direction: column; gap: var(--space-2); }
 .merge-item {
     display: flex;
@@ -988,6 +1028,10 @@ body.drag-over::after {
     .watermark-preview { position: relative; top: 0; max-width: 200px; margin: 0 auto; width: 100%; }
     .page-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
     .pages-input-row { flex-wrap: wrap; }
+    .chapter-list { max-height: none; overflow: visible; }
+    .chapter-main .text-input, #chapterAddPage { font-size: 16px; }
+    .chapter-item .icon-btn { width: 44px; height: 44px; }
+    .segmented button { min-height: 40px; }
     .viewer img { max-width: calc(100vw - 24px); max-height: calc(100vh - 140px); }
     .viewer-nav { top: auto; bottom: 14px; }
     .viewer-counter { bottom: 28px; }
@@ -1802,9 +1846,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function initSplit() {
         const bookmarks = file().bookmarks || 0;
-        $('splitBookmarks').disabled = !bookmarks;
-        i18n.set($('splitBookmarksDesc'), bookmarks ? 'pdf_split_bookmarks_desc' : 'pdf_split_bookmarks_none', { count: bookmarks });
-        if (!bookmarks && groupValue('splitMode') === 'bookmarks') setGroupValue('splitMode', 'every');
+        i18n.set($('splitChaptersDesc'), bookmarks ? 'pdf_split_chapters_bookmarks' : 'pdf_split_chapters_desc', { count: bookmarks });
         updateSplit();
     }
 
@@ -1813,8 +1855,123 @@ document.addEventListener('DOMContentLoaded', () => {
         const mode = groupValue('splitMode');
         $('splitNField').classList.toggle('hidden', mode !== 'every_n');
         $('splitRangesField').classList.toggle('hidden', mode !== 'ranges' && mode !== 'extract');
+        $('splitChaptersField').classList.toggle('hidden', mode !== 'chapters');
         i18n.set($('splitRangesHint'), mode === 'extract' ? 'pdf_ranges_hint_extract' : 'pdf_ranges_hint', { count: file()?.pages || 0 });
+        if (mode === 'chapters' && state.chapters?.fileId !== file()?.file_id) loadChapters();
     }
+
+    const JOIN_ICON = '<svg viewBox="0 0 24 24"><path d="M7 11l5-5 5 5M12 6v12"/></svg>';
+
+    async function loadChapters({ level = 1, source = 'auto' } = {}) {
+        const current = file();
+        if (!current) return;
+        const run = state.chapters = { fileId: current.file_id, pages: current.pages, loading: true, items: [], source: null, level, levels: 0, bookmarks: false, scanned: false, error: false };
+        renderChapters();
+        const { body } = await postJson('/api/pdf/chapters', { file_id: current.file_id, level, source }).catch(() => ({ body: null }));
+        if (state.chapters !== run) return;
+        run.loading = false;
+        if (!body?.success) {
+            run.error = true;
+            run.items = [{ start: 0, title: '' }];
+        } else {
+            const data = body.data;
+            Object.assign(run, { source: data.source, level: data.level, levels: data.levels, bookmarks: data.bookmarks, scanned: data.scanned, pages: data.pages });
+            run.items = data.chapters.map(part => ({ start: part.start, title: part.title }));
+        }
+        renderChapters();
+    }
+
+    function chapterParts() {
+        const run = state.chapters;
+        return run.items.map((item, i) => ({ ...item, end: (run.items[i + 1]?.start ?? run.pages) - 1 }));
+    }
+
+    function chapterStatus(run, count) {
+        if (run.loading) return t('pdf_chapters_loading');
+        if (run.error) return t('pdf_chapters_failed');
+        if (run.source === 'bookmarks') return t('pdf_chapters_from_bookmarks', { count });
+        if (run.source === 'headings') return t('pdf_chapters_from_headings', { count });
+        return t(run.scanned ? 'pdf_chapters_scanned' : 'pdf_chapters_none');
+    }
+
+    function renderChapters() {
+        const run = state.chapters;
+        if (!run) return;
+        const parts = run.loading ? [] : chapterParts();
+        const list = $('chapterList');
+        list.setAttribute('aria-busy', String(run.loading));
+        $('chaptersStatus').textContent = chapterStatus(run, parts.length);
+        const levels = $('chaptersLevel');
+        levels.classList.toggle('hidden', run.loading || run.source !== 'bookmarks' || run.levels < 2);
+        levels.querySelectorAll('[data-level]').forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.level) === run.level)));
+        const switcher = $('chaptersSource');
+        switcher.classList.toggle('hidden', run.loading || !run.bookmarks);
+        switcher.textContent = t(run.source === 'bookmarks' ? 'pdf_chapters_use_headings' : 'pdf_chapters_use_bookmarks');
+        list.innerHTML = parts.map((part, i) => {
+            const range = part.start === part.end ? t('pdf_chapters_page', { page: part.start + 1 }) : t('pdf_chapters_range', { from: part.start + 1, to: part.end + 1 });
+            const join = i ? `<button type="button" class="icon-btn" data-join="${i}" title="${escapeHtml(t('pdf_chapters_join'))}" aria-label="${escapeHtml(t('pdf_chapters_join_part', { n: i + 1 }))}">${JOIN_ICON}</button>` : '';
+            return `<div class="chapter-item" role="listitem">
+                <button type="button" class="chapter-thumb" data-view="${part.start}" aria-label="${escapeHtml(t('pdf_chapters_preview', { page: part.start + 1 }))}"><img src="${escapeHtml(pageUrl(run.fileId, part.start, 96))}" alt="" loading="lazy"></button>
+                <div class="chapter-main">
+                    <input type="text" class="text-input" data-title="${i}" maxlength="120" value="${escapeHtml(part.title)}" placeholder="${escapeHtml(t('pdf_chapters_part', { n: i + 1 }))}" aria-label="${escapeHtml(t('pdf_chapters_name', { n: i + 1 }))}">
+                    <span class="chapter-pages">${escapeHtml(range)} · ${escapeHtml(t('pdf_pages', { count: part.end - part.start + 1 }))}</span>
+                </div>
+                ${join}
+            </div>`;
+        }).join('');
+        $('chapterAddPage').max = run.pages;
+        $('chapterAdd').disabled = run.loading;
+        $('chaptersSummary').textContent = run.loading ? '' : t('pdf_chapters_summary', { count: parts.length });
+    }
+
+    function addChapter() {
+        const run = state.chapters;
+        const input = $('chapterAddPage');
+        if (!run || run.loading) return;
+        const page = Number(input.value);
+        if (!Number.isInteger(page) || page < 2 || page > run.pages) {
+            return showFieldError(input, 'err_pdf_chapters_page', { count: run.pages });
+        }
+        clearFieldErrors($('splitChaptersField'));
+        const start = page - 1;
+        if (!run.items.some(item => item.start === start)) {
+            run.items.push({ start, title: '' });
+            run.items.sort((a, b) => a.start - b.start);
+        }
+        input.value = '';
+        renderChapters();
+        $('chapterList').querySelector(`[data-title="${run.items.findIndex(item => item.start === start)}"]`)?.focus();
+    }
+
+    $('chapterAdd').addEventListener('click', addChapter);
+    $('chapterAddPage').addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addChapter();
+        }
+    });
+    $('chapterList').addEventListener('input', e => {
+        const index = e.target.dataset.title;
+        if (index !== undefined && state.chapters) state.chapters.items[Number(index)].title = e.target.value;
+    });
+    $('chapterList').addEventListener('click', e => {
+        const view = e.target.closest('[data-view]');
+        if (view) return openViewer(Number(view.dataset.view));
+        const join = e.target.closest('[data-join]');
+        if (!join || !state.chapters) return;
+        const index = Number(join.dataset.join);
+        state.chapters.items.splice(index, 1);
+        renderChapters();
+        $('chapterList').querySelector(`[data-title="${index - 1}"]`)?.focus();
+    });
+    $('chaptersLevel').addEventListener('click', e => {
+        const button = e.target.closest('[data-level]');
+        if (button && state.chapters && Number(button.dataset.level) !== state.chapters.level) loadChapters({ level: Number(button.dataset.level), source: 'bookmarks' });
+    });
+    $('chaptersSource').addEventListener('click', () => {
+        if (state.chapters) loadChapters({ source: state.chapters.source === 'bookmarks' ? 'headings' : 'bookmarks' });
+    });
+    document.addEventListener('languagechange', () => state.chapters && renderChapters());
 
     function renderMerge(focusIndex) {
         els.mergeList.innerHTML = state.merge.map((item, i) => `
@@ -2163,6 +2320,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     options.n = n;
                 }
                 if (mode === 'ranges' || mode === 'extract') options.ranges = readRanges($('splitRanges'));
+                if (mode === 'chapters') {
+                    const run = state.chapters;
+                    if (!run || run.loading || run.fileId !== file().file_id) throw new ToolError('pdf_chapters_loading');
+                    const parts = chapterParts();
+                    if (parts.length < 2) throw new ToolError('err_pdf_chapters_one', null, $('chapterAddPage'));
+                    options.chapters = parts.map(part => ({ start: part.start, title: part.title.trim() }));
+                }
                 return { options };
             }
             case 'merge':
