@@ -82,7 +82,7 @@ http://localhost:5000
 </details>
 
 <details>
-<summary><b>🎬 Video Formats</b></summary>
+<summary><b>Video Formats</b></summary>
 
 | Input | Output |
 |-------|--------|

@@ -73,8 +73,9 @@ def selected_pages(spec: Optional[str], page_count: int) -> List[int]:
 
 
 def safe_name(text: str, fallback: str) -> str:
-    cleaned = re.sub(r'[^\w\- ]+', '', text or '', flags=re.UNICODE).strip().replace(' ', '_')
-    return cleaned[:60] or fallback
+    cleaned = re.sub(r'[^\w\- ]+', ' ', text or '', flags=re.UNICODE)
+    cleaned = re.sub(r'[\s_]+', '_', cleaned).strip('_-')
+    return cleaned[:60].rstrip('_-') or fallback
 
 
 class PdfTools:
@@ -236,6 +237,11 @@ class PdfTools:
                 if n < 1:
                     raise PdfToolError('err_pdf_split_n', "Invalid page count")
                 groups = [list(range(i, min(i + n, doc.page_count))) for i in range(0, doc.page_count, n)]
+            elif mode == 'chapters':
+                from .pdf_chapters import groups_from_starts
+                parts = groups_from_starts(options.get('chapters'), doc.page_count)
+                groups = [list(range(part['start'], part['end'] + 1)) for part in parts]
+                labels = [safe_name(part['title'], f"{part['start'] + 1}-{part['end'] + 1}") for part in parts]
             elif mode == 'bookmarks':
                 toc = [(page - 1, title) for level, title, page in doc.get_toc(simple=True) if level == 1 and page > 0]
                 if not toc:

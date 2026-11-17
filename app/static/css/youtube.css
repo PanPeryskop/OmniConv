@@ -20,3 +20,6 @@
 #inputSection .btn {
     white-space: nowrap;
 }
+
+.error-hint { display: flex; align-items: flex-start; gap: 6px; margin-top: var(--space-2); color: var(--text-muted); font-size: var(--text-xs); line-height: 1.5; }
+.error-hint svg { flex: none; width: 14px; height: 14px; margin-top: 2px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

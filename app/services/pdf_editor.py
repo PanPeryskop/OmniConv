@@ -23,7 +23,7 @@ GENERIC_FONTS = {
 }
 SUBSET_RE = re.compile(r'^[A-Z]{6}\+')
 STYLE_RE = re.compile(r'[-,_ ]?(bold|black|heavy|semibold|demibold|italic|oblique|regular|roman|medium|book|mt|ps)+$', re.I)
-BULLETS = set('•▪◦●○■□–-*·➢✓✔►▶➤◆◇')
+BULLETS = set('\u2022\u25aa\u25e6\u25cf\u25cb\u25a0\u25a1\u2013-*\u00b7\u27a2\u2713\u2714\u25ba\u25b6\u27a4\u25c6\u25c7')
 MARKUP_KINDS = ('highlight', 'underline', 'strikeout', 'squiggly')
 MOVABLE_ANNOTS = {'FreeText', 'Square', 'Circle', 'Text', 'Stamp', 'FileAttachment'}
 WIDGET_TYPES = {
