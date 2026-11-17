@@ -115,8 +115,9 @@ class RapidSteps:
         image, record = engine.preprocess_img(original)
         scan = SimpleNamespace(original=original, record=record, boxes=[], batches=[], texts={}, scores={}, words={})
         try:
-            scan.crops, scan.det = engine.detect_and_crop(image, record)
-            scan.images, scan.cls = engine.cls_and_rotate(scan.crops) if engine.use_cls else (scan.crops, TextClsOutput())
+            with OCRService.rapid_guard():
+                scan.crops, scan.det = engine.detect_and_crop(image, record)
+                scan.images, scan.cls = engine.cls_and_rotate(scan.crops) if engine.use_cls else (scan.crops, TextClsOutput())
         except RapidOCRError:
             return scan
         height, width = original.shape[:2]
@@ -128,7 +129,8 @@ class RapidSteps:
         return scan
 
     def recognize(self, scan, batch):
-        result = self.engine.recognize_txt([scan.images[i] for i in batch])
+        with OCRService.rapid_guard():
+            result = self.engine.recognize_txt([scan.images[i] for i in batch])
         for index, text, score, words in zip(batch, result.txts, result.scores, result.word_results, strict=True):
             scan.texts[index], scan.scores[index], scan.words[index] = text, score, words
 

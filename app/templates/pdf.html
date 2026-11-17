@@ -1143,6 +1143,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function show(...panels) {
         [els.groups, els.panel, els.progress, els.result, els.error].forEach(p => p.classList.add('hidden'));
         panels.forEach(p => p.classList.remove('hidden'));
+        els.notes.classList.toggle('hidden', panels.includes(els.progress));
     }
 
     function clearFieldErrors(scope) {
