@@ -245,7 +245,7 @@ function renderInfo(info, url) {
         const entries = (info.entries || []).slice(0, 100);
         $("plHead").textContent = OC.t("lblPlaylistItems", [String(count)]);
         $("plList").replaceChildren(...entries.map(e => h("li", {},
-            h("span", { text: e.title || e.id || "—" }),
+            h("span", { text: e.title || e.id || "-" }),
             e.duration ? ` · ${OC.formatDuration(e.duration)}` : null)));
         $("playlistBox").hidden = entries.length === 0;
         state.chips = presetChips();
@@ -437,7 +437,7 @@ function jobItem(job) {
     const meta = h("div", { class: "job-meta" }, parts.flatMap((p, i) => i === 0
         ? [h("span", { class: "state", text: p })]
         : [h("span", { class: "sep", text: "·" }), h("span", { text: p })]));
-    const body = h("div", { class: "job-body" }, h("div", { class: "job-title", title: job.title, text: job.title || "—" }), meta);
+    const body = h("div", { class: "job-body" }, h("div", { class: "job-title", title: job.title, text: job.title || "-" }), meta);
     if (OC.isActive(job)) {
         const pct = Math.max(0, Math.min(100, job.progress || 0));
         const indeterminate = job.status !== "processing" || pct <= 0;

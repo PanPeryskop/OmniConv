@@ -231,7 +231,7 @@ async function runConvert(id) {
         const formats = (uploaded.output_formats || []).map(f => String(f).toLowerCase());
         if (!formats.includes(target)) {
             throw new OC.ApiError(
-                OC.t("errFormatUnavailable", [OC.targetLabel(target), formats.map(OC.targetLabel).join(", ") || "—"]),
+                OC.t("errFormatUnavailable", [OC.targetLabel(target), formats.map(OC.targetLabel).join(", ") || "-"]),
                 { retryable: false }
             );
         }

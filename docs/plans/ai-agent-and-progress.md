@@ -7,7 +7,7 @@ je dokładnie, a zmiany kontraktu idą tylko przez WP0.
 ## 1. Cel
 
 1. **Agent AI obok dokumentu.** Panel czatu (desktop: prawy sidebar, telefon: pełnoekranowy arkusz), w którym
-   użytkownik pisze np. „popraw literówki na tej stronie”, „skróć akapit o cenach”, „przetłumacz strony 2–4 na
+   użytkownik pisze np. „popraw literówki na tej stronie”, „skróć akapit o cenach”, „przetłumacz strony 2-4 na
    angielski”, „zaczernij wszystkie PESEL-e”. Agent czyta strony, planuje, wywołuje narzędzia i zwraca
    **propozycje zmian** (diff „przed / po”), które użytkownik akceptuje pojedynczo albo hurtem. Każda zaakceptowana
    paczka to jedna pozycja w historii cofania.
@@ -67,7 +67,7 @@ mobile-first (zasady z sekcji 4.8).
 ```python
 class EditorTask:      # pola serializowane do JSON 1:1
     id: str            # "tsk_" + token_urlsafe(10)
-    owner: str         # client_id() — nigdy nie wysyłany do innych klientów
+    owner: str         # client_id() - nigdy nie wysyłany do innych klientów
     file_id: str | None
     kind: str          # "ocr" | "translate" | "search" | "save" | "sign" | "ai" | "agent" | "fonts"
     page: int | None   # id strony w edytorze (nie pozycja)
@@ -103,10 +103,10 @@ Zmiana w podglądzie: odpowiedź `ocr_pending` dostaje pole `task_id`, czyli `{"
 
 | Metoda i ścieżka | Wejście | Wyjście |
 |---|---|---|
-| `GET /api/pdf/edit/agent/status` | — | `{"status": "ok" \| "llm_offline" \| "llm_model_missing", "provider": "lmstudio", "model": str}` |
+| `GET /api/pdf/edit/agent/status` | - | `{"status": "ok" \| "llm_offline" \| "llm_model_missing", "provider": "lmstudio", "model": str}` |
 | `POST /api/pdf/edit/agent/sessions` | `{"file_id"}` | `{"session_id"}` |
 | `POST /api/pdf/edit/agent/sessions/<sid>/messages` | `{"text", "ops", "scope", "selection"}` | **`text/event-stream`** (zdarzenia z 4.3) |
-| `POST /api/pdf/edit/agent/sessions/<sid>/stop` | — | `{"stopped": bool}` |
+| `POST /api/pdf/edit/agent/sessions/<sid>/stop` | - | `{"stopped": bool}` |
 | `POST /api/pdf/edit/agent/sessions/<sid>/feedback` | `{"proposal_id", "decision": "accepted" \| "rejected"}` | `{}` (trafia do historii rozmowy jako kontekst) |
 
 - `scope`: `{"kind": "page" | "pages" | "document" | "selection", "pages": [int], "block_ids": [str]}`.
@@ -145,7 +145,7 @@ wcześniejszych zmian agenta.
 
 | Narzędzie | Parametry | Zwraca / propozycje |
 |---|---|---|
-| `list_pages` | — | `[{page, position, width, height, blocks, scanned, edited}]` |
+| `list_pages` | - | `[{page, position, width, height, blocks, scanned, edited}]` |
 | `read_page` | `page`, `max_chars=6000` | `{blocks:[{id, text, bbox, size, bold, italic, color, align}], images, annots, truncated}` |
 | `search` | `query?`, `patterns?: [pesel…]`, `pages?` | `[{page, text, kind, rects}]` (przez `search_document`) |
 | `replace_text` | `block_id`, `text`, `reason` | propozycja `kind="text"` (op z `pdf_ai.block_op`, `fit: true`) |
@@ -245,7 +245,7 @@ class AgentProvider:
 
 ## 5. Pakiety pracy
 
-Kolejność: **WP0 (sekwencyjnie, ~1 h)**, potem **WP1–WP6 równolegle**, na końcu **WP7** (QA, scalanie).
+Kolejność: **WP0 (sekwencyjnie, ~1 h)**, potem **WP1-WP6 równolegle**, na końcu **WP7** (QA, scalanie).
 
 ### WP0: Kontrakty i rusztowanie (jeden agent, przed resztą)
 
@@ -382,14 +382,14 @@ review.
 |---|---|---|
 | `app/static/js/pdf-editor.js` | **WP0** (bridge) | po WP0 nikt; potrzebne haki zgłaszać do WP0 |
 | `app/static/js/translations.js`, `i18n.js` | **WP0** | moduły używają `I18n.extend` we własnych plikach |
-| `app/templates/pdf_editor.html`, `pdf.html` | **WP0** | — |
-| `app/routes/api.py`, `websocket.py` | WP0 / WP1 | — |
-| `app/services/pdf_scan.py` | WP2 | — |
+| `app/templates/pdf_editor.html`, `pdf.html` | **WP0** | - |
+| `app/routes/api.py`, `websocket.py` | WP0 / WP1 | - |
+| `app/services/pdf_scan.py` | WP2 | - |
 | `app/services/pdf_editor.py` | WP2 (OCR), WP3 (callback w `search_document`) | zmiany w rozłącznych funkcjach |
-| `app/routes/api_pdf.py` | WP3 | — |
-| `app/services/pdf_tools.py` | WP3 | — |
-| `app/services/pdf_ai.py` | WP5 (tylko dopisywanie) | — |
-| nowe pliki z sekcji 5 | właściciel WP | — |
+| `app/routes/api_pdf.py` | WP3 | - |
+| `app/services/pdf_tools.py` | WP3 | - |
+| `app/services/pdf_ai.py` | WP5 (tylko dopisywanie) | - |
+| nowe pliki z sekcji 5 | właściciel WP | - |
 | `tests/test_pdf_editor.py` | nikt (zamrożony) | każdy WP: własny `tests/test_<wp>.py` |
 
 ## 7. Jak to uruchomić wieloma agentami Claude
@@ -401,7 +401,7 @@ review.
    i zgłasza listę zmienionych plików. Zmiana poza własnymi plikami = blokada i pytanie do prowadzącego.
 4. Prowadzący (lub WP7) scala w kolejności z WP7, odpala pełne e2e i robi review.
 
-Szacunek: WP0 ~1 h, równoległe WP1–WP6 ~2–3 h zegarowo, WP7 ~1 h, razem ~4–5 h zamiast ~2 dni sekwencyjnie.
+Szacunek: WP0 ~1 h, równoległe WP1-WP6 ~2-3 h zegarowo, WP7 ~1 h, razem ~4-5 h zamiast ~2 dni sekwencyjnie.
 
 ## 8. Prompty dla agentów (do wklejenia)
 
@@ -437,14 +437,14 @@ Dopiski per WP:
 | Duże dokumenty przekraczają kontekst | `read_page` per strona, przycinanie, podsumowania; `scope` domyślnie „ta strona” |
 | Agent psuje dokument | tylko propozycje, ręczna akceptacja, grupa cofania, `base` wykrywa nieaktualne propozycje |
 | Prywatność | tylko LM Studio lokalnie; brak dostawców zewnętrznych |
-| Rozjazd stanu klient–serwer | serwer zawsze liczy na opach z żądania, nie trzyma stanu dokumentu |
+| Rozjazd stanu klient-serwer | serwer zawsze liczy na opach z żądania, nie trzyma stanu dokumentu |
 | Konflikty przy równoległej pracy | tabela własności plików, `I18n.extend`, zamrożone kontrakty, WP0 przed resztą |
 
 ## 10. Definition of Done
 
 - Polecenie „popraw literówki na tej stronie” na fixturze z celowymi błędami daje propozycje z poprawnym diffem.
   „Zastosuj wszystkie” daje jedną pozycję cofania, a zapisany PDF zawiera poprawiony tekst w oryginalnym kroju.
-- „Przetłumacz strony 1–2 na angielski” i „zaczernij PESEL-e” działają przez agenta.
+- „Przetłumacz strony 1-2 na angielski” i „zaczernij PESEL-e” działają przez agenta.
 - OCR skanu pokazuje etapy, pudełka linii przed tekstem, licznik linii, ETA i działa Anuluj. Kolejka „rozpoznaj
   wszystkie” pokazuje postęp stron.
 - Centrum aktywności pokazuje OCR, tłumaczenie, wyszukiwanie, zapis/podpis, AI i indeks czcionek.
@@ -453,7 +453,7 @@ Dopiski per WP:
 
 ## 11. Stan po WP0 (obowiązuje zamiast wcześniejszych zapisów, jeśli się różnią)
 
-WP0 jest zrobione i scalone na branchu bazowym. Ustalenia wiążące dla WP1–WP7:
+WP0 jest zrobione i scalone na branchu bazowym. Ustalenia wiążące dla WP1-WP7:
 
 - **Kolejność skryptów:** `pdf.html` ładuje moduły edytora **przed** `translations.js` / `i18n.js` z `base.html`.
   W czasie ładowania modułu nie istnieją `t`, `I18n`, `escapeHtml`, `i18n`. Tłumaczenia rejestruje się przez

@@ -497,10 +497,10 @@ function showYouTubeError(message, retryPossible = true, category = '', key = nu
 
     const hintEl = document.getElementById('errorHint');
     if (category === 'auth') {
-        i18n.set(hintEl, 'yt_hint_auth');
+        i18n.set(document.getElementById('errorHintText'), 'yt_hint_auth');
         hintEl.style.display = '';
     } else if (category === 'rate_limited') {
-        i18n.set(hintEl, 'yt_hint_rate_limited');
+        i18n.set(document.getElementById('errorHintText'), 'yt_hint_rate_limited');
         hintEl.style.display = '';
     } else {
         hintEl.style.display = 'none';

@@ -708,7 +708,7 @@ const PdfAgent = (() => {
     function parsePages(text, order) {
         const ids = [];
         String(text || '').split(/[,;\s]+/).forEach(part => {
-            const m = part.match(/^(\d+)(?:\s*[-–]\s*(\d+))?$/);
+            const m = part.match(/^(\d+)(?:\s*[-\u2013]\s*(\d+))?$/);
             if (!m) return;
             const from = Number(m[1]);
             const to = Number(m[2] || m[1]);
